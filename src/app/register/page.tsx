@@ -85,6 +85,7 @@ export default function RegisterPage() {
     setErrors({});
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirmPassword, recaptchaToken, ...registerData } = formData;
       await identityApi.register(registerData);
       

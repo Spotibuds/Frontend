@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { identityApi, musicApi, userApi, type User, type Song } from "@/lib/api";
+import { identityApi, musicApi, type User, type Song } from "@/lib/api";
 import { formatDuration } from "@/lib/utils";
 
 export default function DashboardPage() {
