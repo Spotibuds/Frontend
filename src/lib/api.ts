@@ -1,6 +1,6 @@
 // API Configuration for microservices
 export const API_CONFIG = {
-  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || "http://localhost:5001",
+  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || "http://localhost",
   MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || "http://localhost:5002",
   USER_API: process.env.NEXT_PUBLIC_USER_API || "http://localhost:5003",
 } as const;
@@ -73,7 +73,13 @@ async function apiRequest<T>(
   const response = await fetch(url, config);
   
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText;
+    try {
+      const errorJson = await response.json();
+      errorText = errorJson.message || JSON.stringify(errorJson);
+    } catch {
+      errorText = await response.text();
+    }
     throw new Error(errorText || `HTTP ${response.status}`);
   }
 
