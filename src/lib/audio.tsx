@@ -247,7 +247,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           }
         }, 1000);
       
-    } catch (error) {
+    } catch {
       dispatch({ type: 'SET_SEEKING', payload: false });
       isSeekingRef.current = false;
     }

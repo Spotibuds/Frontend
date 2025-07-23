@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -17,7 +17,7 @@ import {
   SpeakerWaveIcon,
   ChatBubbleLeftRightIcon,
 } from "@heroicons/react/24/outline";
-import { HeartIcon as HeartIconSolid } from "@heroicons/react/24/solid";
+
 import { useAudio } from "@/lib/audio";
 
 interface AppLayoutProps {
@@ -58,7 +58,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     handleProgressInteraction(e);
   };
 
-  const handleProgressInteraction = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
+  const handleProgressInteraction = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
     if (!state.currentSong || !state.duration) {
       return;
     }
@@ -78,13 +78,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     const newTime = percentage * state.duration;
     
     seekTo(newTime);
-  };
+  }, [state.currentSong, state.duration, isSeeking, seekTo]);
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isDragging) {
       handleProgressInteraction(e);
     }
-  };
+  }, [isDragging, handleProgressInteraction]);
 
   const handleMouseUp = () => {
     setIsDragging(false);
@@ -100,7 +100,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [isDragging]);
+  }, [isDragging, handleMouseMove]);
 
   const handleVolumeClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
