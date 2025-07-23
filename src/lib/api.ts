@@ -1,4 +1,4 @@
-const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NEXT_PUBLIC_NODE_ENV === "production";
 
 export const API_CONFIG = {
   IDENTITY_API: isProduction 
