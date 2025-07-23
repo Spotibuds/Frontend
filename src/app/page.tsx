@@ -12,9 +12,8 @@ import { identityApi, type LoginRequest } from "@/lib/api";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState<LoginRequest>({
-    username: "",
+    email: "",
     password: "",
-    rememberMe: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -24,8 +23,8 @@ export default function LoginPage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.username.trim()) {
-      newErrors.username = "Username is required";
+    if (!formData.email.trim()) {
+      newErrors.email = "Email is required";
     }
 
     if (!formData.password) {
@@ -96,12 +95,12 @@ export default function LoginPage() {
             )}
 
             <Input
-              label="Username"
-              type="text"
-              placeholder="Enter your username"
-              value={formData.username}
-              onChange={handleInputChange("username")}
-              error={errors.username}
+              label="Email"
+              type="email"
+              placeholder="Enter your email"
+              value={formData.email}
+              onChange={handleInputChange("email")}
+              error={errors.email}
               required
             />
 
@@ -129,16 +128,7 @@ export default function LoginPage() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={formData.rememberMe}
-                  onChange={handleInputChange("rememberMe")}
-                  className="rounded border-gray-600 bg-gray-900 text-purple-600 focus:ring-purple-500"
-                />
-                <span className="text-gray-300">Remember me</span>
-              </label>
+            <div className="flex items-center justify-end">
               
               <Link
                 href="/forgot-password"

@@ -22,7 +22,6 @@ export default function RegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    isPrivate: false,
     recaptchaToken: null,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -103,7 +102,7 @@ export default function RegisterPage() {
       
       // Auto-login after successful registration
       await identityApi.login({
-        username: formData.username,
+        email: formData.email,
         password: formData.password,
       });
       
@@ -265,18 +264,7 @@ export default function RegisterPage() {
               </button>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="isPrivate"
-                checked={formData.isPrivate}
-                onChange={handleInputChange("isPrivate")}
-                className="rounded border-gray-600 bg-gray-900 text-purple-600 focus:ring-purple-500"
-              />
-              <label htmlFor="isPrivate" className="text-sm text-gray-300">
-                Make my profile private
-              </label>
-            </div>
+
 
             <div className="flex justify-center">
               <ReCAPTCHA

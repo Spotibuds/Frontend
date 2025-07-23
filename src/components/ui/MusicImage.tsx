@@ -32,7 +32,7 @@ export default function MusicImage({
   const [canStartLoading, setCanStartLoading] = useState(priority || loadDelay === 0);
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout>();
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Convert Azure Blob URL to proxied URL
   const proxiedSrc = getProxiedImageUrl(src);
