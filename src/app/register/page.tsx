@@ -111,9 +111,9 @@ export default function RegisterPage() {
       const errorMessage = error instanceof Error ? error.message : "Registration failed";
       
       // Try to parse the error message as JSON to get detailed errors
-      let parsedError: any = null;
+      let parsedError: { errors?: string[]; message?: string } | null = null;
       try {
-        parsedError = JSON.parse(errorMessage);
+        parsedError = JSON.parse(errorMessage) as { errors?: string[]; message?: string };
       } catch {
         // Not JSON, treat as plain error message
       }
