@@ -56,12 +56,18 @@ export default function RegisterPage() {
     if (!formData.password) {
       newErrors.password = "Password is required";
     } else {
-      if (formData.password.length < 6) {
-        newErrors.password = "Password must be at least 6 characters";
+      if (formData.password.length < 8) {
+        newErrors.password = "Password must be at least 8 characters";
+      } else if (formData.password.length > 100) {
+        newErrors.password = "Password must be no more than 100 characters";
       } else if (!/[0-9]/.test(formData.password)) {
         newErrors.password = "Password must contain at least one digit";
       } else if (!/[A-Z]/.test(formData.password)) {
         newErrors.password = "Password must contain at least one uppercase letter";
+      } else if (!/[a-z]/.test(formData.password)) {
+        newErrors.password = "Password must contain at least one lowercase letter";
+      } else if (!/[^a-zA-Z0-9]/.test(formData.password)) {
+        newErrors.password = "Password must contain at least one special character";
       }
     }
 
@@ -104,10 +110,33 @@ export default function RegisterPage() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Registration failed";
       
+      // Try to parse the error message as JSON to get detailed errors
+      let parsedError: any = null;
+      try {
+        parsedError = JSON.parse(errorMessage);
+      } catch {
+        // Not JSON, treat as plain error message
+      }
+      
       // Handle specific error cases
-      if (errorMessage.includes("username") || errorMessage.includes("DuplicateUserName")) {
+      if (parsedError && parsedError.errors && Array.isArray(parsedError.errors)) {
+        // Handle validation errors from backend
+        const validationErrors: Record<string, string> = {};
+        parsedError.errors.forEach((error: string) => {
+          if (error.toLowerCase().includes("password")) {
+            validationErrors.password = error;
+          } else if (error.toLowerCase().includes("email")) {
+            validationErrors.email = error;
+          } else if (error.toLowerCase().includes("username")) {
+            validationErrors.username = error;
+          } else {
+            validationErrors.general = error;
+          }
+        });
+        setErrors(validationErrors);
+      } else if (errorMessage.includes("username") || errorMessage.includes("DuplicateUserName") || errorMessage.includes("already taken")) {
         setErrors({ username: "This username is already taken" });
-      } else if (errorMessage.includes("email")) {
+      } else if (errorMessage.includes("email") || errorMessage.includes("already exists")) {
         setErrors({ email: "This email is already registered" });
       } else {
         setErrors({ general: errorMessage });
@@ -199,6 +228,9 @@ export default function RegisterPage() {
                   <EyeIcon className="h-5 w-5" />
                 )}
               </button>
+              <p className="text-xs text-gray-400 mt-1">
+                Password must contain at least 8 characters, including uppercase, lowercase, numbers, and special characters
+              </p>
             </div>
 
             <div className="relative">
