@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
@@ -8,7 +8,7 @@ import ReCAPTCHA from "react-google-recaptcha";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { identityApi, type RegisterRequest } from "@/lib/api";
+import { identityApi, type RegisterRequest, logApiConfig } from "@/lib/api";
 
 interface FormData extends RegisterRequest {
   confirmPassword: string;
@@ -29,6 +29,11 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    // Debug API configuration after component mounts
+    logApiConfig();
+  }, []);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
