@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -46,7 +47,14 @@ export default function ForgotPasswordPage() {
       <div className="min-h-screen flex items-center justify-center p-4">
         {/* Logo */}
         <div className="absolute top-6 left-6">
-          <h1 className="text-3xl font-bold gradient-text">SPOTIBUDS</h1>
+          <Image 
+            src="/logo.svg" 
+            alt="Spotibuds Logo" 
+            width={200} 
+            height={60}
+            priority
+            className="h-12 w-auto"
+          />
         </div>
 
         <Card className="w-full max-w-md animate-fade-in">
@@ -89,7 +97,14 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <h1 className="text-3xl font-bold gradient-text">SPOTIBUDS</h1>
+        <Image 
+          src="/logo.svg" 
+          alt="Spotibuds Logo" 
+          width={200} 
+          height={60}
+          priority
+          className="h-12 w-auto"
+        />
       </div>
 
       {/* Forgot Password Form */}

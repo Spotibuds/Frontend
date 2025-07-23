@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -69,7 +70,14 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <h1 className="text-3xl font-bold gradient-text">SPOTIBUDS</h1>
+        <Image 
+          src="/logo.svg" 
+          alt="Spotibuds Logo" 
+          width={200} 
+          height={60}
+          priority
+          className="h-12 w-auto"
+        />
       </div>
 
       {/* Login Form */}

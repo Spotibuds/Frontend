@@ -3,63 +3,112 @@ const isProduction = process.env.NODE_ENV === "production";
 export const API_CONFIG = {
   IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || (isProduction 
     ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net"
-    : "http://localhost:5001"),
+    : "http://localhost:80"),
   MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || (isProduction
     ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net"
-    : "http://localhost:5002"),
+    : "http://localhost:81"),
   USER_API: process.env.NEXT_PUBLIC_USER_API || (isProduction
     ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net"
     : "http://localhost:5003"),
 } as const;
 
+// Helper function to convert Azure Blob URLs to proxied URLs
+export const getProxiedImageUrl = (azureBlobUrl?: string): string | undefined => {
+  if (!azureBlobUrl) return undefined;
+  
+  // If it's already a proxied URL, return as is
+  if (azureBlobUrl.includes('/api/media/image')) return azureBlobUrl;
+  
+  // Convert Azure Blob URL to proxied URL
+  const encodedUrl = encodeURIComponent(azureBlobUrl);
+  return `${API_CONFIG.MUSIC_API}/api/media/image?url=${encodedUrl}`;
+};
+
+// Helper function to convert Azure Blob URLs to proxied audio URLs
+export const getProxiedAudioUrl = (azureBlobUrl?: string): string | undefined => {
+  if (!azureBlobUrl) return undefined;
+  
+  // If it's already a proxied URL, return as is
+  if (azureBlobUrl.includes('/api/media/audio')) return azureBlobUrl;
+  
+  // Convert Azure Blob URL to proxied URL
+  const encodedUrl = encodeURIComponent(azureBlobUrl);
+  return `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodedUrl}`;
+};
+
 // Debug function
 export const logApiConfig = () => {
-  console.log('🔧 API Configuration Debug:', {
-    IDENTITY_API: API_CONFIG.IDENTITY_API,
-    MUSIC_API: API_CONFIG.MUSIC_API,
-    USER_API: API_CONFIG.USER_API,
-    isProduction,
-  });
-
-  if (!isProduction) {
-      console.log('⚠️  Running in development mode with localhost APIs ');
-    }
+  // Debug logging removed for cleaner code
 };
 
 
-// Types
-export interface LoginRequest {
+// Type definitions for API responses
+export interface User {
+  id: string;
   username: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface LoginRequest {
+  email: string;
   password: string;
-  rememberMe?: boolean;
 }
 
 export interface RegisterRequest {
   username: string;
   email: string;
   password: string;
-  isPrivate?: boolean;
 }
 
-export interface User {
-  id: string;
-  username: string;
+export interface ForgotPasswordRequest {
   email: string;
-  isPrivate: boolean;
-  createdAt: string;
-  roles: string[];
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+export interface ArtistReference {
+  id: string;
+  name: string;
+}
+
+export interface AlbumReference {
+  id: string;
+  title: string;
+}
+
+export interface SongReference {
+  id: string;
+  position: number;
+  addedAt: string;
 }
 
 export interface Song {
   id: string;
   title: string;
-  artistName: string;
-  genre?: string;
-  duration: number;
+  artists: ArtistReference[];
+  genre: string;
+  durationSec: number;
+  album?: AlbumReference;
   fileUrl: string;
-  coverUrl?: string;
-  artistId: string;
+  snippetUrl?: string;
+  coverUrl: string;
   createdAt: string;
+  releaseDate?: string;
 }
 
 export interface Artist {
@@ -67,7 +116,27 @@ export interface Artist {
   name: string;
   bio?: string;
   imageUrl?: string;
+  albums: AlbumReference[];
   createdAt: string;
+}
+
+export interface Album {
+  id: string;
+  title: string;
+  songs: SongReference[];
+  artist?: ArtistReference;
+  coverUrl?: string;
+  releaseDate?: string;
+  createdAt: string;
+}
+
+export interface Playlist {
+  id: string;
+  name: string;
+  description?: string;
+  songs: SongReference[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FollowStats {
@@ -111,7 +180,7 @@ async function apiRequest<T>(
 // Identity API
 export const identityApi = {
   login: async (data: LoginRequest) => {
-    const response = await apiRequest<{ token: string; user: User }>(
+    const response = await apiRequest<AuthResponse>(
       `${API_CONFIG.IDENTITY_API}/api/auth/login`,
       {
         method: "POST",
@@ -120,7 +189,7 @@ export const identityApi = {
     );
     
     // Store token in localStorage
-    localStorage.setItem("authToken", response.token);
+    localStorage.setItem("authToken", response.accessToken);
     localStorage.setItem("user", JSON.stringify(response.user));
     
     return response;
@@ -153,27 +222,121 @@ export const identityApi = {
 
 // Music API
 export const musicApi = {
+  // Songs
   getSongs: () => apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/songs`),
   
   getSong: (id: string) => 
     apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/songs/${id}`),
   
-  searchSongs: (params: { title?: string; artist?: string; genre?: string }) => {
-    const query = new URLSearchParams();
-    if (params.title) query.append("title", params.title);
-    if (params.artist) query.append("artist", params.artist);
-    if (params.genre) query.append("genre", params.genre);
-    
-    return apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/songs/search?${query}`);
+  createSong: (data: {
+    title: string;
+    artists: ArtistReference[];
+    genre: string;
+    durationSec: number;
+    album?: AlbumReference;
+    fileUrl: string;
+    snippetUrl?: string;
+    coverUrl: string;
+    releaseDate?: string;
+  }) => apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/songs`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  uploadSongFile: (songId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('audioFile', file);
+    return apiRequest<{ fileUrl: string }>(`${API_CONFIG.MUSIC_API}/api/songs/${songId}/upload-file`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
   },
-  
+
+  uploadSongCover: (songId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('imageFile', file);
+    return apiRequest<{ coverUrl: string }>(`${API_CONFIG.MUSIC_API}/api/songs/${songId}/upload-cover`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+  },
+
+  uploadSongSnippet: (songId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('audioFile', file);
+    return apiRequest<{ snippetUrl: string }>(`${API_CONFIG.MUSIC_API}/api/songs/${songId}/upload-snippet`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+  },
+
+  // Artists
   getArtists: () => apiRequest<Artist[]>(`${API_CONFIG.MUSIC_API}/api/artists`),
   
   getArtist: (id: string) => 
     apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/artists/${id}`),
+
+  createArtist: (data: {
+    name: string;
+    bio?: string;
+  }) => apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/artists`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  uploadArtistImage: (artistId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return apiRequest<{ imageUrl: string }>(`${API_CONFIG.MUSIC_API}/api/artists/${artistId}/image`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+  },
+
+  // Albums
+  getAlbums: () => apiRequest<Album[]>(`${API_CONFIG.MUSIC_API}/api/albums`),
   
-  getArtistSongs: (id: string) => 
-    apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/artists/${id}/songs`),
+  getAlbum: (id: string) => 
+    apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/albums/${id}`),
+
+  getAlbumSongs: (id: string) => 
+    apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/albums/${id}/songs`),
+
+  createAlbum: (data: {
+    title: string;
+    artist?: ArtistReference;
+    releaseDate?: string;
+  }) => apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/albums`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  uploadAlbumCover: (albumId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('imageFile', file);
+    return apiRequest<{ coverUrl: string }>(`${API_CONFIG.MUSIC_API}/api/albums/${albumId}/upload-cover`, {
+      method: 'POST',
+      body: formData,
+      headers: {},
+    });
+  },
+
+  addSongToAlbum: (albumId: string, songId: string, position?: number) => {
+    const query = position !== undefined ? `?position=${position}` : '';
+    return apiRequest(`${API_CONFIG.MUSIC_API}/api/albums/${albumId}/songs/${songId}${query}`, {
+      method: 'POST',
+    });
+  },
+
+  // Playlists
+  getPlaylists: () => apiRequest<Playlist[]>(`${API_CONFIG.MUSIC_API}/api/playlists`),
+  
+  getPlaylist: (id: string) => 
+    apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/playlists/${id}`),
 };
 
 // User API
