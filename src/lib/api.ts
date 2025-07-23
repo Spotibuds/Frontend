@@ -1,15 +1,15 @@
 const isProduction = process.env.NODE_ENV === "production";
 
 export const API_CONFIG = {
-  IDENTITY_API: isProduction 
+  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || (isProduction 
     ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net"
-    :"http://localhost",
-  MUSIC_API: isProduction
+    : "http://localhost:5001"),
+  MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || (isProduction
     ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net"
-    : "http://localhost:5002",
-  USER_API: isProduction
+    : "http://localhost:5002"),
+  USER_API: process.env.NEXT_PUBLIC_USER_API || (isProduction
     ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net"
-    : "http://localhost:5003",
+    : "http://localhost:5003"),
 } as const;
 
 // Debug function
