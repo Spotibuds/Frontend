@@ -162,3 +162,57 @@ The frontend communicates with three microservices:
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Tailwind CSS Documentation](https://tailwindcss.com/docs)
 - [TypeScript Documentation](https://www.typescriptlang.org/docs) 
+
+## 🚀 Deployment
+
+### Azure App Service Configuration
+
+**Environment Variables:**
+In your Azure App Service, configure these environment variables:
+
+```bash
+# Required API Endpoints (replace with your actual Azure service URLs)
+NEXT_PUBLIC_IDENTITY_API=https://your-identity-service.azurewebsites.net
+NEXT_PUBLIC_MUSIC_API=https://your-music-service.azurewebsites.net  
+NEXT_PUBLIC_USER_API=https://your-user-service.azurewebsites.net
+
+# Optional: ReCAPTCHA (if different from default)
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=your-recaptcha-site-key
+```
+
+**Azure App Service Settings:**
+1. Go to your Azure App Service → Configuration → Application settings
+2. Add each environment variable above
+3. Restart the app service after adding variables
+
+**Dockerfile Optimization:**
+The included Dockerfile builds a standalone Next.js app optimized for containers.
+
+### 🔧 Troubleshooting Azure Deployment
+
+**Common Issues & Solutions:**
+
+1. **❌ `ERR_CONNECTION_REFUSED` errors**
+   - **Cause**: Environment variables not set in Azure App Service
+   - **Solution**: Add environment variables in Azure Portal:
+     - Go to Azure App Service → Configuration → Application settings
+     - Add all `NEXT_PUBLIC_*` variables with your actual service URLs
+     - Restart the app service
+
+2. **❌ `404 (Not Found)` for `/forgot-password`**
+   - **Status**: ✅ Fixed - Route has been created
+
+3. **❌ `404 (Not Found)` for `favicon.ico`**
+   - **Status**: ✅ Fixed - Favicon added to public directory
+
+**Verification Steps:**
+1. Check your browser's Developer Console for environment variable errors
+2. Verify all API endpoints are accessible from your Azure frontend
+3. Test authentication flow end-to-end
+
+**Required Azure Environment Variables:**
+```bash
+NEXT_PUBLIC_IDENTITY_API=https://your-identity-api.azurewebsites.net
+NEXT_PUBLIC_MUSIC_API=https://your-music-api.azurewebsites.net
+NEXT_PUBLIC_USER_API=https://your-user-api.azurewebsites.net
+``` 

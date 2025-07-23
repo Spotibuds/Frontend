@@ -1,4 +1,6 @@
 // API Configuration for microservices
+declare const process: { env: { [key: string]: string | undefined } };
+
 export const API_CONFIG = {
   IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || "http://localhost",
   MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || "http://localhost:5002",

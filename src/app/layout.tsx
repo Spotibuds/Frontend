@@ -45,6 +45,14 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: '32x32' }
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -54,6 +62,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.ico" sizes="32x32" />
+        <link rel="apple-touch-icon" href="/favicon.svg" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900`}
       >
