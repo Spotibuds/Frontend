@@ -1,14 +1,14 @@
-const isProduction = process.env.NEXT_PUBLIC_NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production";
 
 export const API_CONFIG = {
   IDENTITY_API: isProduction 
-    ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net/"
+    ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net"
     :"http://localhost",
   MUSIC_API: isProduction
-    ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net/"
+    ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net"
     : "http://localhost:5002",
   USER_API: isProduction
-    ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net/"
+    ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net"
     : "http://localhost:5003",
 } as const;
 
@@ -22,7 +22,7 @@ export const logApiConfig = () => {
   });
 
   if (!isProduction) {
-    console.log('⚠️  Running in development mode with localhost APIs '+API_CONFIG.USER_API);
+      console.log('⚠️  Running in development mode with localhost APIs ');
     }
 };
 
