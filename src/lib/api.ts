@@ -7,6 +7,21 @@ export const API_CONFIG = {
   USER_API: process.env.NEXT_PUBLIC_USER_API || "http://localhost:5003",
 } as const;
 
+// Debug: Log API configuration in browser console
+if (typeof window !== 'undefined') {
+  console.log('🔧 API Configuration Debug:', {
+    IDENTITY_API: API_CONFIG.IDENTITY_API,
+    MUSIC_API: API_CONFIG.MUSIC_API,
+    USER_API: API_CONFIG.USER_API,
+    usingLocalhost: API_CONFIG.IDENTITY_API.includes('localhost'),
+    environment: process.env.NODE_ENV || 'unknown'
+  });
+  
+  if (API_CONFIG.IDENTITY_API.includes('localhost')) {
+    console.warn('⚠️  Still using localhost! Set NEXT_PUBLIC_IDENTITY_API in Azure App Service');
+  }
+}
+
 // Types
 export interface LoginRequest {
   username: string;
