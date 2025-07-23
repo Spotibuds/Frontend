@@ -1,25 +1,31 @@
-// API Configuration for microservices
-declare const process: { env: { [key: string]: string | undefined } };
+const isProduction = process.env.NODE_ENV === "production";
 
 export const API_CONFIG = {
-  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || "http://localhost",
-  MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || "http://localhost:5002",
-  USER_API: process.env.NEXT_PUBLIC_USER_API || "http://localhost:5003",
+  IDENTITY_API: isProduction 
+    ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net/"
+    :"http://localhost",
+  MUSIC_API: isProduction
+    ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net/"
+    : "http://localhost:5002",
+  USER_API: isProduction
+    ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net/"
+    : "http://localhost:5003",
 } as const;
 
-// Debug function to be called from components after mount
+// Debug function
 export const logApiConfig = () => {
   console.log('🔧 API Configuration Debug:', {
     IDENTITY_API: API_CONFIG.IDENTITY_API,
     MUSIC_API: API_CONFIG.MUSIC_API,
     USER_API: API_CONFIG.USER_API,
-    usingLocalhost: API_CONFIG.IDENTITY_API.includes('localhost'),
+    isProduction,
   });
-  
-  if (API_CONFIG.IDENTITY_API.includes('localhost')) {
-    console.warn('⚠️  Still using localhost! Set NEXT_PUBLIC_IDENTITY_API in Azure App Service');
-  }
+
+  if (!isProduction) {
+    console.log('⚠️  Running in development mode with localhost APIs '+API_CONFIG.USER_API);
+    }
 };
+
 
 // Types
 export interface LoginRequest {
