@@ -102,7 +102,7 @@ export default function RegisterPage() {
       
       // Auto-login after successful registration
       await identityApi.login({
-        email: formData.email,
+        username: formData.username,
         password: formData.password,
       });
       
