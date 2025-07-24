@@ -1,15 +1,8 @@
-const isProduction = process.env.NODE_ENV === "production";
-
+// Use environment variables first, then fallback to production URLs
 export const API_CONFIG = {
-  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || (isProduction 
-    ? "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net"
-    : "http://localhost:80"),
-  MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || (isProduction
-    ? "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net"
-    : "http://localhost:81"),
-  USER_API: process.env.NEXT_PUBLIC_USER_API || (isProduction
-    ? "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net"
-    : "http://localhost:5003"),
+  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || "https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net",
+  MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || "https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net",
+  USER_API: process.env.NEXT_PUBLIC_USER_API || "https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net",
 } as const;
 
 // Helper function to convert Azure Blob URLs to proxied URLs
