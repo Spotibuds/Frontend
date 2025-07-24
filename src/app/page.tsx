@@ -12,7 +12,7 @@ import { identityApi, type LoginRequest } from "@/lib/api";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState<LoginRequest>({
-    email: "",
+    username: "",
     password: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -23,8 +23,8 @@ export default function LoginPage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.email.trim()) {
-      newErrors.email = "Email is required";
+    if (!formData.username.trim()) {
+      newErrors.username = "Username is required";
     }
 
     if (!formData.password) {
@@ -95,12 +95,12 @@ export default function LoginPage() {
             )}
 
             <Input
-              label="Email"
-              type="email"
-              placeholder="Enter your email"
-              value={formData.email}
-              onChange={handleInputChange("email")}
-              error={errors.email}
+              label="Username"
+              type="text"
+              placeholder="Enter your username"
+              value={formData.username}
+              onChange={handleInputChange("username")}
+              error={errors.username}
               required
             />
 

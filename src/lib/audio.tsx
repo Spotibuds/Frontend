@@ -17,7 +17,7 @@ type AudioAction =
   | { type: 'SET_SONG'; payload: Song }
   | { type: 'PLAY' }
   | { type: 'PAUSE' }
-  | { type: 'SET_CURRENT_TIME'; payload: number }
+  | { type: 'SET_CURRENT_TIME'; payload: number; force?: boolean }
   | { type: 'SET_DURATION'; payload: number }
   | { type: 'SET_VOLUME'; payload: number }
   | { type: 'SET_LOADING'; payload: boolean }
@@ -42,8 +42,8 @@ function audioReducer(state: AudioState, action: AudioAction): AudioState {
     case 'PAUSE':
       return { ...state, isPlaying: false };
     case 'SET_CURRENT_TIME':
-      // Only update currentTime if not currently seeking
-      return state.isSeeking ? state : { ...state, currentTime: action.payload };
+      // Only update currentTime if not currently seeking, unless forced
+      return (state.isSeeking && !action.force) ? state : { ...state, currentTime: action.payload };
     case 'SET_DURATION':
       return { ...state, duration: action.payload };
     case 'SET_VOLUME':
@@ -196,19 +196,29 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // Prevent multiple simultaneous seeks
+    if (isSeekingRef.current) {
+      console.warn('⚠️ Already seeking, ignoring new seek request');
+      return;
+    }
+
     // Wait for audio to be loaded before seeking
     if (audio.readyState < 2) {
       console.warn('⚠️ Audio not ready for seeking, waiting...');
-      audio.addEventListener('canplay', () => seekTo(time), { once: true });
+      const handleCanPlay = () => {
+        audio.removeEventListener('canplay', handleCanPlay);
+        seekTo(time);
+      };
+      audio.addEventListener('canplay', handleCanPlay, { once: true });
       return;
     }
 
     if (time > audio.duration) {
       console.warn('⚠️ Seek time exceeds duration, clamping to end');
-      time = audio.duration;
+      time = Math.max(0, audio.duration - 0.1); // Leave small buffer
     }
 
-
+    console.log(`🎯 Seeking to ${time}s (duration: ${audio.duration}s)`);
     
     try {
       // Set seeking state to prevent timeupdate conflicts
@@ -217,19 +227,38 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       
       const wasPlaying = !audio.paused;
       
+      // Pause audio during seeking to prevent conflicts
+      if (wasPlaying) {
+        audio.pause();
+      }
+      
       // Perform the seek
       audio.currentTime = time;
       
-      // Update visual state immediately
-      dispatch({ type: 'SET_CURRENT_TIME', payload: time });
-      
       // Listen for the seeked event to know when seeking is complete
       const handleSeeked = () => {
-
-        dispatch({ type: 'SET_SEEKING', payload: false });
-        dispatch({ type: 'SET_CURRENT_TIME', payload: audio.currentTime });
-        isSeekingRef.current = false;
+        console.log(`✅ Seeked to ${audio.currentTime}s`);
+        
+        // Clean up
         audio.removeEventListener('seeked', handleSeeked);
+        dispatch({ type: 'SET_SEEKING', payload: false });
+        isSeekingRef.current = false;
+        
+        // Update the current time to the actual seeked position (force update)
+        dispatch({ type: 'SET_CURRENT_TIME', payload: audio.currentTime, force: true });
+        
+        // Resume playing if it was playing before
+        if (wasPlaying) {
+          audio.play().catch(console.error);
+        }
+      };
+      
+      const handleSeekError = () => {
+        console.error('❌ Seek operation failed');
+        audio.removeEventListener('seeked', handleSeeked);
+        audio.removeEventListener('error', handleSeekError);
+        dispatch({ type: 'SET_SEEKING', payload: false });
+        isSeekingRef.current = false;
         
         // Resume playing if it was playing before
         if (wasPlaying && audio.paused) {
@@ -238,16 +267,26 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       };
       
       audio.addEventListener('seeked', handleSeeked, { once: true });
+      audio.addEventListener('error', handleSeekError, { once: true });
       
-              // Fallback timeout in case seeked event doesn't fire
-        setTimeout(() => {
-          if (state.isSeeking) {
-            dispatch({ type: 'SET_SEEKING', payload: false });
-            isSeekingRef.current = false;
+      // Fallback timeout in case seeked event doesn't fire
+      setTimeout(() => {
+        if (isSeekingRef.current) {
+          console.warn('⚠️ Seeked event timeout, cleaning up');
+          audio.removeEventListener('seeked', handleSeeked);
+          audio.removeEventListener('error', handleSeekError);
+          dispatch({ type: 'SET_SEEKING', payload: false });
+          isSeekingRef.current = false;
+          
+          // Resume playing if it was playing before
+          if (wasPlaying && audio.paused) {
+            audio.play().catch(console.error);
           }
-        }, 1000);
+        }
+      }, 2000); // Increased timeout to 2 seconds
       
-    } catch {
+    } catch (error) {
+      console.error('❌ Error during seeking:', error);
       dispatch({ type: 'SET_SEEKING', payload: false });
       isSeekingRef.current = false;
     }

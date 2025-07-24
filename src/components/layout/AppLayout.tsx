@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback } from "react";
+import Image from "next/image";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -19,6 +20,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 import { useAudio } from "@/lib/audio";
+import { getProxiedImageUrl } from "@/lib/api";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -164,9 +166,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
           <div className="px-6 py-6">
             <div className="flex items-center space-x-3 mb-8">
               <div className="w-8 h-8">
-                <svg viewBox="0 0 24 24" fill="currentColor" className="text-white">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
+                <Image 
+                  src="/logo.svg" 
+                  alt="SpotiBuds Logo" 
+                  width={32} 
+                  height={32}
+                  className="w-full h-full"
+                />
               </div>
               <span className="text-white text-xl font-bold">SpotiBuds</span>
             </div>
@@ -252,7 +258,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center overflow-hidden">
               {state.currentSong?.coverUrl ? (
                 <img 
-                  src={state.currentSong.coverUrl} 
+                  src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl} 
                   alt={state.currentSong.title}
                   className="w-full h-full object-cover"
                   onError={(e) => {
