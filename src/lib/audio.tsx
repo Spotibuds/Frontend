@@ -93,38 +93,74 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
 
     const handleDurationChange = () => {
+      console.log(`📏 Duration changed: ${audio.duration}s`);
       dispatch({ type: 'SET_DURATION', payload: audio.duration });
     };
 
     const handleEnded = () => {
+      console.log('🏁 Audio ended');
       dispatch({ type: 'PAUSE' });
       dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
     };
 
     const handleLoadStart = () => {
+      console.log('⏳ Audio load started');
       dispatch({ type: 'SET_LOADING', payload: true });
     };
 
     const handleCanPlay = () => {
+      console.log('✅ Audio can play');
       dispatch({ type: 'SET_LOADING', payload: false });
     };
 
-    // Removed handleSeeked and handleSeeking - now handled in seekTo function
+    const handleError = (error: Event) => {
+      console.error('❌ Audio error:', error);
+      console.error('❌ Audio error details:', {
+        error: audio.error,
+        networkState: audio.networkState,
+        readyState: audio.readyState,
+        src: audio.src
+      });
+      dispatch({ type: 'SET_LOADING', payload: false });
+      dispatch({ type: 'PAUSE' });
+    };
+
+    const handleStalled = () => {
+      console.warn('⚠️ Audio stalled');
+    };
+
+    const handleWaiting = () => {
+      console.log('⏳ Audio waiting for data');
+      dispatch({ type: 'SET_LOADING', payload: true });
+    };
+
+    const handlePlaying = () => {
+      console.log('▶️ Audio playing');
+      dispatch({ type: 'SET_LOADING', payload: false });
+    };
 
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('durationchange', handleDurationChange);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('loadstart', handleLoadStart);
     audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('error', handleError);
+    audio.addEventListener('stalled', handleStalled);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('playing', handlePlaying);
 
-          return () => {
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('durationchange', handleDurationChange);
-        audio.removeEventListener('ended', handleEnded);
-        audio.removeEventListener('loadstart', handleLoadStart);
-        audio.removeEventListener('canplay', handleCanPlay);
-      };
-    }, [state.isSeeking]); // Add dependency for isSeeking state
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('durationchange', handleDurationChange);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('loadstart', handleLoadStart);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('error', handleError);
+      audio.removeEventListener('stalled', handleStalled);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('playing', handlePlaying);
+    };
+  }, [state.isSeeking]); // Add dependency for isSeeking state
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -151,24 +187,52 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Don't reload the same song
-    if (state.currentSong?.id === song.id && audio.src) {
-  
+    console.log(`🎵 Playing song: ${song.title} (ID: ${song.id})`);
+
+    // If it's the same song and already loaded, just play/resume
+    if (state.currentSong?.id === song.id && audio.src && !audio.error) {
+      console.log('🔄 Resuming same song');
       dispatch({ type: 'PLAY' });
       return;
     }
+
+    // Stop current playback and reset state
+    audio.pause();
+    dispatch({ type: 'PAUSE' });
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
+    dispatch({ type: 'SET_DURATION', payload: 0 });
 
     // Convert Azure Blob URL to proxied URL for audio
     const proxiedAudioUrl = song.fileUrl.includes('/api/media/audio') 
       ? song.fileUrl 
       : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(song.fileUrl)}`;
 
+    console.log(`🔗 Audio URL: ${proxiedAudioUrl}`);
 
-    
+    // Set up error handling before loading
+    const handleLoadError = (error: Event) => {
+      console.error('❌ Audio load error:', error);
+      dispatch({ type: 'SET_LOADING', payload: false });
+      dispatch({ type: 'PAUSE' });
+      audio.removeEventListener('error', handleLoadError);
+    };
+
+    const handleCanPlayThrough = () => {
+      console.log('✅ Audio can play through');
+      dispatch({ type: 'SET_LOADING', payload: false });
+      dispatch({ type: 'PLAY' });
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
+      audio.removeEventListener('error', handleLoadError);
+    };
+
+    audio.addEventListener('error', handleLoadError, { once: true });
+    audio.addEventListener('canplaythrough', handleCanPlayThrough, { once: true });
+
+    // Set new song and load
     dispatch({ type: 'SET_SONG', payload: song });
     audio.src = proxiedAudioUrl;
     audio.load();
-    dispatch({ type: 'PLAY' });
   };
 
   const togglePlayPause = () => {
