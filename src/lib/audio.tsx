@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useReducer, useRef, useEffect, ReactNode } from 'react';
-import { Song } from './api';
+import { Song, API_CONFIG } from './api';
 
 interface AudioState {
   currentSong: Song | null;
@@ -161,7 +161,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     // Convert Azure Blob URL to proxied URL for audio
     const proxiedAudioUrl = song.fileUrl.includes('/api/media/audio') 
       ? song.fileUrl 
-      : `${process.env.NEXT_PUBLIC_MUSIC_API || 'http://localhost:81'}/api/media/audio?url=${encodeURIComponent(song.fileUrl)}`;
+      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(song.fileUrl)}`;
 
 
     
