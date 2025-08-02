@@ -124,12 +124,7 @@ export function getImageFallback(title?: string, type: 'album' | 'artist' | 'son
 }
 
 export function getPlaceholderImageUrl(type: 'album' | 'artist' | 'song' | 'user', size: number = 400): string {
-  const colors = {
-    album: 'from-purple-500%20to-pink-500',
-    artist: 'from-blue-500%20to-purple-500', 
-    song: 'from-green-500%20to-blue-500',
-    user: 'from-orange-500%20to-red-500'
-  };
+
   
   return `https://via.placeholder.com/${size}x${size}/1f2937/ffffff?text=${type.charAt(0).toUpperCase()}`;
 }
@@ -338,9 +333,9 @@ export const identityApi = {
 };
 
 export const musicApi = {
-  async testProxy(): Promise<any> {
+  async testProxy(): Promise<unknown> {
     try {
-      const response = await apiRequest<any>(`${API_CONFIG.MUSIC_API}/api/media/test`);
+              const response = await apiRequest<unknown>(`${API_CONFIG.MUSIC_API}/api/media/test`);
       return response;
     } catch (error) {
       console.warn('Proxy test failed:', error);
@@ -692,30 +687,39 @@ export interface FollowStats {
   followingCount: number;
 }
 
-export function safeString(value: any): string {
+export function safeString(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
-  if (typeof value === 'object' && value.name) return value.name;
-  if (typeof value === 'object' && value.title) return value.title;
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, unknown>;
+    if ('name' in obj && typeof obj.name === 'string') return obj.name;
+    if ('title' in obj && typeof obj.title === 'string') return obj.title;
+  }
   return String(value);
 }
 
-export function safeArray<T>(value: any): T[] {
+export function safeArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) return value;
   return [];
 }
 
-export function processArtists(artists: any): string[] {
+export function processArtists(artists: unknown): string[] {
   if (!artists) return ['Unknown Artist'];
   if (Array.isArray(artists)) {
-    return artists.map((artist: any) => {
+    return artists.map((artist: unknown) => {
       if (typeof artist === 'string') return artist;
-      if (typeof artist === 'object' && artist?.name) return artist.name;
+      if (typeof artist === 'object' && artist !== null) {
+        const obj = artist as Record<string, unknown>;
+        if ('name' in obj && typeof obj.name === 'string') return obj.name;
+      }
       return 'Unknown Artist';
     });
   }
   if (typeof artists === 'string') return [artists];
-  if (typeof artists === 'object' && artists?.name) return [artists.name];
+  if (typeof artists === 'object' && artists !== null) {
+    const obj = artists as Record<string, unknown>;
+    if ('name' in obj && typeof obj.name === 'string') return [obj.name];
+  }
   return ['Unknown Artist'];
 }

@@ -71,12 +71,12 @@ export default function FriendsPage() {
 
   // Real-time friend request updates
   useEffect(() => {
-    const handleFriendRequestReceived = (data: any) => {
+    const handleFriendRequestReceived = (data: { requestId?: string; userId?: string; requesterId?: string; requesterUsername?: string; requesterAvatar?: string; requestedAt?: string }) => {
       addToast(`New friend request from ${data.requesterUsername}!`, 'info');
       // Add the new request to the list immediately
-      const newRequest = {
+      const newRequest: FriendRequest = {
         requestId: data.requestId || Math.random().toString(36).substr(2, 9),
-        requesterId: data.userId || data.requesterId,
+        requesterId: data.userId || data.requesterId || '',
         requesterUsername: data.requesterUsername || 'Unknown User',
         requesterAvatar: data.requesterAvatar,
         requestedAt: data.requestedAt || new Date().toISOString()
@@ -84,7 +84,7 @@ export default function FriendsPage() {
       setFriendRequests(prev => [...prev, newRequest]);
     };
 
-    const handleFriendRequestAccepted = (data: any) => {
+    const handleFriendRequestAccepted = (data: { requestId?: string }) => {
       addToast(`Friend request accepted!`, 'success');
       // Remove the request from the list immediately
       if (data.requestId) {
@@ -94,7 +94,7 @@ export default function FriendsPage() {
       loadFriends();
     };
 
-    const handleFriendRequestDeclined = (data: any) => {
+    const handleFriendRequestDeclined = (data: { requestId?: string }) => {
       addToast(`Friend request declined`, 'info');
       // Remove the request from the list immediately
       if (data.requestId) {
@@ -102,7 +102,7 @@ export default function FriendsPage() {
       }
     };
 
-    const handleFriendRemoved = (data: any) => {
+    const handleFriendRemoved = (data: { friendId?: string }) => {
       addToast(`Friend removed`, 'info');
       // Remove the friend from the list immediately
       if (data.friendId) {
@@ -241,16 +241,17 @@ export default function FriendsPage() {
       setSentRequests(prev => new Set([...prev, targetUserId]));
       // Refresh the page to update the UI
       window.location.reload();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Send friend request error:', error);
-      if (error.message?.includes('already pending')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('already pending')) {
         addToast('Friend request already pending', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
-      } else if (error.message?.includes('already friends')) {
+      } else if (errorMessage.includes('already friends')) {
         addToast('Users are already friends', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
       } else {
-        addToast(`Failed to send friend request: ${error.message}`, 'error');
+        addToast(`Failed to send friend request: ${errorMessage}`, 'error');
       }
     } finally {
       setProcessingRequests(prev => {
@@ -277,9 +278,10 @@ export default function FriendsPage() {
       loadFriends();
       // Refresh the page to ensure all data is up to date
       window.location.reload();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Accept friend request error:', error);
-      addToast(`Failed to accept friend request: ${error.message}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addToast(`Failed to accept friend request: ${errorMessage}`, 'error');
     } finally {
       setProcessingRequests(prev => {
         const newSet = new Set(prev);
@@ -303,9 +305,10 @@ export default function FriendsPage() {
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
       // Refresh the page to ensure all data is up to date
       window.location.reload();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Decline friend request error:', error);
-      addToast(`Failed to decline friend request: ${error.message}`, 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      addToast(`Failed to decline friend request: ${errorMessage}`, 'error');
     } finally {
       setProcessingRequests(prev => {
         const newSet = new Set(prev);

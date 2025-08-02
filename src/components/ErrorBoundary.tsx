@@ -38,7 +38,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <div className="text-red-400 text-6xl mb-4">!</div>
             <h2 className="text-2xl font-bold text-white">Something went wrong</h2>
             <p className="text-gray-400 max-w-md">
-              We're sorry, but something unexpected happened. Please refresh the page or try again later.
+              We&apos;re sorry, but something unexpected happened. Please refresh the page or try again later.
             </p>
             <div className="space-x-4">
               <button

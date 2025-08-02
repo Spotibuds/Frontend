@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,7 +10,7 @@ import {
   MusicalNoteIcon,
   MagnifyingGlassIcon,
   UserGroupIcon,
-  UserIcon,
+
   ChatBubbleLeftRightIcon,
   SpeakerWaveIcon,
   SpeakerXMarkIcon,
@@ -36,17 +36,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ id: string; username: string; displayName?: string; avatarUrl?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<{ requestId: string; requesterId: string; requesterUsername: string; requesterAvatar?: string; requestedAt: string }[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const { state, togglePlayPause, seekTo, setVolume } = useAudio();
   
-  // Initialize friend hub for real-time updates
-  const { isConnected } = useFriendHub();
+
   
   // Toast state
   const [toasts, setToasts] = useState<Array<{
@@ -55,10 +54,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     type: 'success' | 'error' | 'info';
   }>>([]);
 
-  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    const id = Date.now().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
-  };
+
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
@@ -142,25 +138,25 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Real-time friend request updates
   useEffect(() => {
-    const handleFriendRequestReceived = (data: any) => {
+    const handleFriendRequestReceived = (data: { requestId?: string; requesterId?: string; requesterUsername?: string; requesterAvatar?: string; requestedAt?: string }) => {
       // Add new friend request to the list
       setFriendRequests(prev => [...prev, {
         requestId: data.requestId || Math.random().toString(36).substr(2, 9), // Use actual requestId if available
-        requesterId: data.userId || data.requesterId,
+        requesterId: data.requesterId || '',
         requesterUsername: data.requesterUsername || 'Unknown User',
         requesterAvatar: data.requesterAvatar,
         requestedAt: data.requestedAt || new Date().toISOString()
       }]);
     };
 
-    const handleFriendRequestAccepted = (data: any) => {
+    const handleFriendRequestAccepted = (data: { requestId?: string }) => {
       // Remove the accepted request from the list
       if (data.requestId) {
         setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));
       }
     };
 
-    const handleFriendRequestDeclined = (data: any) => {
+    const handleFriendRequestDeclined = (data: { requestId?: string }) => {
       // Remove the declined request from the list
       if (data.requestId) {
         setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));

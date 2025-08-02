@@ -1,4 +1,4 @@
-type EventHandler = (...args: any[]) => void;
+type EventHandler = (...args: unknown[]) => void;
 
 class EventBus {
   private events: { [key: string]: EventHandler[] } = {};
@@ -16,7 +16,7 @@ class EventBus {
     }
   }
 
-  emit(event: string, ...args: any[]): void {
+  emit(event: string, ...args: unknown[]): void {
     if (this.events[event]) {
       this.events[event].forEach(handler => handler(...args));
     }

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
-import Slider from '@/components/ui/Slider';
+
 import MusicImage from '@/components/ui/MusicImage';
 import { musicApi, processArtists, safeString, type Artist, type Album, type Song } from '@/lib/api';
 import { useAudio } from '@/lib/audio';
@@ -277,7 +277,7 @@ export default function ArtistPage() {
             <div className="text-center py-16">
               <div className="text-gray-600 text-6xl mb-4">♪</div>
               <p className="text-gray-400 text-lg mb-2">No content available</p>
-              <p className="text-gray-500">This artist hasn't released any music yet.</p>
+              <p className="text-gray-500">This artist hasn&apos;t released any music yet.</p>
             </div>
           )}
         </div>

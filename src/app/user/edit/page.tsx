@@ -10,7 +10,7 @@ import { identityApi, userApi, safeString } from '@/lib/api';
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; displayName?: string } | null>(null);
   const [profileData, setProfileData] = useState({
     username: '',
     displayName: '',

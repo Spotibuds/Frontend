@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
-import Slider from '@/components/ui/Slider';
+
 import MusicImage from '@/components/ui/MusicImage';
 import { musicApi, processArtists, safeString, type Album, type Song } from '@/lib/api';
 import { useAudio } from '@/lib/audio';

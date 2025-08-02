@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
-import { Card } from '../../../components/ui/Card';
+
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Toast } from '../../../components/ui/Toast';
@@ -21,7 +21,7 @@ export default function ChatPage() {
   
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -30,13 +30,10 @@ export default function ChatPage() {
   const {
     isConnected,
     connectionState,
-    chats,
-    messages,
     sendMessage,
     markMessageAsRead,
     getChatMessages,
-    getChat,
-    clearError
+    getChat
   } = useFriendHub({
     userId: currentUser?.id,
     onError: (error) => addToast(error, 'error')
@@ -124,7 +121,7 @@ export default function ChatPage() {
             </svg>
           </div>
           <h2 className="text-xl font-semibold text-white mb-2">Chat Not Found</h2>
-          <p className="text-gray-400">This chat doesn't exist or you don't have access to it.</p>
+          <p className="text-gray-400">This chat doesn&apos;t exist or you don&apos;t have access to it.</p>
         </div>
       </div>
     );

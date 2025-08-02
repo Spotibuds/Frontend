@@ -22,7 +22,7 @@ export default function MusicImage({
   type = 'square',
   size = 'medium',
   priority = false,
-  lazy = true
+
 }: MusicImageProps) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -48,7 +48,7 @@ export default function MusicImage({
     setImageError(false);
   };
 
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleImageError = () => {
     setDebugAttempts(prev => [...prev, `Failed: ${imageSrc}`]);
     
     if (imageSrc && imageSrc.includes('/api/media/image') && src && !src.includes('/api/media/image')) {

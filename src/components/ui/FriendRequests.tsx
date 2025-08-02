@@ -11,7 +11,7 @@ interface FriendRequestsProps {
 }
 
 export default function FriendRequests({ className = '' }: FriendRequestsProps) {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   

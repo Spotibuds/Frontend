@@ -316,7 +316,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
   // Auto-connect on mount
   useEffect(() => {
     if (autoConnect && userId) {
-    connect();
+      connect();
     }
 
     return () => {

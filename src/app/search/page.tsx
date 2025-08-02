@@ -6,7 +6,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MagnifyingGlassIcon, UserIcon, MusicalNoteIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { musicApi, userApi, processArtists, safeString } from '@/lib/api';
+import { musicApi, userApi, processArtists, safeString, type User, type Song, type Album, type Artist, type Playlist } from '@/lib/api';
 import MusicImage from '@/components/ui/MusicImage';
 import { useAudio } from '@/lib/audio';
 
@@ -100,7 +100,7 @@ export default function SearchPage() {
 
       // Process user results
       if (Array.isArray(users)) {
-        users.forEach((user: any) => {
+        users.forEach((user: { id: string; displayName?: string; username: string; avatarUrl?: string }) => {
           searchResults.push({
             id: user.id,
             type: 'user',
@@ -114,7 +114,7 @@ export default function SearchPage() {
 
       // Process music results
       if (musicResults && typeof musicResults === 'object' && 'songs' in musicResults) {
-        musicResults.songs?.forEach((song: any) => {
+        musicResults.songs?.forEach((song: Song) => {
           searchResults.push({
             id: song.id,
             type: 'song',
@@ -125,7 +125,7 @@ export default function SearchPage() {
           });
         });
 
-        musicResults.albums?.forEach((album: any) => {
+        musicResults.albums?.forEach((album: Album) => {
           searchResults.push({
             id: album.id,
             type: 'album',
@@ -136,7 +136,7 @@ export default function SearchPage() {
           });
         });
 
-        musicResults.artists?.forEach((artist: any) => {
+        musicResults.artists?.forEach((artist: Artist) => {
           searchResults.push({
             id: artist.id,
             type: 'artist',
@@ -156,15 +156,7 @@ export default function SearchPage() {
     setIsLoading(false);
   };
 
-  const handleSearch = useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    const query = searchQuery.trim();
-    if (query) {
-      // Update URL with search query
-      router.push(`/search?q=${encodeURIComponent(query)}`);
-      performSearch(query);
-    }
-  }, [searchQuery, router]);
+
 
   const handleResultClick = (result: SearchResult) => {
     switch (result.type) {
@@ -354,7 +346,7 @@ export default function SearchPage() {
             ) : (
               <div className="text-center py-12">
                 <MagnifyingGlassIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">No results found for "{searchQuery}"</h3>
+                <h3 className="text-xl font-semibold text-white mb-2">No results found for &quot;{searchQuery}&quot;</h3>
                 <p className="text-gray-400 mb-4">
                   Try searching with different keywords or check your spelling
                 </p>

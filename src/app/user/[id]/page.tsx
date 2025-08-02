@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+
 import { Button } from '@/components/ui/Button';
-import { UserIcon, UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
-import { userApi, identityApi, safeString, type User } from '@/lib/api';
+import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { userApi, identityApi, safeString } from '@/lib/api';
 import { useFriendHub } from '@/hooks/useFriendHub';
-import { friendHubManager } from '@/lib/friendHub';
-import { ToastContainer } from '@/components/ui/Toast';
+
 import { eventBus } from '@/lib/eventBus';
 
 interface UserProfile {
@@ -35,16 +34,15 @@ export default function UserProfilePage() {
   const params = useParams();
   const userId = params?.id as string;
   
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
-  const [friendshipStatus, setFriendshipStatus] = useState<any | null>(null);
+  const [friendshipStatus, setFriendshipStatus] = useState<{ status: string; friendshipId?: string; requesterId?: string; addresseeId?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
-  // Initialize friend hub for real-time updates
-  const { isConnected } = useFriendHub();
+
 
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
   
@@ -189,11 +187,12 @@ export default function UserProfilePage() {
       setShowSuccessMessage(true);
       // Hide success message after 3 seconds
       setTimeout(() => setShowSuccessMessage(false), 3000);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to send friend request:', error);
       
       // Handle specific error cases
-      if (error.message && error.message.includes('Friend request already exists')) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('Friend request already exists')) {
         // Refresh friendship status to show current state
         await loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
       }
@@ -222,8 +221,8 @@ export default function UserProfilePage() {
       setTimeout(() => {
         loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
       }, 1000);
-    } catch (error) {
-      console.error('Failed to accept friend request:', error);
+    } catch {
+      console.error('Failed to accept friend request');
     } finally {
       setIsLoadingAction(false);
     }
@@ -249,8 +248,8 @@ export default function UserProfilePage() {
       setTimeout(() => {
         loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
       }, 1000);
-    } catch (error) {
-      console.error('Failed to decline friend request:', error);
+    } catch {
+      console.error('Failed to decline friend request');
     } finally {
       setIsLoadingAction(false);
     }
@@ -265,8 +264,8 @@ export default function UserProfilePage() {
     try {
       await userApi.removeFriend(friendshipStatus.friendshipId, currentUser.id);
       await loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
-    } catch (error) {
-      console.error('Failed to remove friend:', error);
+    } catch {
+      console.error('Failed to remove friend');
     } finally {
       setIsLoadingAction(false);
     }
@@ -278,8 +277,8 @@ export default function UserProfilePage() {
     try {
       const chat = await userApi.createOrGetChat([currentUser.id, profileUser.id]);
       router.push(`/chat/${chat.chatId}`);
-    } catch (error) {
-      console.error('Failed to create chat:', error);
+    } catch {
+      console.error('Failed to create chat');
     }
   };
 
@@ -646,7 +645,7 @@ export default function UserProfilePage() {
                         <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clipRule="evenodd" />
                       </svg>
                     </div>
-                    <p className="text-gray-400 text-sm">This user's activity is private</p>
+                    <p className="text-gray-400 text-sm">This user&apos;s activity is private</p>
                   </div>
                 )}
               </div>
@@ -658,7 +657,7 @@ export default function UserProfilePage() {
             <h2 className="text-2xl font-bold text-white mb-6">Public Playlists</h2>
             {profileUser.publicPlaylists && profileUser.publicPlaylists.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                {profileUser.publicPlaylists.map((playlist, i) => (
+                {profileUser.publicPlaylists.map((playlist) => (
                   <div key={playlist.id} className="group cursor-pointer">
                     <div className="w-full aspect-square bg-gradient-to-br from-green-500 to-blue-500 rounded-xl mb-3 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
                       <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
