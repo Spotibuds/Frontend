@@ -24,7 +24,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
-import { useFriendHub } from "@/hooks/useFriendHub";
+
 import { friendHubManager } from "@/lib/friendHub";
 import { ToastContainer } from "@/components/ui/Toast";
 

@@ -7,7 +7,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { userApi, identityApi, safeString } from '@/lib/api';
-import { useFriendHub } from '@/hooks/useFriendHub';
+
 
 import { eventBus } from '@/lib/eventBus';
 
@@ -24,8 +24,11 @@ interface UserProfile {
   followers?: number;
   following?: number;
   playlists?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   topArtists?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recentActivity?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   publicPlaylists?: any[];
 }
 
@@ -72,7 +75,8 @@ export default function UserProfilePage() {
 
   // Separate useEffect for event listener to avoid dependency issues
   useEffect(() => {
-    const handleFriendshipStatusChanged = (userId1: string, userId2: string) => {
+    const handleFriendshipStatusChanged = (...args: unknown[]) => {
+      const [userId1, userId2] = args as [string, string];
       if (currentUser && profileUser && 
           ((userId1 === currentUser.id && userId2 === profileUser.identityUserId) ||
            (userId2 === currentUser.id && userId1 === profileUser.identityUserId))) {
@@ -96,7 +100,7 @@ export default function UserProfilePage() {
       
       try {
         userData = await userApi.getUserProfile(identifier);
-      } catch (error) {
+      } catch {
         try {
           const searchResults = await userApi.searchUsers(identifier);
           const userByUsername = searchResults.find(user => 
@@ -105,7 +109,7 @@ export default function UserProfilePage() {
           if (userByUsername) {
             userData = await userApi.getUserProfile(userByUsername.id);
           }
-        } catch (searchError) {
+        } catch {
           // Username search failed, continue with null userData
         }
       }

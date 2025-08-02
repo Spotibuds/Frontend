@@ -69,7 +69,7 @@ export default function ChatPage() {
       await sendMessage(chatId, message.trim());
       setMessage('');
       inputRef.current?.focus();
-    } catch (error) {
+    } catch {
       addToast('Failed to send message', 'error');
     }
   };

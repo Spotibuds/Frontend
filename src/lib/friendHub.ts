@@ -46,13 +46,21 @@ class FriendHubManager {
   private currentUserId: string | null = null;
 
   // Event handlers
-  private onFriendRequestReceived: ((request: FriendRequest) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onFriendRequestReceived: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendRequestAccepted: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendRequestDeclined: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendRemoved: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendStatusChanged: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onMessageReceived: ((message: ChatMessage) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onMessageSent: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onMessageRead: ((data: any) => void) | null = null;
   private onChatCreated: ((chat: Chat) => void) | null = null;
   private onError: ((error: string) => void) | null = null;
@@ -120,24 +128,28 @@ class FriendHubManager {
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('FriendRequestAccepted', (data: any) => {
       if (this.onFriendRequestAccepted) {
         this.onFriendRequestAccepted(data);
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('FriendRequestDeclined', (data: any) => {
       if (this.onFriendRequestDeclined) {
         this.onFriendRequestDeclined(data);
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('FriendRemoved', (data: any) => {
       if (this.onFriendRemoved) {
         this.onFriendRemoved(data);
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('FriendStatusChanged', (data: any) => {
       if (this.onFriendStatusChanged) {
         this.onFriendStatusChanged(data);
@@ -151,12 +163,14 @@ class FriendHubManager {
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('MessageSent', (data: any) => {
       if (this.onMessageSent) {
         this.onMessageSent(data);
       }
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('MessageRead', (data: any) => {
       if (this.onMessageRead) {
         this.onMessageRead(data);
@@ -321,18 +335,22 @@ class FriendHubManager {
     this.onFriendRequestReceived = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnFriendRequestAccepted(handler: ((data: any) => void) | null): void {
     this.onFriendRequestAccepted = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnFriendRequestDeclined(handler: ((data: any) => void) | null): void {
     this.onFriendRequestDeclined = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnFriendRemoved(handler: ((data: any) => void) | null): void {
     this.onFriendRemoved = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnFriendStatusChanged(handler: ((data: any) => void) | null): void {
     this.onFriendStatusChanged = handler;
   }
@@ -341,10 +359,12 @@ class FriendHubManager {
     this.onMessageReceived = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnMessageSent(handler: ((data: any) => void) | null): void {
     this.onMessageSent = handler;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnMessageRead(handler: ((data: any) => void) | null): void {
     this.onMessageRead = handler;
   }

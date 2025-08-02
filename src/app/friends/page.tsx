@@ -197,7 +197,7 @@ export default function FriendsPage() {
       
       // Check which users you've already sent requests to
       await checkSentRequests(filteredResults);
-    } catch (error) {
+    } catch {
       addToast('Failed to search users', 'error');
     } finally {
       setIsSearching(false);
@@ -326,7 +326,7 @@ export default function FriendsPage() {
       // For now, just remove from local state since we don't have friendship IDs
       setFriends(prev => prev.filter(friend => friend.id !== friendId));
       addToast('Friend removed', 'info');
-    } catch (error) {
+    } catch {
       addToast('Failed to remove friend', 'error');
     } finally {
       setProcessingFriends(prev => {
@@ -344,7 +344,7 @@ export default function FriendsPage() {
       setFriendRequests([]);
       setFriends([]);
       setSentRequests(new Set());
-    } catch (error) {
+    } catch {
       addToast('Failed to reset friendships', 'error');
     }
   };
@@ -353,7 +353,7 @@ export default function FriendsPage() {
     try {
       await userApi.syncUsers();
       addToast('Users synced successfully', 'success');
-    } catch (error) {
+    } catch {
       addToast('Failed to sync users', 'error');
     }
   };

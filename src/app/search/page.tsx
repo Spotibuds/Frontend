@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MagnifyingGlassIcon, UserIcon, MusicalNoteIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { musicApi, userApi, processArtists, safeString, type User, type Song, type Album, type Artist, type Playlist } from '@/lib/api';
+import { musicApi, userApi, processArtists, safeString, type Song, type Album, type Artist } from '@/lib/api';
 import MusicImage from '@/components/ui/MusicImage';
 import { useAudio } from '@/lib/audio';
 
@@ -18,6 +18,7 @@ interface SearchResult {
   title: string;
   subtitle: string;
   image?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
 }
 
@@ -253,7 +254,7 @@ export default function SearchPage() {
         {isLoading && (
           <div className="text-center py-12">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Searching for "{searchQuery}"...</p>
+            <p className="text-gray-400">Searching for &quot;{searchQuery}&quot;...</p>
           </div>
         )}
 

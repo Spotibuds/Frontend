@@ -8,7 +8,7 @@ import { userApi, identityApi, Chat, Friend } from '@/lib/api';
 
 export default function ChatPage() {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
