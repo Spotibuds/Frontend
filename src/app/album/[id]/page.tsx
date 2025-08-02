@@ -59,8 +59,8 @@ export default function AlbumPage() {
           try {
             const allSongs = await musicApi.getSongs();
             const albumSpecificSongs = allSongs.filter(song => 
-              song.album === albumId || 
-              (song.album && song.album === album?.title)
+              song.album?.id === albumId || 
+              (song.album && song.album.title === album?.title)
             );
             setSongs(albumSpecificSongs);
           } catch {
@@ -85,7 +85,7 @@ export default function AlbumPage() {
     // Try to find the artist by name and navigate to their page
     musicApi.getArtists().then(artists => {
       const artist = artists.find(a => 
-        a.name.toLowerCase() === album.artist.toLowerCase()
+        a.name.toLowerCase() === album.artist?.name.toLowerCase()
       );
       if (artist) {
         router.push(`/artist/${artist.id}`);

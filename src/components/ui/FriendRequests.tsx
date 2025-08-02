@@ -44,7 +44,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
     try {
       await userApi.acceptFriendRequest(requestId, currentUser.id);
       // Remove from local state
-      setFriendRequests(prev => prev.filter(req => req.id !== requestId));
+      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
     } catch (error) {
       console.error('Failed to accept friend request:', error);
     }
@@ -56,7 +56,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
     try {
       await userApi.declineFriendRequest(requestId, currentUser.id);
       // Remove from local state
-      setFriendRequests(prev => prev.filter(req => req.id !== requestId));
+      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
     } catch (error) {
       console.error('Failed to decline friend request:', error);
     }
@@ -90,7 +90,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
         <div className="space-y-4">
           {friendRequests.map((request) => (
             <div
-              key={request.id}
+              key={request.requestId}
               className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg"
             >
               <div className="flex items-center space-x-3">
@@ -109,13 +109,13 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
               
               <div className="flex items-center space-x-2">
                 <Button
-                  onClick={() => handleAcceptRequest(request.id)}
+                  onClick={() => handleAcceptRequest(request.requestId)}
                   className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm"
                 >
                   Accept
                 </Button>
                 <Button
-                  onClick={() => handleDeclineRequest(request.id)}
+                  onClick={() => handleDeclineRequest(request.requestId)}
                   variant="outline"
                   className="border-gray-600 text-white hover:bg-gray-600 px-4 py-2 text-sm"
                 >

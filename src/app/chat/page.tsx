@@ -4,13 +4,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { userApi, identityApi, Chat, Friend } from '@/lib/api';
+import { userApi, identityApi, Chat } from '@/lib/api';
 
 export default function ChatPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function ChatPage() {
 
     try {
       const chat = await userApi.createOrGetChat([currentUser.id, friendId]);
-      router.push(`/chat/${chat.id}`);
+      router.push(`/chat/${chat.chatId}`);
     } catch (error) {
       console.error('Failed to create chat:', error);
     }
@@ -74,7 +74,7 @@ export default function ChatPage() {
   };
 
   const getOtherParticipant = (chat: Chat) => {
-    return chat.participants.find(p => p.userId !== currentUser?.id);
+    return chat.participants.find(p => p !== currentUser?.id);
   };
 
   if (isLoading) {
@@ -108,26 +108,26 @@ export default function ChatPage() {
                       const otherParticipant = getOtherParticipant(chat);
                       return (
                         <div
-                          key={chat.id}
-                          onClick={() => handleChatClick(chat.id)}
+                          key={chat.chatId}
+                          onClick={() => handleChatClick(chat.chatId)}
                           className="flex items-center space-x-4 p-4 rounded-lg bg-gray-700/50 hover:bg-gray-700/80 cursor-pointer transition-colors"
                         >
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">
-                              {safeRender(otherParticipant?.username).charAt(0).toUpperCase() || '?'}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-white font-medium truncate">
-                                {safeRender(otherParticipant?.username) || 'Unknown'}
-                              </h3>
+                                                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">
+                            {otherParticipant ? otherParticipant.charAt(0).toUpperCase() : '?'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-white font-medium truncate">
+                              {otherParticipant ? `User ${otherParticipant.slice(0, 8)}` : 'Unknown'}
+                            </h3>
                               <span className="text-gray-400 text-sm">
                                 {formatTime(chat.lastActivity)}
                               </span>
                             </div>
                             <p className="text-gray-400 text-sm truncate">
-                              {chat.lastMessage?.content || 'No messages yet'}
+                              {chat.lastMessageId ? 'Last message available' : 'No messages yet'}
                             </p>
                           </div>
                         </div>
@@ -154,24 +154,19 @@ export default function ChatPage() {
               <CardContent>
                 {friends.length > 0 ? (
                   <div className="space-y-3">
-                    {friends.map((friend) => (
+                    {friends.map((friendId) => (
                       <div
-                        key={friend.id}
-                        onClick={() => handleStartChat(friend.userId)}
+                        key={friendId}
+                        onClick={() => handleStartChat(friendId)}
                         className="flex items-center space-x-3 p-3 rounded-lg bg-gray-700/30 hover:bg-gray-700/60 cursor-pointer transition-colors"
                       >
                         <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
                           <span className="text-white font-bold text-sm">
-                            {safeRender(friend.username).charAt(0).toUpperCase()}
+                            {friendId.charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-white font-medium truncate">{safeRender(friend.username)}</h4>
-                          {friend.lastMessageAt && (
-                            <p className="text-gray-400 text-xs">
-                              Last message: {formatTime(friend.lastMessageAt)}
-                            </p>
-                          )}
+                          <h4 className="text-white font-medium truncate">Friend {friendId.slice(0, 8)}</h4>
                         </div>
                         <div className="flex items-center">
                           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -192,10 +192,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
     dispatch({ type: 'SET_DURATION', payload: 0 });
 
-    // Convert Azure Blob URL to proxied URL for audio
-    const proxiedAudioUrl = song.fileUrl.includes('/api/media/audio') 
-      ? song.fileUrl 
-      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(song.fileUrl)}`;
+        // Convert Azure Blob URL to proxied URL for audio
+    const proxiedAudioUrl = song.fileUrl?.includes('/api/media/audio') 
+      ? song.fileUrl
+      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(song.fileUrl || '')}`;
 
 
 

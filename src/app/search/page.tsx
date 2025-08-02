@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -22,7 +22,7 @@ interface SearchResult {
   data: any;
 }
 
-export default function SearchPage() {
+function SearchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { playSong } = useAudio();
@@ -392,5 +392,22 @@ export default function SearchPage() {
         )}
       </div>
     </AppLayout>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={
+      <AppLayout>
+        <div className="p-6 flex items-center justify-center min-h-96">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading search...</p>
+          </div>
+        </div>
+      </AppLayout>
+    }>
+      <SearchContent />
+    </Suspense>
   );
 } 
