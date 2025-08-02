@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { getProxiedImageUrl } from '@/lib/api';
+import React, { useState, useEffect } from 'react';
+import { getProxiedImageUrl, getImageFallback } from '@/lib/api';
 
 interface MusicImageProps {
   src?: string;
@@ -10,9 +10,8 @@ interface MusicImageProps {
   className?: string;
   type?: 'square' | 'circle';
   size?: 'small' | 'medium' | 'large' | 'xl';
-  priority?: boolean; // For above-the-fold images
-  lazy?: boolean; // Enable lazy loading (default: true)
-  loadDelay?: number; // Delay before loading (for staggered loading)
+  priority?: boolean;
+  lazy?: boolean;
 }
 
 export default function MusicImage({ 
@@ -23,215 +22,112 @@ export default function MusicImage({
   type = 'square',
   size = 'medium',
   priority = false,
-  lazy = true,
-  loadDelay = 0
+  lazy = true
 }: MusicImageProps) {
   const [imageError, setImageError] = useState(false);
-  const [isLoading, setIsLoading] = useState(!!src);
-  const [shouldLoad, setShouldLoad] = useState(!lazy || priority);
-  const [canStartLoading, setCanStartLoading] = useState(priority || loadDelay === 0);
-  const imgRef = useRef<HTMLImageElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Convert Azure Blob URL to proxied URL
-  const proxiedSrc = getProxiedImageUrl(src);
-
-  // Handle load delay for staggered loading
-  useEffect(() => {
-    if (loadDelay > 0 && !priority) {
-      const timer = setTimeout(() => {
-        setCanStartLoading(true);
-      }, loadDelay);
-      return () => clearTimeout(timer);
-    }
-  }, [loadDelay, priority]);
-
-  // Intersection Observer for lazy loading
-  useEffect(() => {
-    if (!lazy || priority || shouldLoad) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && canStartLoading) {
-            setShouldLoad(true);
-            observer.disconnect();
-          }
-        });
-      },
-      {
-        rootMargin: '100px', // Start loading 100px before entering viewport
-        threshold: 0.1
-      }
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [lazy, priority, shouldLoad, canStartLoading]);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageSrc, setImageSrc] = useState<string>('');
+  const [debugAttempts, setDebugAttempts] = useState<string[]>([]);
 
   useEffect(() => {
     setImageError(false);
+    setImageLoaded(false);
+    setDebugAttempts([]);
     
-    // Clear any existing timeout
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-    }
-    
-    if (proxiedSrc && shouldLoad) {
-      // Check if image is already cached before setting loading state
-      if (imgRef.current && checkImageCache(imgRef.current)) {
-        // Image is cached, don't show loading
-        setIsLoading(false);
-      } else {
-        // Image not cached, show loading
-        setIsLoading(true);
-        
-        // Single check for cached images after DOM is ready
-        setTimeout(() => {
-          if (imgRef.current && checkImageCache(imgRef.current)) {
-            return; // Cache check will handle clearing timeout and loading state
-          }
-        }, 50); // Reduced to 50ms for faster response
-        
-        // Safety timeout - if image doesn't load in 10 seconds, stop loading state
-        loadingTimeoutRef.current = setTimeout(() => {
-          setIsLoading(false);
-          setImageError(true);
-        }, 10000);
-      }
-      
-      // Preload the image if it's priority
-      if (priority) {
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'image';
-        link.href = proxiedSrc;
-        document.head.appendChild(link);
-      }
+    if (src) {
+      const proxiedSrc = getProxiedImageUrl(src);
+      setImageSrc(proxiedSrc || '');
+      setDebugAttempts(prev => [...prev, `Original: ${src}`, `Proxied: ${proxiedSrc}`]);
     } else {
-      setIsLoading(false);
+      setImageSrc('');
     }
-    
-    // Cleanup timeout on unmount
-    return () => {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-    };
-  }, [proxiedSrc, shouldLoad, priority]);
+  }, [src]);
 
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    setImageError(false);
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    setDebugAttempts(prev => [...prev, `Failed: ${imageSrc}`]);
+    
+    if (imageSrc && imageSrc.includes('/api/media/image') && src && !src.includes('/api/media/image')) {
+      setImageSrc(src);
+      setDebugAttempts(prev => [...prev, `Fallback: ${src}`]);
+      setImageError(false);
+      setImageLoaded(false);
+    } else {
+      setImageError(true);
+      setImageLoaded(false);
+    }
+  };
+
+  // Size mappings
   const sizeClasses = {
-    small: 'w-10 h-10',
-    medium: 'w-16 h-16', 
+    small: 'w-12 h-12',
+    medium: 'w-16 h-16',
     large: 'w-32 h-32',
-    xl: 'w-60 h-60'
+    xl: 'w-48 h-48'
   };
 
   const textSizes = {
     small: 'text-xs',
-    medium: 'text-lg',
-    large: 'text-2xl', 
-    xl: 'text-4xl'
+    medium: 'text-sm',
+    large: 'text-xl',
+    xl: 'text-3xl'
   };
 
-  const gradients = [
-    'from-purple-500 to-blue-600',
-    'from-green-500 to-blue-600', 
-    'from-pink-500 to-purple-600',
-    'from-yellow-500 to-red-600',
-    'from-blue-500 to-purple-600'
-  ];
-
-  const getGradient = (text?: string) => {
-    if (!text) return gradients[0];
-    const index = text.charCodeAt(0) % gradients.length;
-    return gradients[index];
+  // Type mappings
+  const typeClasses = {
+    square: 'rounded-lg',
+    circle: 'rounded-full'
   };
 
-  const handleImageLoad = () => {
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-    }
-    setIsLoading(false);
-  };
-
-  const handleImageError = () => {
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-    }
-    setImageError(true);
-    setIsLoading(false);
-  };
-
-  const checkImageCache = (img: HTMLImageElement) => {
-    if (img.complete && img.naturalWidth > 0) {
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-      }
-      setIsLoading(false);
-      return true;
-    }
-    return false;
-  };
-
-  const baseClasses = `
-    flex items-center justify-center
-    bg-gradient-to-br ${getGradient(fallbackText)}
-    overflow-hidden relative
-    ${type === 'circle' ? 'rounded-full' : 'rounded-lg'}
-    ${sizeClasses[size]}
-    transition-all duration-200
+  const combinedClasses = `
+    ${sizeClasses[size]} 
+    ${typeClasses[type]} 
+    ${className}
+    bg-gradient-to-br from-gray-700 to-gray-800 
+    flex items-center justify-center 
+    overflow-hidden 
+    relative
+    flex-shrink-0
   `.trim();
 
-  const combinedClasses = `${baseClasses} ${className}`;
+  const displayText = fallbackText || getImageFallback(alt, 'album');
+
+  const showDebug = process.env.NODE_ENV === 'development' && (imageError || debugAttempts.length > 0);
 
   return (
-    <div ref={containerRef} className={combinedClasses}>
-      {proxiedSrc && !imageError && shouldLoad && (
+    <div className={combinedClasses} title={showDebug ? debugAttempts.join(' | ') : alt}>
+      {imageSrc && !imageError ? (
         <>
           <img
-            ref={(el) => {
-              if (imgRef.current !== el) {
-                imgRef.current = el;
-                // Check if image is already cached when ref is set (only once)
-                if (el && !checkImageCache(el)) {
-                  // If not cached, ensure loading state is correct
-                  setIsLoading(true);
-                }
-              }
-            }}
-            src={proxiedSrc}
+            src={imageSrc}
             alt={alt}
-            className="w-full h-full object-cover transition-opacity duration-200"
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              imageLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
             onLoad={handleImageLoad}
             onError={handleImageError}
-            style={{ 
-              opacity: isLoading ? 0 : 1,
-              transition: 'opacity 0.2s ease-in-out'
-            }}
             loading={priority ? 'eager' : 'lazy'}
             decoding="async"
+            crossOrigin="anonymous"
           />
-          {isLoading && (
+          {!imageLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-800">
-              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
             </div>
           )}
         </>
-      )}
-      
-      {(!proxiedSrc || imageError || !shouldLoad) && (
-        <div className="flex items-center justify-center w-full h-full">
-          {!shouldLoad && !priority ? (
-            // Placeholder for lazy-loaded images
-            <div className="w-6 h-6 border-2 border-white/20 border-t-white/40 rounded-full animate-pulse"></div>
-          ) : (
-            <span className={`text-white font-bold ${textSizes[size]}`}>
-              {fallbackText?.charAt(0)?.toUpperCase() || '♪'}
+      ) : (
+        <div className="flex flex-col items-center justify-center w-full h-full">
+          <span className={`text-white font-bold ${textSizes[size]} mb-1`}>
+            {displayText.charAt(0).toUpperCase()}
+          </span>
+          {showDebug && (
+            <span className="text-xs text-red-400 text-center px-1">
+              No Image
             </span>
           )}
         </div>

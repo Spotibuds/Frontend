@@ -1,361 +1,552 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useRef, useEffect, useCallback } from "react";
-import Image from "next/image";
+import React, { useState, useRef, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
+  Bars3Icon,
+  XMarkIcon,
+  HomeIcon,
+  MusicalNoteIcon,
   MagnifyingGlassIcon,
-  BellIcon,
-  UserCircleIcon,
-  HeartIcon,
-  PlusIcon,
-  BackwardIcon,
-  ForwardIcon,
-  PlayIcon as PlayIconSolid,
-  PauseIcon,
-  SpeakerWaveIcon,
+  UserGroupIcon,
+  UserIcon,
   ChatBubbleLeftRightIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+  PlayIcon,
+  PauseIcon,
+  ForwardIcon,
+  BackwardIcon,
+  HeartIcon,
+  ArrowLeftOnRectangleIcon,
+  BellIcon,
 } from "@heroicons/react/24/outline";
-
 import { useAudio } from "@/lib/audio";
-import { getProxiedImageUrl } from "@/lib/api";
+import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
+import { useFriendHub } from "@/hooks/useFriendHub";
+import { friendHubManager } from "@/lib/friendHub";
+import { ToastContainer } from "@/components/ui/Toast";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const router = useRouter();
-  const { state, togglePlayPause, seekTo, setVolume, formatTime, isSeeking } = useAudio();
-  const [isDragging, setIsDragging] = useState(false);
-  const progressRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  const { state, togglePlayPause, seekTo, setVolume } = useAudio();
+  
+  // Initialize friend hub for real-time updates
+  const { isConnected } = useFriendHub();
+  
+  // Toast state
+  const [toasts, setToasts] = useState<Array<{
+    id: string;
+    message: string;
+    type: 'success' | 'error' | 'info';
+  }>>([]);
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!state.currentSong || !state.duration) {
-      console.warn('⚠️ Cannot seek: No song loaded or duration unknown', {
-        currentSong: state.currentSong?.title,
-        duration: state.duration
-      });
-      return;
-    }
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const percentage = Math.max(0, Math.min(1, clickX / width)); // Clamp between 0 and 1
-    const newTime = percentage * state.duration;
-    
-
-    
-    seekTo(newTime);
+  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
   };
 
-  const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    handleProgressInteraction(e);
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
-  const handleProgressInteraction = useCallback((e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
-    if (!state.currentSong || !state.duration) {
-      return;
-    }
 
-    // Prevent seeking while already seeking
-    if (isSeeking) {
-      return;
-    }
 
-    const target = progressRef.current;
-    if (!target) return;
-
-    const rect = target.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const percentage = Math.max(0, Math.min(1, clickX / width));
-    const newTime = percentage * state.duration;
-    
-    seekTo(newTime);
-  }, [state.currentSong, state.duration, isSeeking, seekTo]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isDragging) {
-      handleProgressInteraction(e);
-    }
-  }, [isDragging, handleProgressInteraction]);
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Add global mouse event listeners when dragging
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
+    const currentUser = identityApi.getCurrentUser();
+    if (currentUser) {
+      setIsLoggedIn(true);
+      setUser(currentUser);
+      loadFriendRequests(currentUser.id);
     }
-  }, [isDragging, handleMouseMove]);
+    setIsLoading(false);
+  }, []);
+
+  // Close notifications dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.notifications-dropdown')) {
+        setNotificationsOpen(false);
+      }
+    };
+
+    if (notificationsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen]);
+
+  const loadFriendRequests = async (userId: string) => {
+    try {
+      setIsLoadingNotifications(true);
+      const requests = await userApi.getPendingFriendRequests(userId);
+      setFriendRequests(requests);
+    } catch (error) {
+      console.error('Failed to load friend requests:', error);
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: string) => {
+    if (!user || !requestId) {
+      console.error('Invalid request: missing user or requestId');
+      return;
+    }
+
+    try {
+      await userApi.acceptFriendRequest(requestId, user.id);
+      // Remove from local state immediately
+      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
+      // Refresh the page to ensure all data is up to date
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to accept friend request:', error);
+    }
+  };
+
+  const handleDeclineRequest = async (requestId: string) => {
+    if (!user || !requestId) {
+      console.error('Invalid request: missing user or requestId');
+      return;
+    }
+
+    try {
+      await userApi.declineFriendRequest(requestId, user.id);
+      // Remove from local state immediately
+      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
+      // Refresh the page to ensure all data is up to date
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to decline friend request:', error);
+    }
+  };
+
+  // Real-time friend request updates
+  useEffect(() => {
+    const handleFriendRequestReceived = (data: any) => {
+      // Add new friend request to the list
+      setFriendRequests(prev => [...prev, {
+        requestId: data.requestId || Math.random().toString(36).substr(2, 9), // Use actual requestId if available
+        requesterId: data.userId || data.requesterId,
+        requesterUsername: data.requesterUsername || 'Unknown User',
+        requesterAvatar: data.requesterAvatar,
+        requestedAt: data.requestedAt || new Date().toISOString()
+      }]);
+    };
+
+    const handleFriendRequestAccepted = (data: any) => {
+      // Remove the accepted request from the list
+      if (data.requestId) {
+        setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));
+      }
+    };
+
+    const handleFriendRequestDeclined = (data: any) => {
+      // Remove the declined request from the list
+      if (data.requestId) {
+        setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));
+      }
+    };
+
+    // Set up event handlers for real-time updates
+    friendHubManager.setOnFriendRequestReceived(handleFriendRequestReceived);
+    friendHubManager.setOnFriendRequestAccepted(handleFriendRequestAccepted);
+    friendHubManager.setOnFriendRequestDeclined(handleFriendRequestDeclined);
+
+    return () => {
+      friendHubManager.setOnFriendRequestReceived(() => {});
+      friendHubManager.setOnFriendRequestAccepted(() => {});
+      friendHubManager.setOnFriendRequestDeclined(() => {});
+    };
+  }, [user?.id]);
+
+  const handleLogout = () => {
+    identityApi.logout();
+    setIsLoggedIn(false);
+    router.push("/");
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!state.duration) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const newTime = percent * state.duration;
+    seekTo(newTime);
+  };
 
   const handleVolumeClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const width = rect.width;
-    const percentage = clickX / width;
-    
-    // Clamp percentage between 0 and 1 to prevent out-of-bounds
-    const clampedPercentage = Math.max(0, Math.min(1, percentage));
-    setVolume(clampedPercentage);
+    const percent = (e.clientX - rect.left) / rect.width;
+    setVolume(Math.max(0, Math.min(1, percent)));
   };
 
+  const navigation = [
+    { name: "Home", href: "/dashboard", icon: HomeIcon, current: pathname === "/dashboard" },
+    { name: "Browse", href: "/music", icon: MusicalNoteIcon, current: pathname === "/music" },
+    { name: "Search", href: "/search", icon: MagnifyingGlassIcon, current: pathname === "/search" },
+    { name: "Friends", href: "/friends", icon: UserGroupIcon, current: pathname === "/friends" },
+    { name: "Chat", href: "/chat", icon: ChatBubbleLeftRightIcon, current: pathname === "/chat" },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900 flex items-center justify-center">
+        <div className="text-center space-y-6 p-8">
+          <div className="flex items-center justify-center space-x-3 mb-8">
+            <MusicalNoteIcon className="h-12 w-12 text-purple-400" />
+            <h1 className="text-4xl font-bold text-white">SpotiBuds</h1>
+          </div>
+          <p className="text-xl text-gray-300 mb-8">Please log in to continue</p>
+          <div className="space-x-4">
+            <button
+              onClick={() => router.push("/")}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            >
+              Go to Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="h-screen bg-black text-white flex flex-col">
-      {/* Top Navbar */}
-      <div className="bg-gray-900/95 backdrop-blur-sm px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <button 
-              onClick={() => router.back()}
-              className="p-2 rounded-full bg-black/40 hover:bg-black/60 transition-colors"
-            >
-              <ChevronLeftIcon className="w-5 h-5" />
-            </button>
-            <button 
-              onClick={() => router.forward()}
-              className="p-2 rounded-full bg-black/40 hover:bg-black/60 transition-colors"
-            >
-              <ChevronRightIcon className="w-5 h-5" />
-            </button>
+    <div className="min-h-screen bg-gray-900">
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
+        </div>
+      )}
+
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col`}>
+        {/* Sidebar header */}
+        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
+          <div className="flex items-center space-x-3">
+            <MusicalNoteIcon className="h-8 w-8 text-purple-400" />
+            <span className="text-xl font-bold text-white">SpotiBuds</span>
           </div>
-          
-          <div className="relative">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="What do you want to play?"
-              className="bg-gray-800 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-full w-96 focus:outline-none focus:ring-2 focus:ring-white/20"
-            />
-          </div>
+          <button
+            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
+            onClick={() => setSidebarOpen(false)}
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <button className="bg-gray-800/80 hover:bg-gray-700 text-white font-medium px-4 py-2 rounded-full transition-all duration-200 border border-gray-600/50 hover:border-gray-500">
-            SpotiSlides
-          </button>
-          <button className="p-2 hover:bg-gray-800 rounded-full transition-colors">
-            <BellIcon className="w-5 h-5" />
-          </button>
-          <button className="p-2 hover:bg-gray-800 rounded-full transition-colors">
-            <UserCircleIcon className="w-6 h-6" />
+        {/* Navigation */}
+        <nav className="flex-1 px-4 py-6 space-y-2">
+          {navigation.map((item) => (
+            <Link
+              key={item.name}
+              href={item.href}
+              className={`flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors ${
+                item.current
+                  ? "bg-purple-900 text-purple-100"
+                  : "text-gray-300 hover:bg-gray-800 hover:text-white"
+              }`}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <item.icon className="mr-3 h-5 w-5" />
+              {item.name}
+            </Link>
+          ))}
+        </nav>
+
+        {/* User menu */}
+        <div className="border-t border-gray-800 p-4">
+          <button
+            onClick={handleLogout}
+            className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-300 rounded-lg hover:bg-gray-800 hover:text-white transition-colors"
+          >
+            <ArrowLeftOnRectangleIcon className="mr-3 h-5 w-5" />
+            Sign out
           </button>
         </div>
       </div>
 
-      {/* Main Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <div className="w-80 bg-gray-900 flex flex-col">
-          {/* Navigation */}
-          <div className="px-6 py-6">
-            <div className="flex items-center space-x-3 mb-8">
-              <div className="w-8 h-8">
-                <Image 
-                  src="/logo.svg" 
-                  alt="SpotiBuds Logo" 
-                  width={32} 
-                  height={32}
-                  className="w-full h-full"
-                />
+      {/* Main content area */}
+      <div className="lg:pl-64">
+        {/* Top Navigation Bar */}
+        <header className="sticky top-0 z-30 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700">
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              
+              {/* Mobile menu button */}
+              <button
+                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <Bars3Icon className="h-6 w-6" />
+              </button>
+
+              {/* Search Bar */}
+              <div className="flex-1 max-w-lg mx-4">
+                <form onSubmit={handleSearch} className="relative">
+                  <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search for songs, artists, albums..."
+                    className="w-full bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 border border-gray-600 hover:border-gray-500 transition-colors"
+                  />
+                </form>
               </div>
-              <span className="text-white text-xl font-bold">SpotiBuds</span>
-            </div>
 
-            <nav className="space-y-4">
-              <button 
-                onClick={() => router.push('/dashboard')}
-                className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors w-full text-left"
-              >
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M10 2v20l-5.5-5.5L10 2zm4 20V2l5.5 14.5L14 22z"/>
-                </svg>
-                <span className="font-medium">Home</span>
-              </button>
-              
-              <button className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors w-full text-left">
-                <MagnifyingGlassIcon className="w-6 h-6" />
-                <span className="font-medium">Search</span>
-              </button>
-              
-              <button 
-                onClick={() => router.push('/music')}
-                className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors w-full text-left"
-              >
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                </svg>
-                <span className="font-medium">Songs</span>
-              </button>
-              
-              <button 
-                onClick={() => router.push('/albums')}
-                className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors w-full text-left"
-              >
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5s2.01-4.5 4.5-4.5 4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
-                </svg>
-                <span className="font-medium">Albums</span>
-              </button>
-            </nav>
-          </div>
+              {/* Right side items */}
+              <div className="flex items-center space-x-4">
+                {/* Notifications */}
+                <div className="relative notifications-dropdown">
+                  <button 
+                    onClick={() => setNotificationsOpen(!notificationsOpen)}
+                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors relative"
+                  >
+                    <BellIcon className="h-6 w-6" />
+                    {friendRequests.length > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        {friendRequests.length}
+                      </span>
+                    )}
+                  </button>
 
-          {/* Your Library */}
-          <div className="px-6 mt-8 flex-1 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-gray-300 font-semibold">Your Library</h2>
-              <div className="flex items-center space-x-2">
-                <button className="p-1 hover:bg-gray-800 rounded transition-colors">
-                  <PlusIcon className="w-5 h-5 text-gray-400" />
-                </button>
-                <button className="p-1 hover:bg-gray-800 rounded transition-colors">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H20" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+                  {/* Notifications Dropdown */}
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
+                      <div className="p-4 border-b border-gray-700">
+                        <h3 className="text-white font-semibold">Notifications</h3>
+                      </div>
+                      
+                      <div className="max-h-96 overflow-y-auto">
+                        {isLoadingNotifications ? (
+                          <div className="p-4 text-center">
+                            <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                            <p className="text-gray-400 text-sm mt-2">Loading...</p>
+                          </div>
+                        ) : friendRequests.length > 0 ? (
+                          <div className="p-4 space-y-3">
+                            <h4 className="text-gray-300 font-medium text-sm">Friend Requests</h4>
+                            {friendRequests.map((request) => (
+                              <div key={request.requestId} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
+                                <div className="flex items-center space-x-3">
+                                                                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                                     <span className="text-white font-bold text-sm">
+                                       {(request.requesterUsername || 'U').charAt(0).toUpperCase()}
+                                     </span>
+                                   </div>
+                                                                     <div>
+                                     <p className="text-white text-sm font-medium">{request.requesterUsername || 'Unknown User'}</p>
+                                     <p className="text-gray-400 text-xs">
+                                       {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString('en-US', {
+                                         year: 'numeric',
+                                         month: 'short',
+                                         day: 'numeric'
+                                       }) : 'Unknown date'}
+                                     </p>
+                                   </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    onClick={() => handleAcceptRequest(request.requestId)}
+                                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors"
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeclineRequest(request.requestId)}
+                                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded transition-colors"
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="p-4 text-center">
+                            <div className="w-12 h-12 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-3">
+                              <BellIcon className="w-6 h-6 text-gray-400" />
+                            </div>
+                            <p className="text-gray-400 text-sm">No new notifications</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-            {/* Filter tabs */}
-            <div className="flex space-x-2 mb-4">
-              <button className="px-3 py-1 bg-gray-800 rounded-full text-sm">All</button>
-              <button className="px-3 py-1 hover:bg-gray-800 rounded-full text-sm text-gray-400">Music</button>
-            </div>
-
-            {/* Library Items - Empty for now */}
-            <div className="space-y-2 overflow-y-auto">
-              {/* Library content will be populated when user creates playlists */}
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 bg-gradient-to-b from-gray-800 via-gray-900 to-black overflow-y-auto pb-24">
-          {children}
-        </div>
-      </div>
-
-      {/* Bottom Player Bar */}
-      <div className="bg-gray-900 border-t border-gray-800 px-4 py-3 h-24 flex-shrink-0">
-        <div className="flex items-center justify-between h-full">
-          {/* Current Song Info */}
-          <div className="flex items-center space-x-3 w-80">
-            <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center overflow-hidden">
-              {state.currentSong?.coverUrl ? (
-                <img 
-                  src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl} 
-                  alt={state.currentSong.title}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <span className="text-white font-bold">
-                  {state.currentSong?.title?.charAt(0) || 'S'}
-                </span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate">
-                {state.currentSong?.title || 'No song playing'}
-              </p>
-              <p className="text-gray-400 text-xs truncate">
-                {state.currentSong?.artists.map(a => a.name).join(', ') || 'Select a song'}
-              </p>
-            </div>
-            <button className="p-1 hover:bg-gray-800 rounded transition-colors">
-              <HeartIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-            </button>
-          </div>
-
-          {/* Player Controls */}
-          <div className="flex flex-col items-center space-y-2 flex-1 max-w-md">
-            <div className="flex items-center space-x-4">
-              <button className="p-1 hover:bg-gray-800 rounded-full transition-colors">
-                <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-              </button>
-              <button 
-                onClick={togglePlayPause}
-                disabled={!state.currentSong || state.isLoading}
-                className="bg-white hover:bg-gray-200 text-black rounded-full p-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {state.isLoading ? (
-                  <div className="w-5 h-5 animate-spin rounded-full border-2 border-black border-t-transparent" />
-                ) : state.isPlaying ? (
-                  <PauseIcon className="w-5 h-5" />
-                ) : (
-                  <PlayIconSolid className="w-5 h-5" />
-                )}
-              </button>
-              <button className="p-1 hover:bg-gray-800 rounded-full transition-colors">
-                <ForwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-              </button>
-            </div>
-            {/* Progress Bar */}
-            <div className="flex items-center space-x-2 w-full max-w-md">
-              <span className="text-xs text-gray-400 w-10 text-right">
-                {formatTime(state.currentTime)}
-              </span>
-              <div 
-                ref={progressRef}
-                className={`flex-1 bg-gray-600 rounded-full h-1 group ${
-                  isDragging ? 'cursor-grabbing' : (isSeeking ? 'cursor-wait' : 'cursor-pointer')
-                }`}
-                onClick={handleProgressClick}
-                onMouseDown={handleProgressMouseDown}
-              >
-                <div 
-                  className={`rounded-full h-1 relative transition-colors ${
-                    isDragging || isSeeking ? 'bg-green-500' : 'bg-white group-hover:bg-green-500'
-                  }`}
-                  style={{ width: `${state.duration ? (state.currentTime / state.duration) * 100 : 0}%` }}
-                >
-                  <div className={`absolute right-0 top-1/2 transform translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full transition-opacity ${
-                    isDragging || isSeeking ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                  }`} />
+                {/* Profile Menu */}
+                <div className="relative">
+                  <button 
+                    onClick={() => router.push(`/user`)}
+                    className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors"
+                  >
+                    {user?.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.username}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">
+                          {safeString(user?.username).charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <span className="hidden sm:block font-medium">{safeString(user?.username)}</span>
+                  </button>
                 </div>
               </div>
-              <span className="text-xs text-gray-400 w-10">
-                {formatTime(state.duration)}
-              </span>
             </div>
           </div>
+        </header>
 
-          {/* Right Controls */}
-          <div className="flex items-center space-x-3 w-80 justify-end">
-            <button className="p-1 hover:bg-gray-800 rounded transition-colors">
-              <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-            </button>
-            <div 
-              className="w-20 bg-gray-600 rounded-full h-1 cursor-pointer group"
-              onClick={handleVolumeClick}
-            >
-              <div 
-                className="bg-white rounded-full h-1 relative group-hover:bg-green-500 transition-colors"
-                style={{ width: `${state.volume * 100}%` }}
-              >
-                <div className="absolute right-0 top-1/2 transform translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        {/* Page content */}
+        <main className="pb-24">
+          {children}
+        </main>
+
+        {/* Toast notifications */}
+        <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
+
+        {/* Bottom Audio Player */}
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-3 lg:pl-64">
+          <div className="max-w-screen-xl mx-auto">
+            <div className="flex items-center justify-between">
+              {/* Current Song Info */}
+              <div className="flex items-center space-x-3 flex-1 min-w-0 max-w-sm">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {state.currentSong?.coverUrl ? (
+                    <img 
+                      src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl} 
+                      alt={safeString(state.currentSong.title)}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <span className="text-white font-bold">
+                      {safeString(state.currentSong?.title).charAt(0) || 'S'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">
+                    {safeString(state.currentSong?.title) || 'No song playing'}
+                  </p>
+                  <p className="text-gray-400 text-xs truncate">
+                    {state.currentSong?.artists ? 
+                      processArtists(state.currentSong.artists).join(', ') : 
+                      'Select a song'}
+                  </p>
+                </div>
+                <button className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0">
+                  <HeartIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                </button>
+              </div>
+
+              {/* Playback Controls */}
+              <div className="flex flex-col items-center space-y-2 flex-1 max-w-2xl">
+                <div className="flex items-center space-x-4">
+                  <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                    <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  </button>
+                  
+                  <button
+                    onClick={togglePlayPause}
+                    className="p-3 bg-white rounded-full hover:scale-105 transition-transform"
+                    disabled={!state.currentSong}
+                  >
+                    {state.isPlaying ? (
+                      <PauseIcon className="w-6 h-6 text-black" />
+                    ) : (
+                      <PlayIcon className="w-6 h-6 text-black" />
+                    )}
+                  </button>
+                  
+                  <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                    <ForwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  </button>
+                </div>
+                
+                {/* Progress bar */}
+                <div className="flex items-center space-x-2 w-full max-w-lg">
+                  <span className="text-xs text-gray-400 w-10 text-right">
+                    {Math.floor(state.currentTime / 60)}:{(Math.floor(state.currentTime) % 60).toString().padStart(2, '0')}
+                  </span>
+                  <div 
+                    className="flex-1 bg-gray-600 rounded-full h-1 cursor-pointer"
+                    onClick={handleSeekClick}
+                  >
+                    <div 
+                      className="bg-white rounded-full h-1 transition-all duration-100"
+                      style={{ width: `${state.duration ? (state.currentTime / state.duration) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 w-10">
+                    {state.duration ? `${Math.floor(state.duration / 60)}:${(Math.floor(state.duration) % 60).toString().padStart(2, '0')}` : '0:00'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Volume Controls */}
+              <div className="flex items-center space-x-2 flex-1 justify-end max-w-sm">
+                <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                  {state.volume > 0 ? (
+                    <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  ) : (
+                    <SpeakerXMarkIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  )}
+                </button>
+                <div 
+                  className="w-24 bg-gray-600 rounded-full h-1 cursor-pointer"
+                  onClick={handleVolumeClick}
+                >
+                  <div 
+                    className="bg-white rounded-full h-1"
+                    style={{ width: `${state.volume * 100}%` }}
+                  />
+                </div>
               </div>
             </div>
-            <button className="p-2 hover:bg-gray-800 rounded transition-colors">
-              <ChatBubbleLeftRightIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-            </button>
           </div>
         </div>
       </div>

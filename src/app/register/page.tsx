@@ -9,7 +9,7 @@ import ReCAPTCHA from "react-google-recaptcha";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { identityApi, type RegisterRequest, logApiConfig } from "@/lib/api";
+import { identityApi, type RegisterRequest } from "@/lib/api";
 
 interface FormData extends RegisterRequest {
   confirmPassword: string;
@@ -28,12 +28,15 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
 
+  // Prevent hydration mismatches
   useEffect(() => {
-    // Debug API configuration after component mounts
-    logApiConfig();
+    setIsMounted(true);
   }, []);
+
+  // Component is ready for registration - no additional setup needed
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -229,11 +232,13 @@ export default function RegisterPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? (
-                  <EyeSlashIcon className="h-5 w-5" />
-                ) : (
-                  <EyeIcon className="h-5 w-5" />
-                )}
+                <span className="block h-5 w-5">
+                  {isMounted && showPassword ? (
+                    <EyeSlashIcon className="h-5 w-5" />
+                  ) : (
+                    <EyeIcon className="h-5 w-5" />
+                  )}
+                </span>
               </button>
               <p className="text-xs text-gray-400 mt-1">
                 Password must contain at least 8 characters, including uppercase, lowercase, numbers, and special characters
@@ -256,11 +261,13 @@ export default function RegisterPage() {
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? "Hide password" : "Show password"}
               >
-                {showConfirmPassword ? (
-                  <EyeSlashIcon className="h-5 w-5" />
-                ) : (
-                  <EyeIcon className="h-5 w-5" />
-                )}
+                <span className="block h-5 w-5">
+                  {isMounted && showConfirmPassword ? (
+                    <EyeSlashIcon className="h-5 w-5" />
+                  ) : (
+                    <EyeIcon className="h-5 w-5" />
+                  )}
+                </span>
               </button>
             </div>
 

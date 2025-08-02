@@ -64,7 +64,6 @@ interface AudioContextType {
   seekTo: (time: number) => void;
   setVolume: (volume: number) => void;
   formatTime: (seconds: number) => string;
-  // Expose individual state properties for convenience
   currentSong: Song | null;
   isPlaying: boolean;
   currentTime: number;
@@ -93,29 +92,25 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
 
     const handleDurationChange = () => {
-      console.log(`📏 Duration changed: ${audio.duration}s`);
       dispatch({ type: 'SET_DURATION', payload: audio.duration });
     };
 
     const handleEnded = () => {
-      console.log('🏁 Audio ended');
       dispatch({ type: 'PAUSE' });
       dispatch({ type: 'SET_CURRENT_TIME', payload: 0 });
     };
 
     const handleLoadStart = () => {
-      console.log('⏳ Audio load started');
       dispatch({ type: 'SET_LOADING', payload: true });
     };
 
     const handleCanPlay = () => {
-      console.log('✅ Audio can play');
       dispatch({ type: 'SET_LOADING', payload: false });
     };
 
     const handleError = (error: Event) => {
-      console.error('❌ Audio error:', error);
-      console.error('❌ Audio error details:', {
+      console.error('Audio error:', error);
+      console.error('Audio error details:', {
         error: audio.error,
         networkState: audio.networkState,
         readyState: audio.readyState,
@@ -126,16 +121,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
 
     const handleStalled = () => {
-      console.warn('⚠️ Audio stalled');
+      console.warn('Audio stalled');
     };
 
     const handleWaiting = () => {
-      console.log('⏳ Audio waiting for data');
       dispatch({ type: 'SET_LOADING', payload: true });
     };
 
     const handlePlaying = () => {
-      console.log('▶️ Audio playing');
       dispatch({ type: 'SET_LOADING', payload: false });
     };
 
@@ -183,15 +176,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const playSong = (song: Song) => {
     const audio = audioRef.current;
     if (!audio) {
-      console.error('❌ Audio element not found');
+      console.error('Audio element not found');
       return;
     }
 
-    console.log(`🎵 Playing song: ${song.title} (ID: ${song.id})`);
-
-    // If it's the same song and already loaded, just play/resume
     if (state.currentSong?.id === song.id && audio.src && !audio.error) {
-      console.log('🔄 Resuming same song');
       dispatch({ type: 'PLAY' });
       return;
     }
@@ -208,18 +197,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       ? song.fileUrl 
       : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(song.fileUrl)}`;
 
-    console.log(`🔗 Audio URL: ${proxiedAudioUrl}`);
 
-    // Set up error handling before loading
+
     const handleLoadError = (error: Event) => {
-      console.error('❌ Audio load error:', error);
+      console.error('Audio load error:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
       dispatch({ type: 'PAUSE' });
       audio.removeEventListener('error', handleLoadError);
     };
 
     const handleCanPlayThrough = () => {
-      console.log('✅ Audio can play through');
       dispatch({ type: 'SET_LOADING', payload: false });
       dispatch({ type: 'PLAY' });
       audio.removeEventListener('canplaythrough', handleCanPlayThrough);
@@ -246,29 +233,27 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const seekTo = (time: number) => {
     const audio = audioRef.current;
     if (!audio) {
-      console.error('❌ Cannot seek: Audio element not found');
+      console.error('Cannot seek: Audio element not found');
       return;
     }
 
     if (!state.currentSong) {
-      console.error('❌ Cannot seek: No song loaded');
+      console.error('Cannot seek: No song loaded');
       return;
     }
 
     if (isNaN(time) || time < 0) {
-      console.error('❌ Cannot seek: Invalid time', time);
+      console.error('Cannot seek: Invalid time', time);
       return;
     }
 
-    // Prevent multiple simultaneous seeks
     if (isSeekingRef.current) {
-      console.warn('⚠️ Already seeking, ignoring new seek request');
+      console.warn('Already seeking, ignoring new seek request');
       return;
     }
 
-    // Wait for audio to be loaded before seeking
     if (audio.readyState < 2) {
-      console.warn('⚠️ Audio not ready for seeking, waiting...');
+      console.warn('Audio not ready for seeking, waiting...');
       const handleCanPlay = () => {
         audio.removeEventListener('canplay', handleCanPlay);
         seekTo(time);
@@ -278,11 +263,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     }
 
     if (time > audio.duration) {
-      console.warn('⚠️ Seek time exceeds duration, clamping to end');
-      time = Math.max(0, audio.duration - 0.1); // Leave small buffer
+      console.warn('Seek time exceeds duration, clamping to end');
+      time = Math.max(0, audio.duration - 0.1);
     }
 
-    console.log(`🎯 Seeking to ${time}s (duration: ${audio.duration}s)`);
+
     
     try {
       // Set seeking state to prevent timeupdate conflicts
@@ -299,11 +284,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       // Perform the seek
       audio.currentTime = time;
       
-      // Listen for the seeked event to know when seeking is complete
       const handleSeeked = () => {
-        console.log(`✅ Seeked to ${audio.currentTime}s`);
-        
-        // Clean up
         audio.removeEventListener('seeked', handleSeeked);
         dispatch({ type: 'SET_SEEKING', payload: false });
         isSeekingRef.current = false;
@@ -311,20 +292,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         // Update the current time to the actual seeked position (force update)
         dispatch({ type: 'SET_CURRENT_TIME', payload: audio.currentTime, force: true });
         
-        // Resume playing if it was playing before
         if (wasPlaying) {
           audio.play().catch(console.error);
         }
       };
       
       const handleSeekError = () => {
-        console.error('❌ Seek operation failed');
+        console.error('Seek operation failed');
         audio.removeEventListener('seeked', handleSeeked);
         audio.removeEventListener('error', handleSeekError);
         dispatch({ type: 'SET_SEEKING', payload: false });
         isSeekingRef.current = false;
         
-        // Resume playing if it was playing before
         if (wasPlaying && audio.paused) {
           audio.play().catch(console.error);
         }
@@ -333,24 +312,22 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.addEventListener('seeked', handleSeeked, { once: true });
       audio.addEventListener('error', handleSeekError, { once: true });
       
-      // Fallback timeout in case seeked event doesn't fire
       setTimeout(() => {
         if (isSeekingRef.current) {
-          console.warn('⚠️ Seeked event timeout, cleaning up');
+          console.warn('Seeked event timeout, cleaning up');
           audio.removeEventListener('seeked', handleSeeked);
           audio.removeEventListener('error', handleSeekError);
           dispatch({ type: 'SET_SEEKING', payload: false });
           isSeekingRef.current = false;
           
-          // Resume playing if it was playing before
           if (wasPlaying && audio.paused) {
             audio.play().catch(console.error);
           }
         }
-      }, 2000); // Increased timeout to 2 seconds
+      }, 2000);
       
     } catch (error) {
-      console.error('❌ Error during seeking:', error);
+      console.error('Error during seeking:', error);
       dispatch({ type: 'SET_SEEKING', payload: false });
       isSeekingRef.current = false;
     }
@@ -376,7 +353,6 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     seekTo,
     setVolume,
     formatTime,
-    // Expose individual state properties for convenience
     currentSong: state.currentSong,
     isPlaying: state.isPlaying,
     currentTime: state.currentTime,

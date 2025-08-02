@@ -5,8 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
-import { musicApi, type Artist, type Album, type Song } from '@/lib/api';
+import { musicApi, processArtists, safeString, type Artist, type Album, type Song } from '@/lib/api';
 import { useAudio } from '@/lib/audio';
+import MusicalNoteIcon from '@heroicons/react/24/outline/MusicalNoteIcon';
+import Square3Stack3DIcon from '@heroicons/react/24/outline/Square3Stack3DIcon';
 
 export default function ArtistPage() {
   const params = useParams();
@@ -16,40 +18,81 @@ export default function ArtistPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { playSong } = useAudio();
 
   useEffect(() => {
     const fetchArtistData = async () => {
+      if (!artistId) return;
+
       try {
-        const [artistData, allAlbums, allSongs] = await Promise.all([
-          musicApi.getArtist(artistId),
-          musicApi.getAlbums(),
-          musicApi.getSongs(),
-        ]);
+        setLoading(true);
+        setError(null);
+        let artistData: Artist | null = null;
+        
+        try {
+          artistData = await musicApi.getArtist(artistId);
+        } catch {
+          try {
+            const allArtists = await musicApi.getArtists();
+            artistData = allArtists.find(a => a.id === artistId) || null;
+          } catch (e) {
+            console.error('Failed to get artists list:', e);
+          }
+        }
+
+        if (!artistData) {
+          console.warn('Artist not found:', artistId);
+          setError('Artist not found');
+          return;
+        }
 
         setArtist(artistData);
-        
-        // Filter albums by this artist
-        const artistAlbums = allAlbums.filter(album => album.artist?.id === artistId);
-        setAlbums(artistAlbums);
 
-        // Filter songs by this artist
-        const artistSongs = allSongs.filter(song => 
-          song.artists.some(songArtist => songArtist.id === artistId)
-        );
-        setSongs(artistSongs);
+        const [allAlbums, allSongs] = await Promise.allSettled([
+          musicApi.getAlbums(),
+          musicApi.getSongs()
+        ]);
+
+        if (allAlbums.status === 'fulfilled') {
+          const artistAlbums = allAlbums.value.filter(album => {
+            const albumArtist = safeString(album.artist).toLowerCase();
+            const targetName = safeString(artistData.name).toLowerCase();
+            return albumArtist === targetName || albumArtist.includes(targetName);
+          });
+          setAlbums(artistAlbums);
+        } else {
+          console.warn('Failed to load albums:', allAlbums.reason);
+        }
+
+        if (allSongs.status === 'fulfilled') {
+          const artistSongs = allSongs.value.filter(song => {
+            const artists = processArtists(song.artists);
+            const targetName = safeString(artistData.name).toLowerCase();
+            return artists.some(artist => 
+              safeString(artist).toLowerCase() === targetName ||
+              safeString(artist).toLowerCase().includes(targetName)
+            );
+          });
+          setSongs(artistSongs);
+        } else {
+          console.warn('Failed to load songs:', allSongs.reason);
+        }
 
       } catch (error) {
         console.error('Error fetching artist data:', error);
+        setError('Failed to load artist data. Please check if the music service is running.');
       } finally {
         setLoading(false);
       }
     };
 
-    if (artistId) {
-      fetchArtistData();
-    }
+    fetchArtistData();
   }, [artistId]);
+
+  const handleAlbumClick = (albumId: string) => {
+    router.push(`/album/${albumId}`);
+  };
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -57,37 +100,30 @@ export default function ArtistPage() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSongClick = (song: Song) => {
-    if (song.fileUrl) {
-      playSong(song);
-    }
-  };
-
-  const handleAlbumClick = (albumId: string) => {
-    router.push(`/album/${albumId}`);
-  };
-
   if (loading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-500"></div>
+        <div className="p-6 flex items-center justify-center min-h-96">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading artist...</p>
+          </div>
         </div>
       </AppLayout>
     );
   }
 
-  if (!artist) {
+  if (error || !artist) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full">
+        <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-white mb-4">Artist not found</h1>
+            <p className="text-red-400 mb-4">{error || 'Artist not found'}</p>
             <button 
               onClick={() => router.back()}
-              className="text-purple-400 hover:text-purple-300"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
             >
-              Go back
+              Go Back
             </button>
           </div>
         </div>
@@ -97,143 +133,154 @@ export default function ArtistPage() {
 
   return (
     <AppLayout>
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex items-start space-x-6 mb-8">
-          {/* Artist Image */}
-          <div className="flex-shrink-0">
-            <MusicImage
-              src={artist.imageUrl}
-              alt={artist.name}
-              fallbackText={artist.name}
-              size="xl"
-              type="circle"
-              className="shadow-2xl"
-              priority={true}
-              lazy={false}
-            />
-          </div>
+      <div className="min-h-screen">
+        {/* Artist Hero Section */}
+        <div className="relative bg-gradient-to-b from-purple-900/20 via-gray-900/50 to-gray-900">
+          <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
+            <div className="flex flex-col lg:flex-row items-start lg:items-end gap-8">
+              {/* Artist Image */}
+              <div className="flex-shrink-0">
+                <MusicImage
+                  src={artist.imageUrl}
+                  alt={safeString(artist.name)}
+                  fallbackText={safeString(artist.name)}
+                  size="xl"
+                  type="circle"
+                  className="shadow-2xl w-64 h-64 mx-auto lg:mx-0"
+                  priority={true}
+                  lazy={false}
+                />
+              </div>
+              
+              {/* Artist Info */}
+              <div className="flex-1 text-center lg:text-left">
+                <p className="text-sm font-medium text-purple-400 uppercase tracking-wide mb-2">
+                  Artist
+                </p>
+                <h1 className="text-5xl lg:text-7xl font-bold text-white mb-4 break-words">
+                  {safeString(artist.name)}
+                </h1>
+                
+                {/* Stats */}
+                <div className="flex items-center justify-center lg:justify-start space-x-6 mb-6 text-gray-300">
+                  <span className="flex items-center space-x-2">
+                    <MusicalNoteIcon className="w-5 h-5" />
+                    <span>{songs.length} song{songs.length !== 1 ? 's' : ''}</span>
+                  </span>
+                  <span className="flex items-center space-x-2">
+                    <Square3Stack3DIcon className="w-5 h-5" />
+                    <span>{albums.length} album{albums.length !== 1 ? 's' : ''}</span>
+                  </span>
+                </div>
 
-          {/* Artist Info */}
-          <div className="flex-1 min-w-0 pt-4">
-            <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">Artist</p>
-            <h1 className="text-4xl font-bold text-white mb-4 break-words">{artist.name}</h1>
-            
-            <div className="flex items-center space-x-2 text-gray-300 mb-6">
-              <span>{albums.length} albums</span>
-              <span>•</span>
-              <span>{songs.length} songs</span>
+                {/* Bio */}
+                {artist.bio && (
+                  <p className="text-gray-300 text-lg max-w-2xl leading-relaxed">
+                    {safeString(artist.bio)}
+                  </p>
+                )}
+              </div>
             </div>
-
-            {/* Play Button */}
-            {songs.length > 0 && (
-              <button
-                onClick={() => handleSongClick(songs[0])}
-                className="bg-purple-500 hover:bg-purple-600 text-white px-8 py-3 rounded-full font-medium transition-colors flex items-center space-x-2"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                <span>Play</span>
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Bio Section */}
-        {artist.bio && (
-          <section className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4">About</h2>
-            <p className="text-gray-300 leading-relaxed max-w-3xl">{artist.bio}</p>
-          </section>
-        )}
-
-        {/* Albums Section */}
-        {albums.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
-            
-            <Slider itemWidth="180px" gap="16px">
-              {albums.map((album, index) => (
-                <div 
-                  key={album.id} 
-                  onClick={() => handleAlbumClick(album.id)}
-                  className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
-                >
-                  <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
-                    <MusicImage
-                      src={album.coverUrl}
-                      alt={album.title}
-                      fallbackText={album.title}
-                      size="large"
-                      type="square"
-                      className="shadow-lg"
-                      priority={index < 3}
-                      lazy={index >= 3}
-                      loadDelay={index >= 3 ? index * 100 : 0}
-                    />
+        {/* Content Sections */}
+        <div className="max-w-7xl mx-auto px-6 py-8 space-y-12">
+          
+          {/* Popular Songs */}
+          {songs.length > 0 && (
+            <section>
+              <h2 className="text-2xl font-bold text-white mb-6">Popular Songs</h2>
+              <div className="space-y-2">
+                {songs.slice(0, 10).map((song, index) => (
+                  <div 
+                    key={song.id}
+                    onClick={() => playSong(song)}
+                    className="group flex items-center p-4 rounded-lg hover:bg-gray-800/50 cursor-pointer transition-all duration-200"
+                  >
+                    <span className="text-gray-400 text-lg font-medium mr-6 w-8 text-center group-hover:text-white">
+                      {index + 1}
+                    </span>
+                    
+                    <div className="flex-shrink-0 mr-4">
+                      <MusicImage
+                        src={song.coverUrl}
+                        alt={safeString(song.title)}
+                        fallbackText={safeString(song.title)}
+                        size="medium"
+                        type="square"
+                        className="shadow-md"
+                      />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-medium truncate group-hover:underline mb-1">
+                        {safeString(song.title)}
+                      </h3>
+                      <p className="text-gray-400 text-sm truncate">
+                        {processArtists(song.artists).join(', ')}
+                      </p>
+                      {song.album && (
+                        <p className="text-gray-500 text-xs truncate">
+                          {safeString(song.album)}
+                        </p>
+                      )}
+                    </div>
+                    
+                    <div className="text-gray-400 text-sm text-right">
+                      <p>{formatDuration(song.durationSec)}</p>
+                      {song.genre && (
+                        <p className="text-xs text-gray-500">{safeString(song.genre)}</p>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">{album.title}</h3>
-                  <p className="text-gray-400 text-xs truncate">
-                    {album.releaseDate ? new Date(album.releaseDate).getFullYear() : 'Unknown year'}
-                  </p>
-                </div>
-              ))}
-            </Slider>
-          </section>
-        )}
+                ))}
+              </div>
+            </section>
+          )}
 
-        {/* Popular Songs Section */}
-        {songs.length > 0 && (
-          <section>
-            <h2 className="text-2xl font-bold text-white mb-6">Popular Songs</h2>
-            
-            <div className="space-y-2">
-              {songs.slice(0, 10).map((song, index) => (
-                <div
-                  key={song.id}
-                  onClick={() => handleSongClick(song)}
-                  className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-800/30 cursor-pointer transition-colors group"
-                >
-                  <span className="text-gray-400 text-sm w-6 text-center group-hover:hidden">
-                    {index + 1}
-                  </span>
-                  <svg className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 hidden group-hover:block" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                  
-                  <MusicImage
-                    src={song.coverUrl}
-                    alt={song.title}
-                    fallbackText={song.title}
-                    size="small"
-                    type="square"
-                    priority={index < 3}
-                    lazy={index >= 3}
-                    loadDelay={index >= 3 ? (index - 2) * 150 : 0}
-                  />
-                  
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-medium truncate group-hover:underline">{song.title}</h3>
-                    <p className="text-gray-400 text-sm truncate">
-                      {song.album?.title || 'Single'} • {song.genre}
+          {/* Albums */}
+          {albums.length > 0 && (
+            <section>
+              <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                {albums.map((album) => (
+                  <div 
+                    key={album.id} 
+                    onClick={() => handleAlbumClick(album.id)}
+                    className="group cursor-pointer"
+                  >
+                    <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
+                      <MusicImage
+                        src={album.coverUrl}
+                        alt={safeString(album.title)}
+                        fallbackText={safeString(album.title)}
+                        size="large"
+                        type="square"
+                        className="shadow-lg w-full"
+                      />
+                    </div>
+                    <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
+                      {safeString(album.title)}
+                    </h3>
+                    <p className="text-gray-400 text-xs truncate">
+                      {album.releaseDate ? new Date(album.releaseDate).getFullYear() : 'Album'}
                     </p>
                   </div>
-                  
-                  <div className="text-gray-400 text-sm">
-                    {formatDuration(song.durationSec)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                ))}
+              </div>
+            </section>
+          )}
 
-        {albums.length === 0 && songs.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-400">This artist has no albums or songs.</p>
-          </div>
-        )}
+          {/* Empty State */}
+          {songs.length === 0 && albums.length === 0 && (
+            <div className="text-center py-16">
+              <div className="text-gray-600 text-6xl mb-4">♪</div>
+              <p className="text-gray-400 text-lg mb-2">No content available</p>
+              <p className="text-gray-500">This artist hasn't released any music yet.</p>
+            </div>
+          )}
+        </div>
       </div>
     </AppLayout>
   );

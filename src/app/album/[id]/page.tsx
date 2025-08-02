@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
+import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
-import { musicApi, type Album, type Song } from '@/lib/api';
+import { musicApi, processArtists, safeString, type Album, type Song } from '@/lib/api';
 import { useAudio } from '@/lib/audio';
 
 export default function AlbumPage() {
@@ -14,29 +15,85 @@ export default function AlbumPage() {
   const [album, setAlbum] = useState<Album | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
-  const { playSong, currentSong, isPlaying } = useAudio();
+  const [error, setError] = useState<string | null>(null);
+  const { playSong, state } = useAudio();
+  const { currentSong } = state;
 
   useEffect(() => {
     const fetchAlbumData = async () => {
+      if (!albumId) return;
+      
       try {
-        const [albumData, songsData] = await Promise.all([
+        setLoading(true);
+        setError(null);
+        
+        // Fetch album details and songs in parallel
+        const [albumData, albumSongs] = await Promise.allSettled([
           musicApi.getAlbum(albumId),
-          musicApi.getAlbumSongs(albumId),
+          musicApi.getAlbumSongs(albumId)
         ]);
 
-        setAlbum(albumData);
-        setSongs(songsData);
+        if (albumData.status === 'fulfilled') {
+          setAlbum(albumData.value);
+        } else {
+          // If specific album endpoint fails, try to find it from all albums
+          try {
+            const allAlbums = await musicApi.getAlbums();
+            const foundAlbum = allAlbums.find(a => a.id === albumId);
+            if (foundAlbum) {
+              setAlbum(foundAlbum);
+            } else {
+              setError('Album not found');
+              return;
+            }
+          } catch {
+            setError('Failed to load album');
+            return;
+          }
+        }
+
+        if (albumSongs.status === 'fulfilled') {
+          setSongs(albumSongs.value);
+        } else {
+          // If specific album songs endpoint fails, try to find songs from all songs
+          try {
+            const allSongs = await musicApi.getSongs();
+            const albumSpecificSongs = allSongs.filter(song => 
+              song.album === albumId || 
+              (song.album && song.album === album?.title)
+            );
+            setSongs(albumSpecificSongs);
+          } catch {
+            console.warn('Failed to load album songs');
+            setSongs([]);
+          }
+        }
       } catch (error) {
         console.error('Error fetching album data:', error);
+        setError('Failed to load album data');
       } finally {
         setLoading(false);
       }
     };
 
-    if (albumId) {
-      fetchAlbumData();
-    }
-  }, [albumId]);
+    fetchAlbumData();
+  }, [albumId, album?.title]);
+
+  const handleArtistClick = () => {
+    if (!album?.artist) return;
+    
+    // Try to find the artist by name and navigate to their page
+    musicApi.getArtists().then(artists => {
+      const artist = artists.find(a => 
+        a.name.toLowerCase() === album.artist.toLowerCase()
+      );
+      if (artist) {
+        router.push(`/artist/${artist.id}`);
+      }
+    }).catch(error => {
+      console.warn('Could not find artist:', error);
+    });
+  };
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -45,50 +102,44 @@ export default function AlbumPage() {
   };
 
   const getTotalDuration = () => {
-    const total = songs.reduce((acc, song) => acc + song.durationSec, 0);
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    const totalSeconds = songs.reduce((acc, song) => acc + (song.durationSec || 0), 0);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes} min`;
   };
 
-  const formatReleaseDate = (dateString?: string) => {
-    if (!dateString) return '';
-    return new Date(dateString).getFullYear().toString();
-  };
-
-  const handleSongClick = (song: Song) => {
-    if (song.fileUrl) {
-      playSong(song);
-    }
-  };
-
-  const handleArtistClick = () => {
-    if (album?.artist?.id) {
-      router.push(`/artist/${album.artist.id}`);
+  const formatReleaseDate = (dateString: string) => {
+    try {
+      return new Date(dateString).getFullYear();
+    } catch {
+      return dateString;
     }
   };
 
   if (loading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-500"></div>
+        <div className="p-6 flex items-center justify-center min-h-96">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading album...</p>
+          </div>
         </div>
       </AppLayout>
     );
   }
 
-  if (!album) {
+  if (error || !album) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full">
+        <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-white mb-4">Album not found</h1>
+            <p className="text-red-400 mb-4">{error || 'Album not found'}</p>
             <button 
               onClick={() => router.back()}
-              className="text-purple-400 hover:text-purple-300"
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
             >
-              Go back
+              Go Back
             </button>
           </div>
         </div>
@@ -105,8 +156,8 @@ export default function AlbumPage() {
           <div className="flex-shrink-0">
             <MusicImage
               src={album.coverUrl}
-              alt={album.title}
-              fallbackText={album.title}
+              alt={safeString(album.title)}
+              fallbackText={safeString(album.title)}
               size="xl"
               type="square"
               className="shadow-2xl"
@@ -118,7 +169,7 @@ export default function AlbumPage() {
           {/* Album Info */}
           <div className="flex-1 min-w-0 pt-4">
             <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">Album</p>
-            <h1 className="text-4xl font-bold text-white mb-4 break-words">{album.title}</h1>
+            <h1 className="text-4xl font-bold text-white mb-4 break-words">{safeString(album.title)}</h1>
             
             <div className="flex items-center space-x-2 text-gray-300 mb-4">
               {album.artist && (
@@ -127,7 +178,7 @@ export default function AlbumPage() {
                     onClick={handleArtistClick}
                     className="font-medium hover:underline hover:text-white transition-colors"
                   >
-                    {album.artist.name}
+                    {safeString(album.artist)}
                   </button>
                   <span>•</span>
                 </>
@@ -139,92 +190,88 @@ export default function AlbumPage() {
                 </>
               )}
               <span>{songs.length} songs</span>
-              <span>•</span>
-              <span>{getTotalDuration()}</span>
+              {songs.length > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{getTotalDuration()}</span>
+                </>
+              )}
             </div>
 
             {/* Play Button */}
-            {songs.length > 0 && (
+            <div className="flex items-center space-x-4">
               <button
-                onClick={() => handleSongClick(songs[0])}
-                className="bg-purple-500 hover:bg-purple-600 text-white px-8 py-3 rounded-full font-medium transition-colors flex items-center space-x-2"
+                onClick={() => songs.length > 0 && playSong(songs[0])}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-full transition-colors duration-200 flex items-center space-x-2"
+                disabled={songs.length === 0}
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M8 5v14l11-7z"/>
                 </svg>
                 <span>Play</span>
               </button>
-            )}
+            </div>
           </div>
         </div>
 
         {/* Songs List */}
-        <div className="space-y-1">
-          <div className="grid grid-cols-12 gap-4 text-gray-400 text-sm font-medium border-b border-gray-800 pb-2 mb-2">
-            <div className="col-span-1">#</div>
-            <div className="col-span-6">Title</div>
-            <div className="col-span-3">Artist</div>
-            <div className="col-span-2 text-right">Duration</div>
-          </div>
-
-          {songs.map((song, index) => (
-            <div
-              key={song.id}
-              onClick={() => handleSongClick(song)}
-              className={`grid grid-cols-12 gap-4 py-2 px-2 rounded-md cursor-pointer transition-colors group hover:bg-gray-800/30 ${
-                currentSong?.id === song.id ? 'bg-gray-800/50' : ''
-              }`}
-            >
-              <div className="col-span-1 flex items-center">
-                {currentSong?.id === song.id && isPlaying ? (
-                  <div className="flex items-center space-x-1">
-                    <div className="w-1 h-3 bg-purple-400 animate-pulse"></div>
-                    <div className="w-1 h-2 bg-purple-400 animate-pulse" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-1 h-3 bg-purple-400 animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+        {songs.length > 0 ? (
+          <div className="space-y-2">
+            <div className="grid grid-cols-12 gap-4 px-4 py-2 text-gray-400 text-sm font-medium border-b border-gray-800">
+              <div className="col-span-1">#</div>
+              <div className="col-span-6">Title</div>
+              <div className="col-span-3">Artist</div>
+              <div className="col-span-2 text-right">Duration</div>
+            </div>
+            
+            {songs.map((song, index) => (
+              <div
+                key={song.id}
+                onClick={() => playSong(song)}
+                className={`grid grid-cols-12 gap-4 px-4 py-3 rounded-lg hover:bg-gray-800/50 cursor-pointer transition-colors group ${
+                  currentSong?.id === song.id ? 'bg-purple-900/30' : ''
+                }`}
+              >
+                <div className="col-span-1 flex items-center">
+                  <span className={`text-sm ${currentSong?.id === song.id ? 'text-purple-400' : 'text-gray-400'}`}>
+                    {index + 1}
+                  </span>
+                </div>
+                
+                <div className="col-span-6 flex items-center space-x-3">
+                  <MusicImage
+                    src={song.coverUrl}
+                    alt={safeString(song.title)}
+                    fallbackText={safeString(song.title)}
+                    size="small"
+                    type="square"
+                    priority={index < 5}
+                    lazy={index >= 5}
+                  />
+                  <div className="min-w-0">
+                    <h3 className={`font-medium truncate ${currentSong?.id === song.id ? 'text-purple-400' : 'text-white'}`}>
+                      {safeString(song.title)}
+                    </h3>
+                    <p className="text-gray-400 text-sm truncate">{safeString(song.genre)}</p>
                   </div>
-                ) : (
-                  <span className="text-gray-400 group-hover:hidden">{index + 1}</span>
-                )}
-                <svg className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 hidden group-hover:block" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-              </div>
-              
-              <div className="col-span-6 flex items-center space-x-3">
-                <MusicImage
-                  src={song.coverUrl}
-                  alt={song.title}
-                  fallbackText={song.title}
-                  size="small"
-                  type="square"
-                  priority={index < 5}
-                  lazy={index >= 5}
-                  loadDelay={index >= 5 ? (index - 4) * 100 : 0}
-                />
-                <div className="min-w-0">
-                  <h3 className={`font-medium truncate ${currentSong?.id === song.id ? 'text-purple-400' : 'text-white'}`}>
-                    {song.title}
-                  </h3>
-                  <p className="text-gray-400 text-sm truncate">{song.genre}</p>
+                </div>
+                
+                <div className="col-span-3 flex items-center">
+                  <span className="text-gray-300 truncate">
+                    {processArtists(song.artists).join(', ')}
+                  </span>
+                </div>
+                
+                <div className="col-span-2 flex items-center justify-end">
+                  <span className="text-gray-400">{formatDuration(song.durationSec)}</span>
                 </div>
               </div>
-              
-              <div className="col-span-3 flex items-center">
-                <span className="text-gray-300 truncate">
-                  {song.artists.map(a => a.name).join(', ') || 'Unknown Artist'}
-                </span>
-              </div>
-              
-              <div className="col-span-2 flex items-center justify-end">
-                <span className="text-gray-400">{formatDuration(song.durationSec)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {songs.length === 0 && (
+            ))}
+          </div>
+        ) : (
           <div className="text-center py-12">
-            <p className="text-gray-400">This album has no songs.</p>
+            <p className="text-gray-400 mb-4">No songs found for this album</p>
+            <p className="text-gray-500 text-sm">This might be a data issue. Try refreshing the page.</p>
           </div>
         )}
       </div>

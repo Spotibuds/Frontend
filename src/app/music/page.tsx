@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
-import { musicApi, type Song, type Album, type Artist } from '@/lib/api';
+import { musicApi, processArtists, safeString, type Song, type Album, type Artist } from '@/lib/api';
 import { useAudio } from '@/lib/audio';
 
 export default function MusicPage() {
@@ -14,29 +14,55 @@ export default function MusicPage() {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { playSong } = useAudio();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchMusicData = async () => {
       try {
-        const [songsData, albumsData, artistsData] = await Promise.all([
+        setError(null);
+        
+        const [songsResult, albumsResult, artistsResult] = await Promise.allSettled([
           musicApi.getSongs(),
           musicApi.getAlbums(),
           musicApi.getArtists(),
         ]);
 
-        setSongs(songsData);
-        setAlbums(albumsData);
-        setArtists(artistsData);
+        if (songsResult.status === 'fulfilled') {
+          setSongs(songsResult.value || []);
+        } else {
+          console.warn('Failed to load songs:', songsResult.reason);
+        }
+
+        if (albumsResult.status === 'fulfilled') {
+          setAlbums(albumsResult.value || []);
+        } else {
+          console.warn('Failed to load albums:', albumsResult.reason);
+        }
+
+        if (artistsResult.status === 'fulfilled') {
+          setArtists(artistsResult.value || []);
+        } else {
+          console.warn('Failed to load artists:', artistsResult.reason);
+        }
       } catch (error) {
         console.error('Error fetching music data:', error);
+        setError('Failed to load music data. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchMusicData();
   }, []);
+
+  const handleAlbumClick = (albumId: string) => {
+    router.push(`/album/${albumId}`);
+  };
+
+  const handleArtistClick = async (artist: Artist) => {
+    router.push(`/artist/${artist.id}`);
+  };
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -44,27 +70,34 @@ export default function MusicPage() {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSongClick = (song: Song) => {
-    if (song.fileUrl) {
-      playSong(song);
-    } else {
-      console.warn('Song has no file URL:', song.title);
-    }
-  };
 
-  const handleAlbumClick = (albumId: string) => {
-    router.push(`/album/${albumId}`);
-  };
-
-  const handleArtistClick = (artistId: string) => {
-    router.push(`/artist/${artistId}`);
-  };
 
   if (loading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-purple-500"></div>
+        <div className="p-6 space-y-8">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading music...</p>
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout>
+        <div className="p-6 space-y-8">
+          <div className="text-center">
+            <p className="text-red-400 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </AppLayout>
     );
@@ -73,6 +106,7 @@ export default function MusicPage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-8">
+
         {/* Albums Section */}
         {albums.length > 0 && (
           <section>
@@ -93,16 +127,20 @@ export default function MusicPage() {
                   <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
                     <MusicImage
                       src={album.coverUrl}
-                      alt={album.title}
-                      fallbackText={album.title}
+                      alt={safeString(album.title)}
+                      fallbackText={safeString(album.title)}
                       size="large"
                       type="square"
                       className="shadow-lg"
-                      priority={index < 6} // Priority load first 6 albums visible on screen
+                      priority={index < 6}
                     />
                   </div>
-                  <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">{album.title}</h3>
-                  <p className="text-gray-400 text-xs truncate">{album.artist?.name || 'Unknown Artist'}</p>
+                  <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
+                    {safeString(album.title)}
+                  </h3>
+                  <p className="text-gray-400 text-xs truncate">
+                    {safeString(album.artist) || 'Unknown Artist'}
+                  </p>
                 </div>
               ))}
             </Slider>
@@ -120,76 +158,82 @@ export default function MusicPage() {
             </div>
             
             <Slider itemWidth="160px" gap="16px">
-              {artists.map((artist) => (
+              {artists.map((artist, index) => (
                 <div 
                   key={artist.id} 
-                  onClick={() => handleArtistClick(artist.id)}
+                  onClick={() => handleArtistClick(artist)}
                   className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
                 >
                   <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
                     <MusicImage
                       src={artist.imageUrl}
-                      alt={artist.name}
-                      fallbackText={artist.name}
+                      alt={safeString(artist.name)}
+                      fallbackText={safeString(artist.name)}
                       size="large"
                       type="circle"
                       className="shadow-lg"
+                      priority={index < 6}
                     />
                   </div>
-                  <h3 className="text-white font-semibold text-sm text-center truncate group-hover:underline">{artist.name}</h3>
-                  <p className="text-gray-400 text-xs text-center">Artist</p>
+                  <h3 className="text-white font-semibold text-sm text-center truncate group-hover:underline">
+                    {safeString(artist.name)}
+                  </h3>
                 </div>
               ))}
             </Slider>
           </section>
         )}
 
-        {/* Songs Section */}
+        {/* Popular Songs Section */}
         {songs.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Songs</h2>
+              <h2 className="text-2xl font-bold text-white">Popular Songs</h2>
               <button className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                 Show all
               </button>
             </div>
             
-            <Slider itemWidth="320px" gap="16px">
+            <Slider itemWidth="280px" gap="16px">
               {songs.map((song) => (
                 <div 
-                  key={song.id} 
-                  onClick={() => handleSongClick(song)}
-                  className="flex items-center space-x-3 bg-gray-800/20 hover:bg-gray-800/40 rounded-lg p-3 cursor-pointer transition-all duration-200 group"
+                  key={song.id}
+                  onClick={() => playSong(song)}
+                  className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
                 >
-                  <div className="flex-shrink-0 relative">
+                  <div className="flex items-center space-x-3">
                     <MusicImage
                       src={song.coverUrl}
-                      alt={song.title}
-                      fallbackText={song.title}
+                      alt={safeString(song.title)}
+                      fallbackText={safeString(song.title)}
                       size="medium"
                       type="square"
-                      className="shadow-md"
+                      className="shadow-lg"
                     />
-                    {/* Play button overlay */}
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
-                      <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z"/>
-                      </svg>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-white font-medium truncate group-hover:underline">
+                        {safeString(song.title)}
+                      </h3>
+                      <p className="text-gray-400 text-sm truncate">
+                        {processArtists(song.artists).join(', ')}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        {formatDuration(song.durationSec)}
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-white font-medium truncate group-hover:underline">{song.title}</h3>
-                    <p className="text-gray-400 text-sm truncate">
-                      {song.artists.map(a => a.name).join(', ') || 'Unknown Artist'}
-                    </p>
-                    <p className="text-gray-500 text-xs">
-                      {formatDuration(song.durationSec)}
-                    </p>
                   </div>
                 </div>
               ))}
             </Slider>
           </section>
+        )}
+
+        {/* Empty state */}
+        {albums.length === 0 && artists.length === 0 && songs.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <p className="text-gray-400 mb-4">No music content available</p>
+            <p className="text-gray-500 text-sm">Check back later or contact support if this persists</p>
+          </div>
         )}
       </div>
     </AppLayout>
