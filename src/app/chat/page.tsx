@@ -4,29 +4,67 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { userApi, identityApi, Chat } from '@/lib/api';
+import { userApi, identityApi, Chat, User } from '@/lib/api';
+
+interface ChatWithParticipants extends Chat {
+  participantProfiles?: User[];
+}
 
 export default function ChatPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [friends, setFriends] = useState<string[]>([]);
+  const [chats, setChats] = useState<ChatWithParticipants[]>([]);
+  const [friends, setFriends] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const user = identityApi.getCurrentUser();
-    setCurrentUser(user);
+    const loadData = async () => {
+      const user = identityApi.getCurrentUser();
+      if (user) {
+        // Get the full user profile with IdentityUserId for proper API calls
+        const userProfile = await userApi.getCurrentUserProfile();
+        setCurrentUser(userProfile || user);
 
-    if (user) {
-      loadUserChats(user.id);
-      loadUserFriends(user.id);
-    }
+        // Always use IdentityUserId for API calls
+        const userId = userProfile?.id || user.id;
+        loadUserChats(userId);
+        loadUserFriends(userId);
+      }
+    };
+    
+    loadData();
   }, []);
 
   const loadUserChats = async (userId: string) => {
     try {
       const userChats = await userApi.getUserChats(userId);
-      setChats(userChats);
+      
+      // Fetch user profiles for all chat participants
+      const chatsWithProfiles = await Promise.all(
+        userChats.map(async (chat) => {
+          const participantProfiles = await Promise.all(
+            chat.participants.map(async (participantId) => {
+              try {
+                return await userApi.getUserProfile(participantId);
+              } catch (error) {
+                console.error(`Failed to fetch profile for user ${participantId}:`, error);
+                return {
+                  id: participantId,
+                  username: `User ${participantId.slice(0, 8)}`,
+                  displayName: `User ${participantId.slice(0, 8)}`
+                } as User;
+              }
+            })
+          );
+          
+          return {
+            ...chat,
+            participantProfiles
+          };
+        })
+      );
+      
+      setChats(chatsWithProfiles);
     } catch (error) {
       console.error('Failed to load chats:', error);
     } finally {
@@ -36,8 +74,25 @@ export default function ChatPage() {
 
   const loadUserFriends = async (userId: string) => {
     try {
-      const userFriends = await userApi.getFriends(userId);
-      setFriends(userFriends);
+      const friendIds = await userApi.getFriends(userId);
+      
+      // Fetch user profiles for all friends
+      const friendProfiles = await Promise.all(
+        friendIds.map(async (friendId) => {
+          try {
+            return await userApi.getUserProfile(friendId);
+          } catch (error) {
+            console.error(`Failed to fetch profile for friend ${friendId}:`, error);
+            return {
+              id: friendId,
+              username: `Friend ${friendId.slice(0, 8)}`,
+              displayName: `Friend ${friendId.slice(0, 8)}`
+            } as User;
+          }
+        })
+      );
+      
+      setFriends(friendProfiles);
     } catch (error) {
       console.error('Failed to load friends:', error);
     }
@@ -73,8 +128,11 @@ export default function ChatPage() {
     }
   };
 
-  const getOtherParticipant = (chat: Chat) => {
-    return chat.participants.find(p => p !== currentUser?.id);
+  const getOtherParticipant = (chat: ChatWithParticipants) => {
+    const otherParticipantId = chat.participants.find(p => p !== currentUser?.id);
+    if (!otherParticipantId || !chat.participantProfiles) return null;
+    
+    return chat.participantProfiles.find(p => p.id === otherParticipantId);
   };
 
   if (isLoading) {
@@ -112,16 +170,16 @@ export default function ChatPage() {
                           onClick={() => handleChatClick(chat.chatId)}
                           className="flex items-center space-x-4 p-4 rounded-lg bg-gray-700/50 hover:bg-gray-700/80 cursor-pointer transition-colors"
                         >
-                                                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold text-lg">
-                            {otherParticipant ? otherParticipant.charAt(0).toUpperCase() : '?'}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <h3 className="text-white font-medium truncate">
-                              {otherParticipant ? `User ${otherParticipant.slice(0, 8)}` : 'Unknown'}
-                            </h3>
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-bold text-lg">
+                              {otherParticipant ? (otherParticipant.displayName || otherParticipant.username).charAt(0).toUpperCase() : '?'}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-white font-medium truncate">
+                                {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown'}
+                              </h3>
                               <span className="text-gray-400 text-sm">
                                 {formatTime(chat.lastActivity)}
                               </span>
@@ -154,19 +212,19 @@ export default function ChatPage() {
               <CardContent>
                 {friends.length > 0 ? (
                   <div className="space-y-3">
-                    {friends.map((friendId) => (
+                    {friends.map((friend) => (
                       <div
-                        key={friendId}
-                        onClick={() => handleStartChat(friendId)}
+                        key={friend.id}
+                        onClick={() => handleStartChat(friend.id)}
                         className="flex items-center space-x-3 p-3 rounded-lg bg-gray-700/30 hover:bg-gray-700/60 cursor-pointer transition-colors"
                       >
                         <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
                           <span className="text-white font-bold text-sm">
-                            {friendId.charAt(0).toUpperCase()}
+                            {(friend.displayName || friend.username).charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-white font-medium truncate">Friend {friendId.slice(0, 8)}</h4>
+                          <h4 className="text-white font-medium truncate">{friend.displayName || friend.username}</h4>
                         </div>
                         <div className="flex items-center">
                           <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

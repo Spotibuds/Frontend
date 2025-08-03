@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
+import { userApi, identityApi } from '../../../lib/api';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -12,7 +13,26 @@ import MusicImage from '../../../components/ui/MusicImage';
 interface User {
   id: string;
   username: string;
+  displayName?: string;
   avatarUrl?: string;
+}
+
+interface Chat {
+  id: string;
+  participants: string[];
+  lastMessage?: string;
+  lastMessageAt?: string;
+  unreadCount: number;
+}
+
+interface ChatMessage {
+  messageId: string;
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  content: string;
+  timestamp: string;
+  isRead: boolean;
 }
 
 export default function ChatPage() {
@@ -20,6 +40,10 @@ export default function ChatPage() {
   const chatId = params.id as string;
   
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [otherParticipant, setOtherParticipant] = useState<User | null>(null);
+  const [chat, setChat] = useState<Chat | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
 
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
@@ -30,25 +54,87 @@ export default function ChatPage() {
   const {
     isConnected,
     connectionState,
-    sendMessage,
-    markMessageAsRead,
-    getChatMessages,
-    getChat
+    sendMessage: sendSignalRMessage,
+    markMessageAsRead: markMessageAsReadSignalR,
   } = useFriendHub({
     userId: currentUser?.id,
-    onError: (error) => addToast(error, 'error')
+    onError: (error) => addToast(error, 'error'),
+    onMessageReceived: (message) => {
+      // Add incoming message to local state
+      setChatMessages(prev => [...prev, message]);
+    },
+    onMessageSent: (message) => {
+      // Add sent message to local state (in case it wasn't already added)
+      setChatMessages(prev => {
+        const exists = prev.some(m => m.messageId === message.messageId);
+        if (!exists) {
+          return [...prev, message];
+        }
+        return prev;
+      });
+    },
+    onMessageRead: (messageId) => {
+      // Mark message as read in local state
+      setChatMessages(prev => prev.map(m => 
+        m.messageId === messageId ? { ...m, isRead: true } : m
+      ));
+    }
   });
 
-  // Mock current user - in real app, get from auth context
+  // Load current user and chat data
   useEffect(() => {
-    setCurrentUser({
-      id: 'current-user-id',
-      username: 'CurrentUser'
-    });
-  }, []);
+    const loadData = async () => {
+      try {
+        // Get current user from identity API
+        const user = identityApi.getCurrentUser();
+        if (!user) {
+          addToast('User not authenticated', 'error');
+          return;
+        }
+        
+        // Get the full user profile with MongoDB _id for proper comparison
+        const userProfile = await userApi.getCurrentUserProfile();
+        const currentUserData = userProfile || {
+          id: user.id,
+          username: user.username
+        };
+        
+        setCurrentUser(currentUserData);
 
-  const chat = getChat(chatId);
-  const chatMessages = getChatMessages(chatId);
+        // Load chat data
+        const chatData = await userApi.getChat(chatId);
+        setChat(chatData);
+
+        // Load other participant's profile
+        const otherParticipantId = chatData.participants.find(p => p !== currentUserData.id);
+        if (otherParticipantId) {
+          try {
+            const otherUser = await userApi.getUserProfile(otherParticipantId);
+            setOtherParticipant(otherUser);
+          } catch (error) {
+            console.error('Failed to fetch other participant profile:', error);
+            // Set fallback user info
+            setOtherParticipant({
+              id: otherParticipantId,
+              username: `User ${otherParticipantId.slice(0, 8)}`,
+              displayName: `User ${otherParticipantId.slice(0, 8)}`
+            });
+          }
+        }
+
+        // Load chat messages
+        const messages = await userApi.getChatMessages(chatId);
+        setChatMessages(messages);
+      } catch (error) {
+        console.error('Failed to load chat data:', error);
+        addToast('Failed to load chat', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [chatId]);
 
   const addToast = (message: string, type: 'success' | 'error' | 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -63,13 +149,23 @@ export default function ChatPage() {
   };
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !isConnected) return;
+    if (!message.trim() || !isConnected || !currentUser) return;
 
     try {
-      await sendMessage(chatId, message.trim());
+      // Send message via SignalR for real-time delivery
+      await sendSignalRMessage(chatId, message.trim());
+      
+      // Also send via API for persistence (backup)
+      try {
+        await userApi.sendMessage(chatId, message.trim());
+      } catch (apiError) {
+        console.warn('API message send failed, but SignalR succeeded:', apiError);
+      }
+
       setMessage('');
       inputRef.current?.focus();
-    } catch {
+    } catch (error) {
+      console.error('Failed to send message:', error);
       addToast('Failed to send message', 'error');
     }
   };
@@ -91,21 +187,49 @@ export default function ChatPage() {
 
   useEffect(() => {
     // Mark messages as read when chat is opened
-    if (chatMessages.length > 0) {
+    if (chatMessages.length > 0 && currentUser) {
       chatMessages
-        .filter(msg => !msg.isRead && msg.senderId !== currentUser?.id)
-        .forEach(msg => {
-          markMessageAsRead(msg.messageId).catch(console.error);
+        .filter(msg => !msg.isRead && msg.senderId !== currentUser.id)
+        .forEach(async (msg) => {
+          try {
+            // Mark as read via SignalR for real-time updates
+            await markMessageAsReadSignalR(msg.messageId);
+            
+            // Also mark via API for persistence (backup)
+            try {
+              await userApi.markMessageAsRead(msg.messageId);
+            } catch (apiError) {
+              console.warn('API mark as read failed, but SignalR succeeded:', apiError);
+            }
+            
+            // Update local state
+            setChatMessages(prev => prev.map(m => 
+              m.messageId === msg.messageId ? { ...m, isRead: true } : m
+            ));
+          } catch (error) {
+            console.error('Failed to mark message as read:', error);
+          }
         });
     }
-  }, [chatMessages, currentUser?.id, markMessageAsRead]);
+  }, [chatMessages, currentUser, markMessageAsReadSignalR]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading chat...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <h2 className="text-xl font-semibold text-white mb-2">Authentication Required</h2>
+          <p className="text-gray-400">Please log in to access this chat.</p>
         </div>
       </div>
     );
@@ -127,7 +251,7 @@ export default function ChatPage() {
     );
   }
 
-  const otherParticipant = chat.participants.find(p => p !== currentUser.id);
+  const otherParticipantId = chat.participants.find(p => p !== currentUser.id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
@@ -137,13 +261,13 @@ export default function ChatPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <MusicImage
-                src={undefined} // In real app, get other participant's avatar
-                alt={otherParticipant || 'Unknown User'}
+                src={otherParticipant?.avatarUrl} // In real app, get other participant's avatar
+                alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
                 className="w-10 h-10 rounded-full"
               />
               <div>
                 <h1 className="text-lg font-semibold text-white">
-                  {otherParticipant || 'Unknown User'}
+                  {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
                 </h1>
                 <div className="flex items-center gap-2 text-sm">
                   <span className={`w-2 h-2 rounded-full ${
@@ -193,37 +317,39 @@ export default function ChatPage() {
             </div>
           ) : (
             chatMessages.map((msg) => {
+              // Use IdentityUserId for comparison since that's what we're using consistently
               const isOwnMessage = msg.senderId === currentUser.id;
               return (
                 <div
                   key={msg.messageId}
                   className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`flex items-end gap-2 max-w-xs lg:max-w-md ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {!isOwnMessage && (
-                      <MusicImage
-                        src={msg.senderAvatar}
-                        alt={msg.senderName}
-                        className="w-8 h-8 rounded-full flex-shrink-0"
-                      />
-                    )}
-                    <div className={`rounded-2xl px-4 py-2 ${
+                  <div
+                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                       isOwnMessage
                         ? 'bg-blue-600 text-white'
-                        : 'bg-white/10 text-white'
-                    }`}>
-                      <p className="text-sm">{msg.content}</p>
-                      <div className={`flex items-center gap-1 mt-1 text-xs ${
-                        isOwnMessage ? 'text-blue-200' : 'text-gray-400'
-                      }`}>
-                        <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        {isOwnMessage && (
-                          <svg className={`w-3 h-3 ${msg.isRead ? 'text-blue-300' : 'text-blue-200'}`} fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        )}
-                      </div>
+                        : 'bg-gray-700 text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium">
+                        {isOwnMessage ? 'You' : msg.senderName}
+                      </span>
+                      <span className="text-xs opacity-70">
+                        {new Date(msg.timestamp).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
                     </div>
+                    <p className="text-sm">{msg.content}</p>
+                    {isOwnMessage && (
+                      <div className="flex justify-end mt-1">
+                        <span className="text-xs opacity-70">
+                          {msg.isRead ? '✓✓' : '✓'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -234,46 +360,38 @@ export default function ChatPage() {
 
         {/* Message Input */}
         <div className="bg-white/10 backdrop-blur-sm border-t border-white/20 p-4">
-          <div className="flex items-center gap-3">
+          <div className="flex gap-2">
             <Input
               ref={inputRef}
-              type="text"
-              placeholder="Type a message..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyPress={handleKeyPress}
+              placeholder="Type a message..."
+              className="flex-1 bg-gray-800/50 border-gray-600 text-white placeholder-gray-400"
               disabled={!isConnected}
-              className="flex-1 bg-white/10 border-white/20 text-white placeholder-gray-400"
             />
             <Button
               onClick={handleSendMessage}
               disabled={!message.trim() || !isConnected}
-              className="px-6 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </Button>
           </div>
-          {!isConnected && (
-            <p className="text-red-400 text-sm mt-2 text-center">
-              Connection lost. Trying to reconnect...
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Toast Notifications */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map((toast) => (
-          <Toast
-            key={toast.id}
-            message={toast.message}
-            type={toast.type}
-            onClose={() => removeToast(toast.id)}
-          />
-        ))}
-      </div>
+      {/* Toasts */}
+      {toasts.map((toast) => (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => removeToast(toast.id)}
+        />
+      ))}
     </div>
   );
 } 

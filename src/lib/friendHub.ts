@@ -1,4 +1,56 @@
-import { HubConnection, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
+import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr';
+
+// Import the refresh token function from api.ts
+const API_CONFIG = {
+  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'http://localhost:5000',
+  USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
+};
+
+// Token refresh function for SignalR
+const refreshTokenForSignalR = async (): Promise<string | null> => {
+  const refreshTokenValue = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+  
+  if (!refreshTokenValue) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken: refreshTokenValue }),
+    });
+
+    if (!response.ok) {
+      // Refresh token is invalid or expired
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('currentUser');
+      }
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    
+    return data.token;
+  } catch (error) {
+    console.error('Token refresh failed for SignalR:', error);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('currentUser');
+    }
+    return null;
+  }
+};
 
 // Types for friend and chat functionality
 export interface FriendRequest {
@@ -65,22 +117,11 @@ class FriendHubManager {
   private onChatCreated: ((chat: Chat) => void) | null = null;
   private onError: ((error: string) => void) | null = null;
   private onConnectionStateChanged: ((state: string) => void) | null = null;
+  private onOnlineFriendsReceived: ((onlineFriends: string[]) => void) | null = null;
 
   async connect(userId: string): Promise<void> {
-    if (this.connection?.state === 'Connected' && this.currentUserId === userId) {
+    if (this.isConnecting || this.connection?.state === HubConnectionState.Connected) {
       return;
-    }
-
-    if (this.isConnecting) {
-      return;
-    }
-
-    if (this.connection && this.connection.state !== 'Disconnected') {
-      try {
-        await this.connection.stop();
-      } catch (error) {
-        console.error('Error stopping existing connection:', error);
-      }
     }
 
     this.isConnecting = true;
@@ -88,12 +129,33 @@ class FriendHubManager {
 
     try {
       const userApiUrl = process.env.NEXT_PUBLIC_USER_API_URL || 'http://localhost:5002';
-      const hubUrl = `${userApiUrl}/friend-hub?userId=${userId}`;
+      const token = localStorage.getItem('token');
+      
+      console.log('SignalR Debug Info:');
+      console.log('User API URL:', userApiUrl);
+      console.log('Token exists:', !!token);
+      console.log('Token length:', token?.length);
+      console.log('Token preview:', token ? `${token.substring(0, 20)}...` : 'null');
+      
+      // Use only the hub URL without access_token parameter - let accessTokenFactory handle it
+      const hubUrl = `${userApiUrl}/friend-hub`;
+      console.log('Hub URL:', hubUrl);
       
       this.connection = new HubConnectionBuilder()
         .withUrl(hubUrl, {
           withCredentials: true,
-          skipNegotiation: false
+          skipNegotiation: false,
+          accessTokenFactory: async () => {
+            // Get JWT token from localStorage
+            let token = localStorage.getItem('token');
+            if (token) {
+              return token;
+            }
+            
+            // If no token, try to refresh
+            token = await refreshTokenForSignalR();
+            return token || '';
+          }
         })
         .configureLogging(LogLevel.Warning)
         .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
@@ -106,6 +168,30 @@ class FriendHubManager {
       this.onConnectionStateChanged?.('Connected');
     } catch (error) {
       console.error('Failed to connect to Friend Hub:', error);
+      
+      // Check if it's an authentication error
+      if (error instanceof Error && error.message.includes('Unauthorized')) {
+        console.log('Authentication failed, attempting token refresh...');
+        try {
+          const newToken = await refreshTokenForSignalR();
+          if (newToken) {
+            console.log('Token refreshed successfully, retrying connection...');
+            // Retry connection with new token
+            this.reconnectAttempts = 0;
+            setTimeout(() => this.connect(userId), 1000);
+            return;
+          } else {
+            console.error('Token refresh failed, authentication required');
+            this.onError?.('Authentication failed. Please log in again.');
+            return;
+          }
+        } catch (refreshError) {
+          console.error('Token refresh error:', refreshError);
+          this.onError?.('Authentication failed. Please log in again.');
+          return;
+        }
+      }
+      
       this.reconnectAttempts++;
       
       if (this.reconnectAttempts < this.maxReconnectAttempts && this.isConnecting) {
@@ -153,6 +239,13 @@ class FriendHubManager {
     this.connection.on('FriendStatusChanged', (data: any) => {
       if (this.onFriendStatusChanged) {
         this.onFriendStatusChanged(data);
+      }
+    });
+
+    // Online friends event
+    this.connection.on('OnlineFriends', (onlineFriends: string[]) => {
+      if (this.onOnlineFriendsReceived) {
+        this.onOnlineFriendsReceived(onlineFriends);
       }
     });
 
@@ -308,7 +401,7 @@ class FriendHubManager {
     }
 
     try {
-      await this.connection.invoke('GetOnlineFriends');
+      this.connection.send('GetOnlineFriends'); // Changed from invoke to send
     } catch (error) {
       console.error('Error getting online friends:', error);
       throw error;
@@ -379,6 +472,10 @@ class FriendHubManager {
 
   setOnConnectionStateChanged(handler: ((state: string) => void) | null): void {
     this.onConnectionStateChanged = handler;
+  }
+
+  setOnOnlineFriendsReceived(handler: ((onlineFriends: string[]) => void) | null): void {
+    this.onOnlineFriendsReceived = handler;
   }
 
   // Utility Methods

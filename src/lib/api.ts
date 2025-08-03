@@ -5,6 +5,70 @@ export const API_CONFIG = {
   USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
 };
 
+// Token management
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value?: any) => void;
+  reject: (error?: any) => void;
+}> = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else {
+      resolve(token);
+    }
+  });
+  
+  failedQueue = [];
+};
+
+const refreshToken = async (): Promise<string | null> => {
+  const refreshTokenValue = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+  
+  if (!refreshTokenValue) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken: refreshTokenValue }),
+    });
+
+    if (!response.ok) {
+      // Refresh token is invalid or expired
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+      }
+      return null;
+    }
+
+    const data = await response.json();
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    
+    return data.token;
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+    }
+    return null;
+  }
+};
+
 async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   
@@ -26,9 +90,11 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
     });
   }
 
-  // Add timeout to prevent hanging
+  // Add timeout to prevent hanging - longer timeout for registration
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000); // Increased to 10 seconds
+  const isRegistration = url.includes('/api/auth/register');
+  const timeoutDuration = isRegistration ? 30000 : 10000; // 30 seconds for registration, 10 seconds for others
+  const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   try {
     const response = await fetch(url, {
@@ -43,6 +109,35 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      // Handle 401 Unauthorized - try to refresh token
+      if (response.status === 401 && !url.includes('/api/auth/refresh') && !url.includes('/api/auth/login')) {
+        if (isRefreshing) {
+          // If already refreshing, wait for the refresh to complete
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(() => {
+            // Retry the original request with new token
+            return apiRequest<T>(url, options);
+          });
+        }
+
+        isRefreshing = true;
+
+        try {
+          const newToken = await refreshToken();
+          if (newToken) {
+            processQueue(null, newToken);
+            // Retry the original request with new token
+            return apiRequest<T>(url, options);
+          } else {
+            processQueue(new Error('Token refresh failed'));
+            throw new Error('Authentication failed. Please log in again.');
+          }
+        } finally {
+          isRefreshing = false;
+        }
+      }
+
       // Try to get the error response body for all failed requests
       let errorMessage = `HTTP error! status: ${response.status}`;
       try {
@@ -85,7 +180,11 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timeout - service unavailable');
+      const isRegistration = url.includes('/api/auth/register');
+      const timeoutMessage = isRegistration 
+        ? 'Registration is taking longer than expected. This might be due to high server load. Please try again in a moment.'
+        : 'Request timeout - service unavailable';
+      throw new Error(timeoutMessage);
     }
     throw error;
   }
@@ -308,9 +407,12 @@ export const identityApi = {
         body: JSON.stringify(data),
     });
 
-    // Store token and user data in localStorage
+    // Store token, refresh token, and user data in localStorage
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', response.token);
+      if (response.refreshToken) {
+        localStorage.setItem('refreshToken', response.refreshToken);
+      }
       localStorage.setItem('currentUser', JSON.stringify(response.user));
     }
 
@@ -324,9 +426,12 @@ export const identityApi = {
     return userStr ? JSON.parse(userStr) : null;
   },
 
+
+
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
       localStorage.removeItem('currentUser');
     }
   }
@@ -489,7 +594,7 @@ export const userApi = {
     try {
       const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/${userId}`);
       return {
-        id: userData.id,
+        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
         identityUserId: userData.identityUserId,
         username: userData.userName,
         displayName: userData.displayName,
@@ -509,7 +614,7 @@ export const userApi = {
     try {
       const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`);
       return {
-        id: userData.id,
+        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
         identityUserId: userData.identityUserId,
         username: userData.userName,
         displayName: userData.displayName,
@@ -662,9 +767,9 @@ export const userApi = {
     try {
       const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/search?q=${encodeURIComponent(query)}`);
       
-      // Map UserDto to User interface
+      // Map UserDto to User interface - use IdentityUserId as the id for consistency
       return userDtos.map(dto => ({
-        id: dto.id,
+        id: dto.identityUserId, // Use IdentityUserId instead of MongoDB _id
         username: dto.userName,
         displayName: dto.displayName,
         bio: dto.bio,
@@ -677,6 +782,32 @@ export const userApi = {
     } catch (error) {
       console.warn('User search failed:', error);
       return [];
+    }
+  },
+
+  // Get current user profile with IdentityUserId
+  getCurrentUserProfile: async (): Promise<User | null> => {
+    try {
+      const currentUser = identityApi.getCurrentUser();
+      if (!currentUser) return null;
+      
+      // Get the full user profile which includes the MongoDB _id
+      // Use the IdentityUserId to fetch the user profile
+      const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${currentUser.id}`);
+      return {
+        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
+        username: userData.userName,
+        displayName: userData.displayName,
+        bio: userData.bio,
+        avatarUrl: userData.avatarUrl,
+        followers: userData.followers.length,
+        following: userData.followedUsers.length,
+        playlists: userData.playlists.length,
+        isPrivate: userData.isPrivate
+      };
+    } catch (error) {
+      console.error('Failed to get current user profile:', error);
+      return null;
     }
   },
 }; 

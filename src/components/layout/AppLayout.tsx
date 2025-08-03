@@ -24,8 +24,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
-
-import { friendHubManager } from "@/lib/friendHub";
 import { ToastContainer } from "@/components/ui/Toast";
 
 interface AppLayoutProps {
@@ -136,44 +134,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
-  // Real-time friend request updates
-  useEffect(() => {
-    const handleFriendRequestReceived = (data: { requestId?: string; requesterId?: string; requesterUsername?: string; requesterAvatar?: string; requestedAt?: string }) => {
-      // Add new friend request to the list
-      setFriendRequests(prev => [...prev, {
-        requestId: data.requestId || Math.random().toString(36).substr(2, 9), // Use actual requestId if available
-        requesterId: data.requesterId || '',
-        requesterUsername: data.requesterUsername || 'Unknown User',
-        requesterAvatar: data.requesterAvatar,
-        requestedAt: data.requestedAt || new Date().toISOString()
-      }]);
-    };
-
-    const handleFriendRequestAccepted = (data: { requestId?: string }) => {
-      // Remove the accepted request from the list
-      if (data.requestId) {
-        setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));
-      }
-    };
-
-    const handleFriendRequestDeclined = (data: { requestId?: string }) => {
-      // Remove the declined request from the list
-      if (data.requestId) {
-        setFriendRequests(prev => prev.filter(req => req.requestId !== data.requestId));
-      }
-    };
-
-    // Set up event handlers for real-time updates
-    friendHubManager.setOnFriendRequestReceived(handleFriendRequestReceived);
-    friendHubManager.setOnFriendRequestAccepted(handleFriendRequestAccepted);
-    friendHubManager.setOnFriendRequestDeclined(handleFriendRequestDeclined);
-
-    return () => {
-      friendHubManager.setOnFriendRequestReceived(() => {});
-      friendHubManager.setOnFriendRequestAccepted(() => {});
-      friendHubManager.setOnFriendRequestDeclined(() => {});
-    };
-  }, [user?.id]);
+  // Real-time friend request updates - handled by useFriendHub hook in individual pages
+  // Removed duplicate event handler setup to prevent infinite loop
 
   const handleLogout = () => {
     identityApi.logout();

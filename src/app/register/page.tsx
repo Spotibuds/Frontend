@@ -141,6 +141,8 @@ export default function RegisterPage() {
         setErrors({ username: "This username is already taken" });
       } else if (errorMessage.includes("email") || errorMessage.includes("already exists")) {
         setErrors({ email: "This email is already registered" });
+      } else if (errorMessage.includes("database synchronization") || errorMessage.includes("MongoDB")) {
+        setErrors({ general: "Registration failed due to a temporary database issue. Please try again in a moment." });
       } else {
         setErrors({ general: errorMessage });
       }

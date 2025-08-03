@@ -5,6 +5,9 @@ interface UseFriendHubOptions {
   userId?: string;
   autoConnect?: boolean;
   onError?: (error: string) => void;
+  onMessageReceived?: (message: ChatMessage) => void;
+  onMessageSent?: (message: ChatMessage) => void;
+  onMessageRead?: (messageId: string) => void;
 }
 
 interface FriendHubState {
@@ -16,10 +19,14 @@ interface FriendHubState {
   messages: Record<string, ChatMessage[]>;
   onlineFriends: string[];
   error: string | null;
+  lastFriendRequestReceived?: FriendRequest;
+  lastFriendRequestAccepted?: { requestId: string; friendId: string; friendName: string; friendAvatar?: string };
+  lastFriendRequestDeclined?: { requestId: string };
+  lastFriendRemoved?: { friendId: string };
 }
 
 export const useFriendHub = (options: UseFriendHubOptions = {}) => {
-  const { userId, autoConnect = true, onError } = options;
+  const { userId, autoConnect = true, onError, onMessageReceived, onMessageSent, onMessageRead } = options;
   
   const [state, setState] = useState<FriendHubState>({
     isConnected: false,
@@ -29,7 +36,11 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     chats: [],
     messages: {},
     onlineFriends: [],
-    error: null
+    error: null,
+    lastFriendRequestReceived: undefined,
+    lastFriendRequestAccepted: undefined,
+    lastFriendRequestDeclined: undefined,
+    lastFriendRemoved: undefined
   });
 
   const connectionTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
@@ -166,8 +177,26 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     setState(prev => ({ ...prev, error: null }));
   }, []);
 
+  const clearLastEvents = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      lastFriendRequestReceived: undefined,
+      lastFriendRequestAccepted: undefined,
+      lastFriendRequestDeclined: undefined,
+      lastFriendRemoved: undefined
+    }));
+  }, []);
+
   // Setup event handlers
   useEffect(() => {
+    // Set up online friends event handler FIRST
+    friendHubManager.setOnOnlineFriendsReceived((onlineFriends) => {
+      setState(prev => ({
+        ...prev,
+        onlineFriends
+      }));
+    });
+
     // Connection state changes
     friendHubManager.setOnConnectionStateChanged((connectionState) => {
       setState(prev => ({
@@ -175,13 +204,21 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
         connectionState,
         isConnected: connectionState === 'Connected'
       }));
+      
+      // Get online friends when connected with a small delay to ensure handlers are set up
+      if (connectionState === 'Connected') {
+        setTimeout(() => {
+          getOnlineFriends().catch(console.error);
+        }, 100);
+      }
     });
 
     // Friend request events
     friendHubManager.setOnFriendRequestReceived((request) => {
       setState(prev => ({
         ...prev,
-        friendRequests: [...prev.friendRequests, request]
+        friendRequests: [...prev.friendRequests, request],
+        lastFriendRequestReceived: request
       }));
     });
 
@@ -194,14 +231,21 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
           username: data.friendName,
           avatarUrl: data.friendAvatar,
           isOnline: false
-        }]
+        }],
+        lastFriendRequestAccepted: {
+          requestId: data.requestId,
+          friendId: data.friendId,
+          friendName: data.friendName,
+          friendAvatar: data.friendAvatar
+        }
       }));
     });
 
     friendHubManager.setOnFriendRequestDeclined((data) => {
       setState(prev => ({
         ...prev,
-        friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId)
+        friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
+        lastFriendRequestDeclined: { requestId: data.requestId }
       }));
     });
 
@@ -209,7 +253,8 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       setState(prev => ({
         ...prev,
         friends: prev.friends.filter(friend => friend.id !== data.removedFriendId),
-        chats: prev.chats.filter(chat => !chat.participants.includes(data.removedFriendId))
+        chats: prev.chats.filter(chat => !chat.participants.includes(data.removedFriendId)),
+        lastFriendRemoved: { friendId: data.removedFriendId }
       }));
     });
 
@@ -243,24 +288,32 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
             : chat
         )
       }));
+      
+      // Call the callback if provided
+      onMessageReceived?.(message);
     });
 
     friendHubManager.setOnMessageSent((data) => {
+      const sentMessage: ChatMessage = {
+        chatId: data.chatId,
+        messageId: data.messageId,
+        senderId: data.senderId || userId || '',
+        senderName: data.senderName || 'You',
+        content: data.content,
+        timestamp: data.timestamp,
+        isRead: false
+      };
+      
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
-          [data.chatId]: [...(prev.messages[data.chatId] || []), {
-            chatId: data.chatId,
-            messageId: data.messageId,
-            senderId: userId || '',
-            senderName: 'You',
-            content: data.content,
-            timestamp: data.timestamp,
-            isRead: false
-          }]
+          [data.chatId]: [...(prev.messages[data.chatId] || []), sentMessage]
         }
       }));
+      
+      // Call the callback if provided
+      onMessageSent?.(sentMessage);
     });
 
     friendHubManager.setOnMessageRead((data) => {
@@ -275,6 +328,9 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
           )
         }
       }));
+      
+      // Call the callback if provided
+      onMessageRead?.(data.messageId);
     });
 
     friendHubManager.setOnChatCreated((chat) => {
@@ -288,13 +344,6 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     friendHubManager.setOnError((error) => {
       setState(prev => ({ ...prev, error }));
       onError?.(error);
-    });
-
-    // Online friends
-    friendHubManager.setOnConnectionStateChanged((state) => {
-      if (state === 'Connected') {
-        getOnlineFriends().catch(console.error);
-      }
     });
 
     return () => {
@@ -311,7 +360,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       friendHubManager.setOnError(null);
       friendHubManager.setOnConnectionStateChanged(null);
     };
-  }, [userId, onError]);
+  }, [userId, onError, onMessageReceived, onMessageSent, onMessageRead]);
 
   // Auto-connect on mount
   useEffect(() => {
@@ -324,14 +373,14 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
         clearTimeout(connectionTimeoutRef.current);
       }
     };
-  }, [autoConnect, userId, connect]);
+  }, [autoConnect, userId]); // Removed connect from dependencies to prevent infinite loop
 
     // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
     };
-  }, [disconnect]);
+  }, []); // Removed disconnect from dependencies to prevent infinite loop
 
   return {
     // State
@@ -357,6 +406,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     getChatMessages,
     getChat,
     getFriend,
-    clearError
+    clearError,
+    clearLastEvents
   };
 }; 
