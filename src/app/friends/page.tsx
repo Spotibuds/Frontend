@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -34,6 +34,23 @@ export default function FriendsPage() {
   const [processingFriends, setProcessingFriends] = useState<Set<string>>(new Set());
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
 
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 5000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
+  const handleError = useCallback((error: string) => {
+    console.error('FriendHub Error:', error);
+    addToast(`Connection error: ${error}`, 'error');
+  }, [addToast]);
+
   // Initialize friend hub for real-time updates
   const { 
     isConnected, 
@@ -47,10 +64,7 @@ export default function FriendsPage() {
   } = useFriendHub({
     userId: currentUser?.id,
     autoConnect: true,
-    onError: (error) => {
-      console.error('FriendHub Error:', error);
-      addToast(`Connection error: ${error}`, 'error');
-    }
+    onError: handleError
   });
 
   // Get current user from auth context
@@ -68,82 +82,19 @@ export default function FriendsPage() {
     }
   }, []);
 
-  // Load friend requests and friends when user is set
-  useEffect(() => {
-    if (currentUser?.id) {
-      loadFriendRequests();
-      loadFriends();
-      setLoading(false);
-    }
-  }, [currentUser?.id]);
-
-  // Real-time friend request updates - handled by useFriendHub hook
-  // Removed duplicate event handler setup to prevent infinite loop
-
-  // Handle real-time friend request received
-  useEffect(() => {
-    if (lastFriendRequestReceived) {
-      addToast(`New friend request from ${lastFriendRequestReceived.requesterUsername}!`, 'info');
-      setFriendRequests(prev => [...prev, lastFriendRequestReceived]);
-      clearLastEvents();
-    }
-  }, [lastFriendRequestReceived, clearLastEvents]);
-
-  // Handle real-time friend request accepted
-  useEffect(() => {
-    if (lastFriendRequestAccepted) {
-      addToast(`Friend request accepted!`, 'success');
-      setFriendRequests(prev => prev.filter(req => req.requestId !== lastFriendRequestAccepted.requestId));
-      loadFriends(); // Reload friends list to show the new friend
-      clearLastEvents();
-    }
-  }, [lastFriendRequestAccepted, clearLastEvents]);
-
-  // Handle real-time friend request declined
-  useEffect(() => {
-    if (lastFriendRequestDeclined) {
-      addToast(`Friend request declined`, 'info');
-      setFriendRequests(prev => prev.filter(req => req.requestId !== lastFriendRequestDeclined.requestId));
-      clearLastEvents();
-    }
-  }, [lastFriendRequestDeclined, clearLastEvents]);
-
-  // Handle real-time friend removed
-  useEffect(() => {
-    if (lastFriendRemoved) {
-      addToast(`Friend removed`, 'info');
-      setFriends(prev => prev.filter(friend => friend.id !== lastFriendRemoved.friendId));
-      clearLastEvents();
-    }
-  }, [lastFriendRemoved, clearLastEvents]);
-
-  const addToast = (message: string, type: 'success' | 'error' | 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  const loadFriendRequests = async () => {
+  // Define load functions with useCallback
+  const loadFriendRequests = useCallback(async () => {
     if (!currentUser?.id) return;
     
     try {
       const requests = await userApi.getPendingFriendRequests(currentUser.id);
-      
-
-      
       setFriendRequests(requests);
     } catch (error) {
       console.error('Failed to load friend requests:', error);
     }
-  };
+  }, [currentUser?.id]);
 
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async () => {
     if (!currentUser?.id) return;
     
     try {
@@ -171,7 +122,64 @@ export default function FriendsPage() {
     } catch (error) {
       console.error('Failed to load friends:', error);
     }
-  };
+  }, [currentUser?.id]);
+
+  // Load friend requests and friends when user is set
+  useEffect(() => {
+    if (currentUser?.id) {
+      loadFriendRequests();
+      loadFriends();
+      setLoading(false);
+    }
+  }, [currentUser?.id, loadFriendRequests, loadFriends]);
+
+  // Real-time friend request updates - handled by useFriendHub hook
+  // Removed duplicate event handler setup to prevent infinite loop
+
+  // Handle real-time friend request received
+  useEffect(() => {
+    if (lastFriendRequestReceived) {
+      addToast(`New friend request from ${lastFriendRequestReceived.senderName}!`, 'info');
+      // Convert friendHub FriendRequest to API FriendRequest format
+      const apiFormatRequest: FriendRequest = {
+        requestId: lastFriendRequestReceived.requestId,
+        requesterId: lastFriendRequestReceived.senderId,
+        requesterUsername: lastFriendRequestReceived.senderName,
+        requesterAvatar: lastFriendRequestReceived.senderAvatar,
+        requestedAt: lastFriendRequestReceived.timestamp
+      };
+      setFriendRequests(prev => [...prev, apiFormatRequest]);
+      clearLastEvents();
+    }
+  }, [lastFriendRequestReceived, clearLastEvents, addToast]);
+
+  // Handle real-time friend request accepted
+  useEffect(() => {
+    if (lastFriendRequestAccepted) {
+      addToast(`Friend request accepted!`, 'success');
+      setFriendRequests(prev => prev.filter(req => req.requestId !== lastFriendRequestAccepted.requestId));
+      loadFriends(); // Reload friends list to show the new friend
+      clearLastEvents();
+    }
+  }, [lastFriendRequestAccepted, clearLastEvents, loadFriends, addToast]);
+
+  // Handle real-time friend request declined
+  useEffect(() => {
+    if (lastFriendRequestDeclined) {
+      addToast(`Friend request declined`, 'info');
+      setFriendRequests(prev => prev.filter(req => req.requestId !== lastFriendRequestDeclined.requestId));
+      clearLastEvents();
+    }
+  }, [lastFriendRequestDeclined, clearLastEvents, addToast]);
+
+  // Handle real-time friend removed
+  useEffect(() => {
+    if (lastFriendRemoved) {
+      addToast(`Friend removed`, 'info');
+      setFriends(prev => prev.filter(friend => friend.id !== lastFriendRemoved.friendId));
+      clearLastEvents();
+    }
+  }, [lastFriendRemoved, clearLastEvents, addToast]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;

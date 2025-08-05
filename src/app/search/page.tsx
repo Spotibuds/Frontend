@@ -275,7 +275,7 @@ function SearchContent() {
                           {result.type === 'user' ? (
                             // User avatar
                             result.image ? (
-                              <img
+                              <MusicImage
                                 src={result.image}
                                 alt={safeString(result.title)}
                                 className="w-16 h-16 rounded-full object-cover"

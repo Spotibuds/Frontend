@@ -44,6 +44,23 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
   });
 
   const connectionTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  
+  // Stabilize callback functions to prevent infinite loops
+  const stableOnError = useCallback((error: string) => {
+    onError?.(error);
+  }, [onError]);
+  
+  const stableOnMessageReceived = useCallback((message: ChatMessage) => {
+    onMessageReceived?.(message);
+  }, [onMessageReceived]);
+  
+  const stableOnMessageSent = useCallback((message: ChatMessage) => {
+    onMessageSent?.(message);
+  }, [onMessageSent]);
+  
+  const stableOnMessageRead = useCallback((messageId: string) => {
+    onMessageRead?.(messageId);
+  }, [onMessageRead]);
 
   // Connection Management
   const connect = useCallback(async () => {
@@ -58,9 +75,9 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
     }
-  }, [userId, onError]);
+  }, [userId, stableOnError]);
 
   const disconnect = useCallback(async () => {
     try {
@@ -77,10 +94,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to send friend request';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const acceptFriendRequest = useCallback(async (requestId: string) => {
     try {
@@ -88,10 +105,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to accept friend request';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const declineFriendRequest = useCallback(async (requestId: string) => {
     try {
@@ -99,10 +116,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to decline friend request';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const removeFriend = useCallback(async (friendId: string) => {
     try {
@@ -110,10 +127,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to remove friend';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   // Chat Management
   const sendMessage = useCallback(async (chatId: string, message: string) => {
@@ -122,10 +139,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const markMessageAsRead = useCallback(async (messageId: string) => {
     try {
@@ -133,10 +150,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as read';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const createChat = useCallback(async (friendId: string) => {
     try {
@@ -144,10 +161,10 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to create chat';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
 
   const getOnlineFriends = useCallback(async () => {
     try {
@@ -155,10 +172,15 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to get online friends';
       setState(prev => ({ ...prev, error: errorMessage }));
-      onError?.(errorMessage);
+      stableOnError(errorMessage);
       throw error;
     }
-  }, [onError]);
+  }, [stableOnError]);
+
+  // Create a stable reference for getOnlineFriends that doesn't cause re-renders
+  const stableGetOnlineFriends = useCallback(() => {
+    friendHubManager.getOnlineFriends().catch(console.error);
+  }, []);
 
   // Utility Functions
   const getChatMessages = useCallback((chatId: string): ChatMessage[] => {
@@ -208,7 +230,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       // Get online friends when connected with a small delay to ensure handlers are set up
       if (connectionState === 'Connected') {
         setTimeout(() => {
-          getOnlineFriends().catch(console.error);
+          stableGetOnlineFriends();
         }, 100);
       }
     });
@@ -290,7 +312,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       }));
       
       // Call the callback if provided
-      onMessageReceived?.(message);
+      stableOnMessageReceived(message);
     });
 
     friendHubManager.setOnMessageSent((data) => {
@@ -318,7 +340,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       }));
       
       // Call the callback if provided
-      onMessageSent?.(sentMessage);
+      stableOnMessageSent(sentMessage);
     });
 
     friendHubManager.setOnMessageRead((data) => {
@@ -335,7 +357,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       }));
       
       // Call the callback if provided
-      onMessageRead?.(data.messageId);
+      stableOnMessageRead(data.messageId);
     });
 
     friendHubManager.setOnChatCreated((chat) => {
@@ -348,7 +370,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     // Error handling
     friendHubManager.setOnError((error) => {
       setState(prev => ({ ...prev, error }));
-      onError?.(error);
+      stableOnError(error);
     });
 
     return () => {
@@ -365,7 +387,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       friendHubManager.setOnError(null);
       friendHubManager.setOnConnectionStateChanged(null);
     };
-  }, [userId, onError, onMessageReceived, onMessageSent, onMessageRead]);
+  }, [userId, stableOnError, stableOnMessageReceived, stableOnMessageSent, stableOnMessageRead, stableGetOnlineFriends]);
 
   // Auto-connect on mount
   useEffect(() => {
@@ -374,18 +396,20 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     }
 
     return () => {
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const currentTimeout = connectionTimeoutRef.current;
+      if (currentTimeout) {
+        clearTimeout(currentTimeout);
       }
     };
-  }, [autoConnect, userId]); // Removed connect from dependencies to prevent infinite loop
+  }, [autoConnect, userId, connect]);
 
     // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
     };
-  }, []); // Removed disconnect from dependencies to prevent infinite loop
+  }, [disconnect]);
 
   return {
     // State

@@ -1,4 +1,4 @@
-import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState } from '@microsoft/signalr';
+import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState, HttpTransportType } from '@microsoft/signalr';
 
 // Import the refresh token function from api.ts
 const API_CONFIG = {
@@ -131,21 +131,17 @@ class FriendHubManager {
       const userApiUrl = process.env.NEXT_PUBLIC_USER_API_URL || 'http://localhost:5002';
       const token = localStorage.getItem('token');
       
-      console.log('SignalR Debug Info:');
-      console.log('User API URL:', userApiUrl);
-      console.log('Token exists:', !!token);
-      console.log('Token length:', token?.length);
-      console.log('Token preview:', token ? `${token.substring(0, 20)}...` : 'null');
-      console.log('User ID:', userId);
+      // Reduced logging - only log critical info
+      // console.log('Connecting to SignalR Hub...');
       
       // Use the correct hub URL with access_token parameter for authentication
       const hubUrl = `${userApiUrl}/friend-hub?access_token=${encodeURIComponent(token || '')}`;
-      console.log('Hub URL:', hubUrl);
       
       this.connection = new HubConnectionBuilder()
         .withUrl(hubUrl, {
           withCredentials: true,
           skipNegotiation: false,
+          transport: HttpTransportType.LongPolling, // Use only LongPolling to avoid WebSocket/SSE auth issues
           accessTokenFactory: async () => {
             // Get JWT token from localStorage
             let token = localStorage.getItem('token');
@@ -158,19 +154,22 @@ class FriendHubManager {
             return token || '';
           }
         })
-        .configureLogging(LogLevel.Debug) // Changed to Debug for better troubleshooting
+        .configureLogging(LogLevel.None) // Completely disable SignalR logging to reduce console noise
         .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
         .build();
 
       this.setupEventHandlers();
 
-      console.log('Starting SignalR connection...');
+      // console.log('Starting SignalR connection...');
       await this.connection.start();
-      console.log('SignalR connection started successfully');
+      console.log('✅ SignalR connected successfully');
       this.reconnectAttempts = 0;
       this.onConnectionStateChanged?.('Connected');
     } catch (error) {
-      console.error('Failed to connect to Friend Hub:', error);
+      // Only log connection failures that aren't transport fallbacks
+      if (error instanceof Error && !error.message.includes('transport')) {
+        console.error('Failed to connect to Friend Hub:', error.message);
+      }
       
       // Check if it's an authentication error
       if (error instanceof Error && (error.message.includes('Unauthorized') || error.message.includes('401'))) {

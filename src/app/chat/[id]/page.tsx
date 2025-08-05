@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
 import { userApi, identityApi } from '../../../lib/api';
@@ -52,6 +52,54 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 5000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
+  const handleError = useCallback((error: string) => {
+    // Only show toast for actual errors, not transport fallbacks
+    if (!error.includes('transport') && !error.includes('WebSocket')) {
+      addToast(error, 'error');
+    }
+  }, [addToast]);
+
+  const handleMessageReceived = useCallback((message: ChatMessage) => {
+    // Add incoming message to local state, but check for duplicates first
+    setChatMessages(prev => {
+      const exists = prev.some(m => m.messageId === message.messageId);
+      if (!exists) {
+        return [...prev, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      }
+      return prev;
+    });
+  }, []);
+
+  const handleMessageSent = useCallback((message: ChatMessage) => {
+    // Add sent message to local state (in case it wasn't already added)
+    setChatMessages(prev => {
+      const exists = prev.some(m => m.messageId === message.messageId);
+      if (!exists) {
+        return [...prev, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      }
+      return prev;
+    });
+  }, []);
+
+  const handleMessageRead = useCallback((messageId: string) => {
+    // Mark message as read in local state
+    setChatMessages(prev => prev.map(m => 
+      m.messageId === messageId ? { ...m, isRead: true } : m
+    ));
+  }, []);
+
   const {
     isConnected,
     connectionState,
@@ -59,33 +107,10 @@ export default function ChatPage() {
     markMessageAsRead: markMessageAsReadSignalR,
   } = useFriendHub({
     userId: currentUser?.id,
-    onError: (error) => {
-      console.error('FriendHub error:', error);
-      addToast(error, 'error');
-    },
-    onMessageReceived: (message) => {
-      console.log('Chat page: Message received:', message);
-      // Add incoming message to local state
-      setChatMessages(prev => [...prev, message]);
-    },
-    onMessageSent: (message) => {
-      console.log('Chat page: Message sent:', message);
-      // Add sent message to local state (in case it wasn't already added)
-      setChatMessages(prev => {
-        const exists = prev.some(m => m.messageId === message.messageId);
-        if (!exists) {
-          return [...prev, message];
-        }
-        return prev;
-      });
-    },
-    onMessageRead: (messageId) => {
-      console.log('Chat page: Message read:', messageId);
-      // Mark message as read in local state
-      setChatMessages(prev => prev.map(m => 
-        m.messageId === messageId ? { ...m, isRead: true } : m
-      ));
-    }
+    onError: handleError,
+    onMessageReceived: handleMessageReceived,
+    onMessageSent: handleMessageSent,
+    onMessageRead: handleMessageRead
   });
 
   // Load current user and chat data
@@ -155,21 +180,10 @@ export default function ChatPage() {
     };
 
     loadData();
-  }, [chatId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]); // Remove addToast from dependencies to prevent infinite loops
 
-  const addToast = (message: string, type: 'success' | 'error' | 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
-
-  const handleSendMessage = async () => {
+  const handleSendMessage = useCallback(async () => {
     if (!message.trim() || !isConnected || !currentUser) return;
 
     try {
@@ -181,50 +195,63 @@ export default function ChatPage() {
       console.error('Failed to send message:', error);
       addToast('Failed to send message', 'error');
     }
-  };
+  }, [message, isConnected, currentUser, sendSignalRMessage, chatId, addToast]);
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
-  };
+  }, [handleSendMessage]);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatMessages]);
+  }, [chatMessages, scrollToBottom]);
+
+  // Track which messages have been marked as read to avoid infinite loops
+  const processedMessagesRef = useRef(new Set<string>());
 
   useEffect(() => {
     // Mark messages as read when chat is opened
     if (chatMessages.length > 0 && currentUser) {
-      chatMessages
-        .filter(msg => !msg.isRead && msg.senderId !== currentUser.id)
-        .forEach(async (msg) => {
+      const unreadMessages = chatMessages.filter(msg => 
+        !msg.isRead && 
+        msg.senderId !== currentUser.id && 
+        !processedMessagesRef.current.has(msg.messageId)
+      );
+      
+      unreadMessages.forEach(async (msg) => {
+        // Mark this message as being processed
+        processedMessagesRef.current.add(msg.messageId);
+        
+        try {
+          // Mark as read via SignalR for real-time updates
+          await markMessageAsReadSignalR(msg.messageId);
+          
+          // Also mark via API for persistence (backup)
           try {
-            // Mark as read via SignalR for real-time updates
-            await markMessageAsReadSignalR(msg.messageId);
-            
-            // Also mark via API for persistence (backup)
-            try {
-              await userApi.markMessageAsRead(msg.messageId);
-            } catch (apiError) {
-              console.warn('API mark as read failed, but SignalR succeeded:', apiError);
-            }
-            
-            // Update local state
-            setChatMessages(prev => prev.map(m => 
-              m.messageId === msg.messageId ? { ...m, isRead: true } : m
-            ));
-          } catch (error) {
-            console.error('Failed to mark message as read:', error);
+            await userApi.markMessageAsRead(msg.messageId);
+          } catch (apiError) {
+            console.warn('API mark as read failed, but SignalR succeeded:', apiError);
           }
-        });
+          
+          // Update local state
+          setChatMessages(prev => prev.map(m => 
+            m.messageId === msg.messageId ? { ...m, isRead: true } : m
+          ));
+        } catch (error) {
+          console.error('Failed to mark message as read:', error);
+          // Remove from processed set on error so it can be retried
+          processedMessagesRef.current.delete(msg.messageId);
+        }
+      });
     }
-  }, [chatMessages, currentUser, markMessageAsReadSignalR]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR]); // Using chatMessages.length instead of chatMessages to avoid infinite loops
 
   if (isLoading) {
     return (
@@ -263,8 +290,6 @@ export default function ChatPage() {
       </div>
     );
   }
-
-  const otherParticipantId = chat.participants.find(p => p !== currentUser.id);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
@@ -332,13 +357,6 @@ export default function ChatPage() {
             chatMessages.map((msg) => {
               // Use IdentityUserId for comparison since that's what we're using consistently
               const isOwnMessage = msg.senderId === currentUser?.id;
-              console.log('Rendering message:', {
-                messageId: msg.messageId,
-                senderId: msg.senderId,
-                currentUserId: currentUser?.id,
-                isOwnMessage,
-                senderName: msg.senderName
-              });
               
               return (
                 <div

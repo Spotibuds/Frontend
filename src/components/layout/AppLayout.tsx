@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import MusicImage from "@/components/ui/MusicImage";
 import {
   Bars3Icon,
   XMarkIcon,
@@ -376,7 +377,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors"
                   >
                     {user?.avatarUrl ? (
-                      <img
+                      <MusicImage
                         src={user.avatarUrl}
                         alt={user.username}
                         className="w-8 h-8 rounded-full object-cover"
@@ -412,13 +413,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <div className="flex items-center space-x-3 flex-1 min-w-0 max-w-sm">
                 <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0">
                   {state.currentSong?.coverUrl ? (
-                    <img 
+                    <MusicImage 
                       src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl} 
                       alt={safeString(state.currentSong.title)}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
                     />
                   ) : (
                     <span className="text-white font-bold">

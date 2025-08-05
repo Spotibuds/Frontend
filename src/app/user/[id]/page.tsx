@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 
@@ -48,50 +48,9 @@ export default function UserProfilePage() {
 
 
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
-  
 
-
-
-
-  useEffect(() => {
-    const user = identityApi.getCurrentUser();
-    if (!user) {
-      setError('Please log in to view profiles');
-      setIsLoading(false);
-      return;
-    }
-    
-    setCurrentUser(user);
-
-    if (userId) {
-      loadUserProfile(userId);
-      if (user.id !== userId) {
-        loadFriendshipStatus(user.id, userId);
-      }
-    } else {
-      router.replace(`/user/${user.id}`);
-    }
-  }, [userId, router]);
-
-  // Separate useEffect for event listener to avoid dependency issues
-  useEffect(() => {
-    const handleFriendshipStatusChanged = (...args: unknown[]) => {
-      const [userId1, userId2] = args as [string, string];
-      if (currentUser && profileUser && 
-          ((userId1 === currentUser.id && userId2 === profileUser.identityUserId) ||
-           (userId2 === currentUser.id && userId1 === profileUser.identityUserId))) {
-        loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
-      }
-    };
-
-    eventBus.on('friendshipStatusChanged', handleFriendshipStatusChanged);
-
-    return () => {
-      eventBus.off('friendshipStatusChanged', handleFriendshipStatusChanged);
-    };
-  }, [currentUser?.id, profileUser?.identityUserId]);
-
-  const loadUserProfile = async (identifier: string) => {
+  // Define callback functions before useEffects
+  const loadUserProfile = useCallback(async (identifier: string) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -150,9 +109,9 @@ export default function UserProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUser]);
 
-  const loadFriendshipStatus = async (currentUserId: string, targetUserId: string) => {
+  const loadFriendshipStatus = useCallback(async (currentUserId: string, targetUserId: string) => {
     try {
       console.log('=== LOADING FRIENDSHIP STATUS ===');
       console.log('currentUserId:', currentUserId);
@@ -165,7 +124,45 @@ export default function UserProfilePage() {
       console.warn('Failed to load friendship status:', error);
       setFriendshipStatus({ status: 'none' });
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const user = identityApi.getCurrentUser();
+    if (!user) {
+      setError('Please log in to view profiles');
+      setIsLoading(false);
+      return;
+    }
+    
+    setCurrentUser(user);
+
+    if (userId) {
+      loadUserProfile(userId);
+      if (user.id !== userId) {
+        loadFriendshipStatus(user.id, userId);
+      }
+    } else {
+      router.replace(`/user/${user.id}`);
+    }
+  }, [userId, router, loadUserProfile, loadFriendshipStatus]);
+
+  // Separate useEffect for event listener to avoid dependency issues
+  useEffect(() => {
+    const handleFriendshipStatusChanged = (...args: unknown[]) => {
+      const [userId1, userId2] = args as [string, string];
+      if (currentUser && profileUser && 
+          ((userId1 === currentUser.id && userId2 === profileUser.identityUserId) ||
+           (userId2 === currentUser.id && userId1 === profileUser.identityUserId))) {
+        loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
+      }
+    };
+
+    eventBus.on('friendshipStatusChanged', handleFriendshipStatusChanged);
+
+    return () => {
+      eventBus.off('friendshipStatusChanged', handleFriendshipStatusChanged);
+    };
+  }, [currentUser, profileUser, loadFriendshipStatus]);
 
   const handleSendFriendRequest = async () => {
     console.log('=== SEND FRIEND REQUEST CLICKED ===');

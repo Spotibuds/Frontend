@@ -35,7 +35,9 @@ export default function MusicImage({
     setDebugAttempts([]);
     
     if (src) {
+      console.log('MusicImage: Processing image URL:', src);
       const proxiedSrc = getProxiedImageUrl(src);
+      console.log('MusicImage: Proxied URL:', proxiedSrc);
       setImageSrc(proxiedSrc || '');
       setDebugAttempts(prev => [...prev, `Original: ${src}`, `Proxied: ${proxiedSrc}`]);
     } else {
@@ -102,6 +104,7 @@ export default function MusicImage({
     <div className={combinedClasses} title={showDebug ? debugAttempts.join(' | ') : alt}>
       {imageSrc && !imageError ? (
         <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageSrc}
             alt={alt}

@@ -8,11 +8,11 @@ export const API_CONFIG = {
 // Token management
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (value?: any) => void;
-  reject: (error?: any) => void;
+  resolve: (value?: string | null) => void;
+  reject: (error?: Error) => void;
 }> = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach(({ resolve, reject }) => {
     if (error) {
       reject(error);
@@ -80,15 +80,15 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
 
-  // Debug logging for friend requests
-  if (url.includes('/api/friends/')) {
-    console.log('API Request Debug:', {
-      url,
-      method: options?.method,
-      body: options?.body,
-      headers: { ...defaultHeaders, ...options?.headers }
-    });
-  }
+  // Debug logging for friend requests (disabled to reduce console noise)
+  // if (url.includes('/api/friends/')) {
+  //   console.log('API Request Debug:', {
+  //     url,
+  //     method: options?.method,
+  //     body: options?.body,
+  //     headers: { ...defaultHeaders, ...options?.headers }
+  //   });
+  // }
 
   // Add timeout to prevent hanging - longer timeout for registration
   const controller = new AbortController();
@@ -201,9 +201,15 @@ export function getProxiedImageUrl(originalUrl: string): string {
     return originalUrl;
   }
   
+  // Check if URL is already proxied to prevent double-proxying
+  if (originalUrl.includes('/api/media/image?url=')) {
+    console.log('URL is already proxied:', originalUrl);
+    return originalUrl;
+  }
+  
   if (originalUrl.includes('blob.core.windows.net')) {
     const proxyUrl = `${API_CONFIG.MUSIC_API}/api/media/image?url=${encodeURIComponent(originalUrl)}`;
-
+    console.log('Proxying blob URL:', originalUrl, '->', proxyUrl);
     return proxyUrl;
   }
   
