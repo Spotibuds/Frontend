@@ -1,10 +1,41 @@
 import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState, HttpTransportType } from '@microsoft/signalr';
 
-// Import the refresh token function from api.ts
-const API_CONFIG = {
-  IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'http://localhost:5000',
-  USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
+// Production-ready API configuration
+const getApiConfig = () => {
+  const nodeEnv = process.env.NODE_ENV;
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  
+  // Check if we're in production environment
+  const isProduction = nodeEnv === 'production' || 
+    (typeof window !== 'undefined' && !hostname.includes('localhost') && !hostname.includes('127.0.0.1'));
+
+  if (isProduction) {
+    // Use production URLs when deployed
+    return {
+      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net',
+      USER_API: process.env.NEXT_PUBLIC_USER_API || 'https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net'
+    };
+  } else {
+    // Use localhost for development
+    return {
+      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'http://localhost:5000',
+      USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
+    };
+  }
 };
+
+const API_CONFIG = getApiConfig();
+
+// Debug logging for SignalR (always log for troubleshooting)
+if (typeof window !== 'undefined') {
+  console.log('🔗 SignalR Hub Configuration:', {
+    nodeEnv: process.env.NODE_ENV,
+    hostname: window.location.hostname,
+    isProduction: process.env.NODE_ENV === 'production' || (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')),
+    hubUrl: `${API_CONFIG.USER_API}/friend-hub`,
+    config: API_CONFIG
+  });
+}
 
 // Token refresh function for SignalR
 const refreshTokenForSignalR = async (): Promise<string | null> => {
@@ -128,14 +159,13 @@ class FriendHubManager {
     this.currentUserId = userId;
 
     try {
-      const userApiUrl = process.env.NEXT_PUBLIC_USER_API_URL || 'http://localhost:5002';
       const token = localStorage.getItem('token');
       
       // Reduced logging - only log critical info
       // console.log('Connecting to SignalR Hub...');
       
       // Use the correct hub URL with access_token parameter for authentication
-      const hubUrl = `${userApiUrl}/friend-hub?access_token=${encodeURIComponent(token || '')}`;
+      const hubUrl = `${API_CONFIG.USER_API}/friend-hub?access_token=${encodeURIComponent(token || '')}`;
       
       this.connection = new HubConnectionBuilder()
         .withUrl(hubUrl, {

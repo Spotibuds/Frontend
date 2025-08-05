@@ -1,33 +1,64 @@
 // Production-ready API configuration
 const getApiConfig = () => {
+  const nodeEnv = process.env.NODE_ENV;
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  
   // Check if we're in production environment
-  const isProduction = process.env.NODE_ENV === 'production' || 
-    (typeof window !== 'undefined' && !window.location.hostname.includes('localhost'));
+  const isProduction = nodeEnv === 'production' || 
+    (typeof window !== 'undefined' && !hostname.includes('localhost') && !hostname.includes('127.0.0.1'));
 
+  // Production URLs (hardcoded as fallback)
+  const productionUrls = {
+    IDENTITY_API: 'https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net',
+    MUSIC_API: 'https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net',
+    USER_API: 'https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net'
+  };
+
+  // Development URLs
+  const developmentUrls = {
+    IDENTITY_API: 'http://localhost:5000',
+    MUSIC_API: 'http://localhost:5001',
+    USER_API: 'http://localhost:5002'
+  };
+
+  let config;
+  
   if (isProduction) {
-    // Use production URLs when deployed
-    return {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net',
-      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || 'https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net',
-      USER_API: process.env.NEXT_PUBLIC_USER_API || 'https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net'
+    // In production, prefer environment variables but fall back to hardcoded URLs
+    config = {
+      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || productionUrls.IDENTITY_API,
+      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || productionUrls.MUSIC_API,
+      USER_API: process.env.NEXT_PUBLIC_USER_API || productionUrls.USER_API
     };
   } else {
-    // Use localhost for development
-    return {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'http://localhost:5000',
-      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || 'http://localhost:5001',
-      USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
+    // In development, prefer environment variables but fall back to localhost
+    config = {
+      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || developmentUrls.IDENTITY_API,
+      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || developmentUrls.MUSIC_API,
+      USER_API: process.env.NEXT_PUBLIC_USER_API || developmentUrls.USER_API
     };
   }
+
+  // Debug logging (always log in console for troubleshooting)
+  if (typeof window !== 'undefined') {
+    console.log('🔧 API Configuration Debug:', {
+      nodeEnv,
+      hostname,
+      isProduction,
+      envVars: {
+        NEXT_PUBLIC_IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API,
+        NEXT_PUBLIC_MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API,
+        NEXT_PUBLIC_USER_API: process.env.NEXT_PUBLIC_USER_API
+      },
+      finalConfig: config
+    });
+  }
+
+  return config;
 };
 
 // Use runtime configuration
 export const API_CONFIG = getApiConfig();
-
-// Debug logging in development
-if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
-  console.log('API Configuration:', API_CONFIG);
-}
 
 // Token management
 let isRefreshing = false;
