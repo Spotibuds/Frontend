@@ -375,6 +375,7 @@ export interface Message {
   messageId: string;
   chatId: string;
   senderId: string;
+  senderName?: string;
   content: string;
   type: string;
   sentAt: string;

@@ -18,11 +18,12 @@ interface User {
 }
 
 interface Chat {
-  id: string;
+  chatId: string;
+  isGroup: boolean;
+  name?: string;
   participants: string[];
-  lastMessage?: string;
-  lastMessageAt?: string;
-  unreadCount: number;
+  lastActivity: string;
+  lastMessageId?: string;
 }
 
 interface ChatMessage {
@@ -58,12 +59,17 @@ export default function ChatPage() {
     markMessageAsRead: markMessageAsReadSignalR,
   } = useFriendHub({
     userId: currentUser?.id,
-    onError: (error) => addToast(error, 'error'),
+    onError: (error) => {
+      console.error('FriendHub error:', error);
+      addToast(error, 'error');
+    },
     onMessageReceived: (message) => {
+      console.log('Chat page: Message received:', message);
       // Add incoming message to local state
       setChatMessages(prev => [...prev, message]);
     },
     onMessageSent: (message) => {
+      console.log('Chat page: Message sent:', message);
       // Add sent message to local state (in case it wasn't already added)
       setChatMessages(prev => {
         const exists = prev.some(m => m.messageId === message.messageId);
@@ -74,6 +80,7 @@ export default function ChatPage() {
       });
     },
     onMessageRead: (messageId) => {
+      console.log('Chat page: Message read:', messageId);
       // Mark message as read in local state
       setChatMessages(prev => prev.map(m => 
         m.messageId === messageId ? { ...m, isRead: true } : m
@@ -103,6 +110,8 @@ export default function ChatPage() {
 
         // Load chat data
         const chatData = await userApi.getChat(chatId);
+
+        // Use the chatData directly since it matches the Chat type from api.ts
         setChat(chatData);
 
         // Load other participant's profile
@@ -124,7 +133,19 @@ export default function ChatPage() {
 
         // Load chat messages
         const messages = await userApi.getChatMessages(chatId);
-        setChatMessages(messages);
+        // Convert API messages to ChatMessage format
+        const formattedMessages: ChatMessage[] = messages.map(msg => ({
+          messageId: msg.messageId,
+          chatId: msg.chatId,
+          senderId: msg.senderId,
+          senderName: msg.senderName || 'Unknown User',
+          content: msg.content,
+          timestamp: msg.sentAt,
+          isRead: msg.readBy.length > 0
+        }));
+        // Sort messages by timestamp ascending (oldest first)
+        const sortedMessages = formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setChatMessages(sortedMessages);
       } catch (error) {
         console.error('Failed to load chat data:', error);
         addToast('Failed to load chat', 'error');
@@ -154,14 +175,6 @@ export default function ChatPage() {
     try {
       // Send message via SignalR for real-time delivery
       await sendSignalRMessage(chatId, message.trim());
-      
-      // Also send via API for persistence (backup)
-      try {
-        await userApi.sendMessage(chatId, message.trim());
-      } catch (apiError) {
-        console.warn('API message send failed, but SignalR succeeded:', apiError);
-      }
-
       setMessage('');
       inputRef.current?.focus();
     } catch (error) {
@@ -318,7 +331,15 @@ export default function ChatPage() {
           ) : (
             chatMessages.map((msg) => {
               // Use IdentityUserId for comparison since that's what we're using consistently
-              const isOwnMessage = msg.senderId === currentUser.id;
+              const isOwnMessage = msg.senderId === currentUser?.id;
+              console.log('Rendering message:', {
+                messageId: msg.messageId,
+                senderId: msg.senderId,
+                currentUserId: currentUser?.id,
+                isOwnMessage,
+                senderName: msg.senderName
+              });
+              
               return (
                 <div
                   key={msg.messageId}
@@ -394,4 +415,4 @@ export default function ChatPage() {
       ))}
     </div>
   );
-} 
+}

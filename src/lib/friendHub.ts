@@ -58,7 +58,7 @@ export interface FriendRequest {
   senderId: string;
   senderName: string;
   senderAvatar?: string;
-  timestamp: Date;
+  timestamp: string;
 }
 
 export interface Friend {
@@ -66,7 +66,7 @@ export interface Friend {
   username: string;
   avatarUrl?: string;
   isOnline: boolean;
-  lastSeen?: Date;
+  lastSeen?: string;
 }
 
 export interface ChatMessage {
@@ -76,15 +76,15 @@ export interface ChatMessage {
   senderName: string;
   senderAvatar?: string;
   content: string;
-  timestamp: Date;
+  timestamp: string;
   isRead: boolean;
 }
 
 export interface Chat {
   id: string;
   participants: string[];
-  createdAt: Date;
-  lastMessageAt?: Date;
+  createdAt: string;
+  lastMessageAt?: string;
   lastMessage?: string;
   unreadCount: number;
 }
@@ -136,9 +136,10 @@ class FriendHubManager {
       console.log('Token exists:', !!token);
       console.log('Token length:', token?.length);
       console.log('Token preview:', token ? `${token.substring(0, 20)}...` : 'null');
+      console.log('User ID:', userId);
       
-      // Use only the hub URL without access_token parameter - let accessTokenFactory handle it
-      const hubUrl = `${userApiUrl}/friend-hub`;
+      // Use the correct hub URL with access_token parameter for authentication
+      const hubUrl = `${userApiUrl}/friend-hub?access_token=${encodeURIComponent(token || '')}`;
       console.log('Hub URL:', hubUrl);
       
       this.connection = new HubConnectionBuilder()
@@ -157,20 +158,22 @@ class FriendHubManager {
             return token || '';
           }
         })
-        .configureLogging(LogLevel.Warning)
+        .configureLogging(LogLevel.Debug) // Changed to Debug for better troubleshooting
         .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
         .build();
 
       this.setupEventHandlers();
 
+      console.log('Starting SignalR connection...');
       await this.connection.start();
+      console.log('SignalR connection started successfully');
       this.reconnectAttempts = 0;
       this.onConnectionStateChanged?.('Connected');
     } catch (error) {
       console.error('Failed to connect to Friend Hub:', error);
       
       // Check if it's an authentication error
-      if (error instanceof Error && error.message.includes('Unauthorized')) {
+      if (error instanceof Error && (error.message.includes('Unauthorized') || error.message.includes('401'))) {
         console.log('Authentication failed, attempting token refresh...');
         try {
           const newToken = await refreshTokenForSignalR();
@@ -195,6 +198,7 @@ class FriendHubManager {
       this.reconnectAttempts++;
       
       if (this.reconnectAttempts < this.maxReconnectAttempts && this.isConnecting) {
+        console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
         setTimeout(() => this.connect(userId), this.reconnectDelay);
       } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
         this.onError?.('Failed to connect to friend service after multiple attempts');
@@ -251,6 +255,7 @@ class FriendHubManager {
 
     // Chat events
     this.connection.on('MessageReceived', (message: ChatMessage) => {
+      console.log('MessageReceived event:', message);
       if (this.onMessageReceived) {
         this.onMessageReceived(message);
       }
@@ -258,6 +263,7 @@ class FriendHubManager {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('MessageSent', (data: any) => {
+      console.log('MessageSent event:', data);
       if (this.onMessageSent) {
         this.onMessageSent(data);
       }
@@ -265,12 +271,14 @@ class FriendHubManager {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.connection.on('MessageRead', (data: any) => {
+      console.log('MessageRead event:', data);
       if (this.onMessageRead) {
         this.onMessageRead(data);
       }
     });
 
     this.connection.on('ChatCreated', (chat: Chat) => {
+      console.log('ChatCreated event:', chat);
       if (this.onChatCreated) {
         this.onChatCreated(chat);
       }

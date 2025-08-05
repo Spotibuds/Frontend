@@ -294,15 +294,20 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     });
 
     friendHubManager.setOnMessageSent((data) => {
+      console.log('useFriendHub: MessageSent data received:', data);
+      
+      // Create a properly formatted message object
       const sentMessage: ChatMessage = {
         chatId: data.chatId,
         messageId: data.messageId,
-        senderId: data.senderId || userId || '',
-        senderName: data.senderName || 'You',
+        senderId: data.senderId || userId || '', // Use senderId from data
+        senderName: data.senderName || 'You',   // Use senderName from data
         content: data.content,
         timestamp: data.timestamp,
         isRead: false
       };
+      
+      console.log('useFriendHub: Created sentMessage:', sentMessage);
       
       setState(prev => ({
         ...prev,
