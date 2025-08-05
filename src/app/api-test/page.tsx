@@ -3,8 +3,14 @@
 import { useEffect, useState } from 'react';
 import { API_CONFIG } from '../../lib/api';
 
+interface ApiConfig {
+  IDENTITY_API: string;
+  MUSIC_API: string;
+  USER_API: string;
+}
+
 export default function ApiTestPage() {
-  const [config, setConfig] = useState<any>(null);
+  const [config, setConfig] = useState<ApiConfig | null>(null);
 
   useEffect(() => {
     setConfig(API_CONFIG);
