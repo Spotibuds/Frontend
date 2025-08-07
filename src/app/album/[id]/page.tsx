@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 
 import MusicImage from '@/components/ui/MusicImage';
-import { musicApi, processArtists, safeString, type Album, type Song } from '@/lib/api';
-import { useAudio } from '@/lib/audio';
+import SongCard from '@/components/SongCard';
+import { musicApi, safeString, type Album, type Song } from '@/lib/api';
 
 export default function AlbumPage() {
   const params = useParams();
@@ -16,8 +16,6 @@ export default function AlbumPage() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { playSong, state } = useAudio();
-  const { currentSong } = state;
 
   useEffect(() => {
     const fetchAlbumData = async () => {
@@ -93,12 +91,6 @@ export default function AlbumPage() {
     }).catch(error => {
       console.warn('Could not find artist:', error);
     });
-  };
-
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getTotalDuration = () => {
@@ -197,75 +189,20 @@ export default function AlbumPage() {
                 </>
               )}
             </div>
-
-            {/* Play Button */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => songs.length > 0 && playSong(songs[0])}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-8 rounded-full transition-colors duration-200 flex items-center space-x-2"
-                disabled={songs.length === 0}
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                <span>Play</span>
-              </button>
-            </div>
           </div>
         </div>
 
         {/* Songs List */}
         {songs.length > 0 ? (
           <div className="space-y-2">
-            <div className="grid grid-cols-12 gap-4 px-4 py-2 text-gray-400 text-sm font-medium border-b border-gray-800">
-              <div className="col-span-1">#</div>
-              <div className="col-span-6">Title</div>
-              <div className="col-span-3">Artist</div>
-              <div className="col-span-2 text-right">Duration</div>
-            </div>
-            
             {songs.map((song, index) => (
-              <div
-                key={song.id}
-                onClick={() => playSong(song)}
-                className={`grid grid-cols-12 gap-4 px-4 py-3 rounded-lg hover:bg-gray-800/50 cursor-pointer transition-colors group ${
-                  currentSong?.id === song.id ? 'bg-purple-900/30' : ''
-                }`}
-              >
-                <div className="col-span-1 flex items-center">
-                  <span className={`text-sm ${currentSong?.id === song.id ? 'text-purple-400' : 'text-gray-400'}`}>
-                    {index + 1}
-                  </span>
-                </div>
-                
-                <div className="col-span-6 flex items-center space-x-3">
-                  <MusicImage
-                    src={song.coverUrl}
-                    alt={safeString(song.title)}
-                    fallbackText={safeString(song.title)}
-                    size="small"
-                    type="square"
-                    priority={index < 5}
-                    lazy={index >= 5}
-                  />
-                  <div className="min-w-0">
-                    <h3 className={`font-medium truncate ${currentSong?.id === song.id ? 'text-purple-400' : 'text-white'}`}>
-                      {safeString(song.title)}
-                    </h3>
-                    <p className="text-gray-400 text-sm truncate">{safeString(song.genre)}</p>
-                  </div>
-                </div>
-                
-                <div className="col-span-3 flex items-center">
-                  <span className="text-gray-300 truncate">
-                    {processArtists(song.artists).join(', ')}
-                  </span>
-                </div>
-                
-                <div className="col-span-2 flex items-center justify-end">
-                  <span className="text-gray-400">{formatDuration(song.durationSec)}</span>
-                </div>
-              </div>
+              <SongCard 
+                key={song.id} 
+                song={song}
+                index={index}
+                showDuration={true}
+                showAddToPlaylist={true}
+              />
             ))}
           </div>
         ) : (

@@ -520,6 +520,16 @@ export const musicApi = {
     }
   },
 
+  async getSong(id: string): Promise<Song | null> {
+    try {
+      const response = await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/songs/${id}`);
+      return response;
+    } catch (error) {
+      console.warn('Failed to fetch song:', error);
+      return null;
+    }
+  },
+
   async getAlbums(): Promise<Album[]> {
     try {
       const response = await apiRequest<Album[]>(`${API_CONFIG.MUSIC_API}/api/albums`);
@@ -664,7 +674,8 @@ export const userApi = {
         avatarUrl: userData.avatarUrl,
         followers: userData.followers.length,
         following: userData.followedUsers.length,
-        playlists: userData.playlists.length,
+        playlists: userData.playlists, // Return actual playlists array
+        playlistCount: userData.playlists.length, // Add separate count field
         isPrivate: userData.isPrivate
       };
     } catch (error) {
@@ -684,7 +695,8 @@ export const userApi = {
         avatarUrl: userData.avatarUrl,
         followers: userData.followers.length,
         following: userData.followedUsers.length,
-        playlists: userData.playlists.length,
+        playlists: userData.playlists, // Return the actual playlists array instead of count
+        playlistCount: userData.playlists.length, // Add a separate count field if needed
         isPrivate: userData.isPrivate
       };
     } catch (error) {
@@ -872,6 +884,16 @@ export const userApi = {
       return null;
     }
   },
+
+  // Listening History methods
+  addToListeningHistory: (userId: string, songData: { songId: string; songTitle: string; artist: string; coverUrl?: string; duration?: number }) =>
+    apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history`, {
+      method: 'POST',
+      body: JSON.stringify(songData),
+    }),
+
+  getListeningHistory: (userId: string, limit = 50, skip = 0) =>
+    apiRequest<Array<{ songId: string; songTitle: string; artist: string; duration?: number; playedAt: string }>>(`${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`),
 }; 
 
 export interface FollowStats {

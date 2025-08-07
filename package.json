@@ -13,6 +13,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.1.1",
     "@microsoft/signalr": "^8.0.7",
     "clsx": "^2.1.1",

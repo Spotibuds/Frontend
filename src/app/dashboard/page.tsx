@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
-import { identityApi, musicApi, processArtists, safeString, type User, type Song, type Album, type Artist } from "@/lib/api";
-import { useAudio } from '@/lib/audio';
+import SongCard from '@/components/SongCard';
+import AlbumPlayButton from '@/components/ui/AlbumPlayButton';
+import { identityApi, musicApi, safeString, type User, type Song, type Album, type Artist } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -16,7 +17,6 @@ export default function DashboardPage() {
   const [artists, setArtists] = useState<Artist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { playSong } = useAudio();
 
   useEffect(() => {
     const currentUser = identityApi.getCurrentUser();
@@ -73,12 +73,6 @@ export default function DashboardPage() {
 
   const handleArtistClick = (artistId: string) => {
     router.push(`/artist/${artistId}`);
-  };
-
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getGreeting = () => {
@@ -162,10 +156,9 @@ export default function DashboardPage() {
                   {albums.slice(0, 10).map((album, index) => (
                     <div 
                       key={album.id} 
-                      onClick={() => handleAlbumClick(album.id)}
-                      className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
+                      className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200 relative"
                     >
-                      <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
+                      <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
                         <MusicImage
                           src={album.coverUrl}
                           alt={safeString(album.title)}
@@ -175,13 +168,23 @@ export default function DashboardPage() {
                           className="shadow-lg"
                           priority={index < 6}
                         />
+                        {/* Play button overlay */}
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <AlbumPlayButton 
+                            album={album} 
+                            size="large" 
+                            showAddToQueue={true}
+                          />
+                        </div>
                       </div>
-                      <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
-                        {safeString(album.title)}
-                      </h3>
-                      <p className="text-gray-400 text-xs truncate">
-                        {safeString(album.artist) || 'Unknown Artist'}
-                      </p>
+                      <div onClick={() => handleAlbumClick(album.id)}>
+                        <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
+                          {safeString(album.title)}
+                        </h3>
+                        <p className="text-gray-400 text-xs truncate">
+                          {safeString(album.artist) || 'Unknown Artist'}
+                        </p>
+                      </div>
                     </div>
                   ))}
                 </Slider>
@@ -242,35 +245,16 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="space-y-2">
                   {songs.slice(0, 8).map((song) => (
-                    <div 
-                      key={song.id}
-                      onClick={() => playSong(song)}
-                      className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/50 transition-all duration-200"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <MusicImage
-                          src={song.coverUrl}
-                          alt={safeString(song.title)}
-                          fallbackText={safeString(song.title)}
-                          size="medium"
-                          type="square"
-                          className="shadow-lg"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-white font-medium truncate group-hover:underline">
-                            {safeString(song.title)}
-                          </h3>
-                          <p className="text-gray-400 text-sm truncate">
-                            {processArtists(song.artists).join(', ')}
-                          </p>
-                          <p className="text-gray-500 text-xs">
-                            {formatDuration(song.durationSec)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                    <SongCard 
+                      key={song.id} 
+                      song={song}
+                      showDuration={true}
+                      showAddToPlaylist={true}
+                      showAddToQueue={true}
+                      className="hover:bg-gray-800/50"
+                    />
                   ))}
                 </div>
               </section>

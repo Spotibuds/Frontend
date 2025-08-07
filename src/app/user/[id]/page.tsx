@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
+import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
@@ -23,11 +24,11 @@ interface UserProfile {
   followingCount?: number;
   followers?: number;
   following?: number;
-  playlists?: number;
+  playlists?: { id: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   topArtists?: any[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  recentActivity?: any[];
+  recentActivity?: { action: string; item: string; artist?: string; coverUrl?: string; time: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   publicPlaylists?: any[];
 }
@@ -50,7 +51,7 @@ export default function UserProfilePage() {
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
 
   // Define callback functions before useEffects
-  const loadUserProfile = useCallback(async (identifier: string) => {
+  const loadUserProfile = useCallback(async (identifier: string, authenticatedUser?: { id: string; username: string } | null) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -79,6 +80,55 @@ export default function UserProfilePage() {
         return;
       }
 
+      // Use the passed user parameter instead of state currentUser
+      const activeUser = authenticatedUser || currentUser;
+
+      // Fetch listening history for the user's own profile
+      let recentActivity: { action: string; item: string; artist: string; coverUrl?: string; time: string }[] = [];
+      
+      if (activeUser && userData.identityUserId === activeUser.id) {
+        try {
+          const listeningHistory = await userApi.getListeningHistory(userData.identityUserId);
+          // Transform listening history into recent activity format
+          recentActivity = listeningHistory.slice(0, 10).map((item: {songTitle?: string; title?: string; artist?: string | any; coverUrl?: string; playedAt: string}) => ({
+            action: 'Listened to',
+            item: item.songTitle || item.title || 'Unknown Song',
+            artist: typeof item.artist === 'string' ? item.artist : (item.artist?.name || 'Unknown Artist'),
+            coverUrl: item.coverUrl,
+            time: new Date(item.playedAt).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          }));
+        } catch (error) {
+          console.error('Failed to load listening history:', error);
+          // Keep empty array if history fetch fails
+        }
+      }
+
+      // Fetch user's playlists
+      let userPlaylists: any[] = [];
+      try {
+        if (userData.playlists && Array.isArray(userData.playlists) && userData.playlists.length > 0) {
+          // Get playlist details from Music API
+          const { PlaylistService } = await import('@/lib/playlist');
+          const playlistPromises = userData.playlists.map(async (playlistRef: {id: string}) => {
+            try {
+              return await PlaylistService.getPlaylist(playlistRef.id);
+            } catch (error) {
+              console.warn('Failed to load playlist:', playlistRef.id, error);
+              return null;
+            }
+          });
+          const playlists = await Promise.all(playlistPromises);
+          userPlaylists = playlists.filter((playlist: any) => playlist !== null);
+        }
+      } catch (error) {
+        console.error('Failed to load user playlists:', error);
+      }
+
       setProfileUser({
         id: userData.id,
         identityUserId: userData.identityUserId,
@@ -87,10 +137,10 @@ export default function UserProfilePage() {
         bio: userData.bio,
         followerCount: userData.followers || 0,
         followingCount: userData.following || 0,
-        playlists: userData.playlists || 0,
+        playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
         topArtists: [],
-        recentActivity: [],
-        publicPlaylists: [],
+        recentActivity: recentActivity,
+        publicPlaylists: userPlaylists,
       });
 
       if (currentUser && userData.identityUserId !== currentUser.id) {
@@ -109,7 +159,7 @@ export default function UserProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentUser]);
+  }, []); // Remove currentUser from dependencies since we pass the user as parameter
 
   const loadFriendshipStatus = useCallback(async (currentUserId: string, targetUserId: string) => {
     try {
@@ -137,14 +187,14 @@ export default function UserProfilePage() {
     setCurrentUser(user);
 
     if (userId) {
-      loadUserProfile(userId);
+      loadUserProfile(userId, user); // Pass the user directly
       if (user.id !== userId) {
         loadFriendshipStatus(user.id, userId);
       }
     } else {
       router.replace(`/user/${user.id}`);
     }
-  }, [userId, router, loadUserProfile, loadFriendshipStatus]);
+  }, [userId, router]); // Removed the callback functions from dependencies
 
   // Separate useEffect for event listener to avoid dependency issues
   useEffect(() => {
@@ -559,7 +609,7 @@ export default function UserProfilePage() {
               <div className="text-gray-400 text-sm font-medium">Following</div>
             </div>
             <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors">
-              <div className="text-3xl font-bold text-white mb-2">{profileUser.playlists || 0}</div>
+              <div className="text-3xl font-bold text-white mb-2">{Array.isArray(profileUser.playlists) ? profileUser.playlists.length : 0}</div>
               <div className="text-gray-400 text-sm font-medium">Playlists</div>
             </div>
           </div>
@@ -607,18 +657,39 @@ export default function UserProfilePage() {
 
             {/* Recent Activity */}
             <div className="lg:col-span-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
-              <h3 className="text-xl font-bold text-white mb-6">Recent Activity</h3>
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-white">Recent Activity</h3>
+                {(isOwnProfile || !profileUser.isPrivate) && profileUser.recentActivity && profileUser.recentActivity.length > 0 && (
+                  <button 
+                    onClick={() => router.push(`/user/${userId}/listening-history`)}
+                    className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 text-sm font-medium rounded-full border border-green-500/30 transition-colors"
+                  >
+                    View All
+                  </button>
+                )}
+              </div>
               <div className="space-y-4">
                 {(isOwnProfile || !profileUser.isPrivate) ? (
                   profileUser.recentActivity && profileUser.recentActivity.length > 0 ? (
                     profileUser.recentActivity.map((activity, index) => (
                       <div key={index} className="flex items-center justify-between p-4 hover:bg-gray-700/30 rounded-xl transition-colors">
                         <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />
-                            </svg>
-                          </div>
+                          {activity.coverUrl ? (
+                            <MusicImage
+                              src={activity.coverUrl}
+                              alt={activity.item}
+                              fallbackText={activity.item}
+                              size="medium"
+                              type="square"
+                              className="w-12 h-12"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+                              <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
                           <div>
                             <p className="text-white">
                               {activity.action} <span className="font-medium">{activity.item}</span>
@@ -659,7 +730,11 @@ export default function UserProfilePage() {
             {profileUser.publicPlaylists && profileUser.publicPlaylists.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                 {profileUser.publicPlaylists.map((playlist) => (
-                  <div key={playlist.id} className="group cursor-pointer">
+                  <div 
+                    key={playlist.id} 
+                    className="group cursor-pointer"
+                    onClick={() => router.push(`/playlist/${playlist.id}`)}
+                  >
                     <div className="w-full aspect-square bg-gradient-to-br from-green-500 to-blue-500 rounded-xl mb-3 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
                       <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />

@@ -22,6 +22,11 @@ import {
   HeartIcon,
   ArrowLeftOnRectangleIcon,
   BellIcon,
+  ArrowUturnLeftIcon,
+  ArrowPathIcon,
+  Squares2X2Icon as ShuffleIcon,
+  ListBulletIcon,
+  QueueListIcon,
 } from "@heroicons/react/24/outline";
 import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
@@ -33,6 +38,7 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; username: string; displayName?: string; avatarUrl?: string } | null>(null);
@@ -42,7 +48,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const { state, togglePlayPause, seekTo, setVolume } = useAudio();
+  const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
 
   
@@ -170,6 +176,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
     { name: "Home", href: "/dashboard", icon: HomeIcon, current: pathname === "/dashboard" },
     { name: "Browse", href: "/music", icon: MusicalNoteIcon, current: pathname === "/music" },
     { name: "Search", href: "/search", icon: MagnifyingGlassIcon, current: pathname === "/search" },
+    { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
     { name: "Friends", href: "/friends", icon: UserGroupIcon, current: pathname === "/friends" },
     { name: "Chat", href: "/chat", icon: ChatBubbleLeftRightIcon, current: pathname === "/chat" },
   ];
@@ -405,6 +412,79 @@ export default function AppLayout({ children }: AppLayoutProps) {
         {/* Toast notifications */}
         <ToastContainer toasts={toasts} onRemoveToast={removeToast} />
 
+        {/* Queue Panel */}
+        {queueOpen && (
+          <div className="fixed right-4 bottom-24 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-2xl z-50 max-h-96 overflow-hidden">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-white font-semibold">Queue ({state.queue.length})</h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={clearQueue}
+                  className="text-xs text-gray-400 hover:text-white transition-colors px-2 py-1 hover:bg-gray-700 rounded"
+                >
+                  Clear all
+                </button>
+                <button
+                  onClick={() => setQueueOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <XMarkIcon className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="overflow-y-auto max-h-64">
+              {state.queue.length === 0 ? (
+                <div className="p-4 text-center text-gray-400">
+                  <QueueListIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No songs in queue</p>
+                  <p className="text-xs mt-1">Add songs to see them here</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {state.queue.map((song, index) => (
+                    <div key={`${song.id}-${index}`} className="p-3 hover:bg-gray-700/50 transition-colors group">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-700 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
+                          {song.coverUrl ? (
+                            <MusicImage 
+                              src={getProxiedImageUrl(song.coverUrl) || song.coverUrl} 
+                              alt={safeString(song.title)}
+                              className="w-full h-full object-cover"
+                              size="small"
+                            />
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              {safeString(song.title).charAt(0) || 'S'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm truncate">
+                            {safeString(song.title)}
+                          </p>
+                          <p className="text-gray-400 text-xs truncate">
+                            {song.artists ? 
+                              processArtists(song.artists).join(', ') : 
+                              'Unknown Artist'}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => removeFromQueue(index)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-white transition-all"
+                          title="Remove from queue"
+                        >
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Bottom Audio Player */}
         <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-3 lg:pl-64">
           <div className="max-w-screen-xl mx-auto">
@@ -441,8 +521,49 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
               {/* Playback Controls */}
               <div className="flex flex-col items-center space-y-2 flex-1 max-w-2xl">
-                <div className="flex items-center space-x-4">
-                  <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                {/* Control buttons row 1 */}
+                <div className="flex items-center space-x-1 text-xs">
+                  <button 
+                    onClick={() => setShuffle(!shuffleMode)}
+                    className={`p-1 rounded transition-colors ${shuffleMode ? 'text-purple-400' : 'text-gray-400 hover:text-white'}`}
+                    title="Shuffle"
+                  >
+                    <ShuffleIcon className="w-3 h-3" />
+                  </button>
+                  <button 
+                    onClick={() => setRepeat(
+                      repeatMode === 'off' ? 'all' : 
+                      repeatMode === 'all' ? 'one' : 'off'
+                    )}
+                    className={`p-1 rounded transition-colors ${
+                      repeatMode !== 'off' ? 'text-purple-400' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title={`Repeat ${repeatMode}`}
+                  >
+                    {repeatMode === 'one' ? (
+                      <span className="text-xs">1</span>
+                    ) : (
+                      <ArrowPathIcon className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Main control buttons row */}
+                <div className="flex items-center space-x-2">
+                  <button 
+                    onClick={() => skipBackward(10)}
+                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                    title="Skip backward 10s"
+                  >
+                    <ArrowUturnLeftIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+                  </button>
+                  
+                  <button 
+                    onClick={previousSong}
+                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
                     <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   </button>
                   
@@ -458,8 +579,21 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     )}
                   </button>
                   
-                  <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
+                  <button 
+                    onClick={nextSong}
+                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
                     <ForwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  </button>
+
+                  <button 
+                    onClick={() => skipForward(10)}
+                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                    title="Skip forward 10s"
+                  >
+                    <ArrowUturnLeftIcon className="w-4 h-4 text-gray-400 hover:text-white transform scale-x-[-1]" />
                   </button>
                 </div>
                 
@@ -485,6 +619,18 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
               {/* Volume Controls */}
               <div className="flex items-center space-x-2 flex-1 justify-end max-w-sm">
+                <button 
+                  onClick={() => setQueueOpen(!queueOpen)}
+                  className={`relative p-2 rounded-full transition-colors ${queueOpen ? 'bg-gray-700 text-purple-400' : 'hover:bg-gray-700 text-gray-400 hover:text-white'}`}
+                  title={`${queueOpen ? 'Hide' : 'Show'} queue (${state.queue.length})`}
+                >
+                  <QueueListIcon className="w-5 h-5" />
+                  {state.queue.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-purple-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                      {state.queue.length}
+                    </span>
+                  )}
+                </button>
                 <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
                   {state.volume > 0 ? (
                     <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />

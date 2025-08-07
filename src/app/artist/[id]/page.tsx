@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 
 import MusicImage from '@/components/ui/MusicImage';
-import { musicApi, processArtists, safeString, type Artist, type Album, type Song } from '@/lib/api';
-import { useAudio } from '@/lib/audio';
+import SongCard from '@/components/SongCard';
+import AlbumPlayButton from '@/components/ui/AlbumPlayButton';
+import { musicApi, safeString, type Artist, type Album, type Song } from '@/lib/api';
 import MusicalNoteIcon from '@heroicons/react/24/outline/MusicalNoteIcon';
 import Square3Stack3DIcon from '@heroicons/react/24/outline/Square3Stack3DIcon';
 
@@ -19,7 +20,6 @@ export default function ArtistPage() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { playSong } = useAudio();
 
   useEffect(() => {
     const fetchArtistData = async () => {
@@ -67,11 +67,11 @@ export default function ArtistPage() {
 
         if (allSongs.status === 'fulfilled') {
           const artistSongs = allSongs.value.filter(song => {
-            const artists = processArtists(song.artists);
+            const artists = Array.isArray(song.artists) ? song.artists : [song.artists];
             const targetName = safeString(artistData.name).toLowerCase();
-            return artists.some(artist => 
-              safeString(artist).toLowerCase() === targetName ||
-              safeString(artist).toLowerCase().includes(targetName)
+            return artists.some((artist: {id: string; name: string}) => 
+              safeString(artist.name).toLowerCase() === targetName ||
+              safeString(artist.name).toLowerCase().includes(targetName)
             );
           });
           setSongs(artistSongs);
@@ -92,12 +92,6 @@ export default function ArtistPage() {
 
   const handleAlbumClick = (albumId: string) => {
     router.push(`/album/${albumId}`);
-  };
-
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (loading) {
@@ -193,47 +187,14 @@ export default function ArtistPage() {
               <h2 className="text-2xl font-bold text-white mb-6">Popular Songs</h2>
               <div className="space-y-2">
                 {songs.slice(0, 10).map((song, index) => (
-                  <div 
-                    key={song.id}
-                    onClick={() => playSong(song)}
-                    className="group flex items-center p-4 rounded-lg hover:bg-gray-800/50 cursor-pointer transition-all duration-200"
-                  >
-                    <span className="text-gray-400 text-lg font-medium mr-6 w-8 text-center group-hover:text-white">
-                      {index + 1}
-                    </span>
-                    
-                    <div className="flex-shrink-0 mr-4">
-                      <MusicImage
-                        src={song.coverUrl}
-                        alt={safeString(song.title)}
-                        fallbackText={safeString(song.title)}
-                        size="medium"
-                        type="square"
-                        className="shadow-md"
-                      />
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-medium truncate group-hover:underline mb-1">
-                        {safeString(song.title)}
-                      </h3>
-                      <p className="text-gray-400 text-sm truncate">
-                        {processArtists(song.artists).join(', ')}
-                      </p>
-                      {song.album && (
-                        <p className="text-gray-500 text-xs truncate">
-                          {safeString(song.album)}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="text-gray-400 text-sm text-right">
-                      <p>{formatDuration(song.durationSec)}</p>
-                      {song.genre && (
-                        <p className="text-xs text-gray-500">{safeString(song.genre)}</p>
-                      )}
-                    </div>
-                  </div>
+                  <SongCard 
+                    key={song.id} 
+                    song={song}
+                    index={index}
+                    showDuration={true}
+                    showAddToPlaylist={true}
+                    showAddToQueue={true}
+                  />
                 ))}
               </div>
             </section>
@@ -247,10 +208,9 @@ export default function ArtistPage() {
                 {albums.map((album) => (
                   <div 
                     key={album.id} 
-                    onClick={() => handleAlbumClick(album.id)}
-                    className="group cursor-pointer"
+                    className="group cursor-pointer relative"
                   >
-                    <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
+                    <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
                       <MusicImage
                         src={album.coverUrl}
                         alt={safeString(album.title)}
@@ -259,13 +219,23 @@ export default function ArtistPage() {
                         type="square"
                         className="shadow-lg w-full"
                       />
+                      {/* Play button overlay */}
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <AlbumPlayButton 
+                          album={album} 
+                          size="large" 
+                          showAddToQueue={true}
+                        />
+                      </div>
                     </div>
-                    <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
-                      {safeString(album.title)}
-                    </h3>
-                    <p className="text-gray-400 text-xs truncate">
-                      {album.releaseDate ? new Date(album.releaseDate).getFullYear() : 'Album'}
-                    </p>
+                    <div onClick={() => handleAlbumClick(album.id)}>
+                      <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
+                        {safeString(album.title)}
+                      </h3>
+                      <p className="text-gray-400 text-xs truncate">
+                        {album.releaseDate ? new Date(album.releaseDate).getFullYear() : 'Album'}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
