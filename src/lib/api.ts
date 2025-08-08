@@ -662,20 +662,18 @@ export const musicApi = {
 
 export const userApi = {
   // User profile methods
-  getUserProfile: async (userId: string) => {
+  getUserProfile: async (userId: string): Promise<User> => {
     try {
       const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/${userId}`);
       return {
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
-        identityUserId: userData.identityUserId,
         username: userData.userName,
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
         followers: userData.followers.length,
         following: userData.followedUsers.length,
-        playlists: userData.playlists, // Return actual playlists array
-        playlistCount: userData.playlists.length, // Add separate count field
+        playlists: userData.playlists.length, // Convert to count
         isPrivate: userData.isPrivate
       };
     } catch (error) {
@@ -683,20 +681,18 @@ export const userApi = {
     }
   },
 
-  getUserProfileByIdentityId: async (identityUserId: string) => {
+  getUserProfileByIdentityId: async (identityUserId: string): Promise<User> => {
     try {
       const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`);
       return {
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
-        identityUserId: userData.identityUserId,
         username: userData.userName,
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
         followers: userData.followers.length,
         following: userData.followedUsers.length,
-        playlists: userData.playlists, // Return the actual playlists array instead of count
-        playlistCount: userData.playlists.length, // Add a separate count field if needed
+        playlists: userData.playlists.length, // Convert to count
         isPrivate: userData.isPrivate
       };
     } catch (error) {

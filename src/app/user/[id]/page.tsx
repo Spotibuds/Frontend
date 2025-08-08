@@ -8,6 +8,7 @@ import MusicImage from '@/components/ui/MusicImage';
 import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { userApi, identityApi, safeString } from '@/lib/api';
+import { Playlist } from '@/lib/playlist';
 
 
 import { eventBus } from '@/lib/eventBus';
@@ -59,7 +60,19 @@ export default function UserProfilePage() {
       let userData: UserProfile | null = null;
       
       try {
-        userData = await userApi.getUserProfile(identifier);
+        const userResult = await userApi.getUserProfile(identifier);
+        userData = {
+          id: userResult.id,
+          identityUserId: identifier, // Use the identifier as identityUserId since that's what was passed
+          username: userResult.username,
+          displayName: userResult.displayName,
+          bio: userResult.bio,
+          email: userResult.email,
+          isPrivate: userResult.isPrivate,
+          followers: userResult.followers,
+          following: userResult.following,
+          playlists: undefined // We don't have playlist details from getUserProfile anymore
+        };
       } catch {
         try {
           const searchResults = await userApi.searchUsers(identifier);
@@ -67,7 +80,19 @@ export default function UserProfilePage() {
             user.username.toLowerCase() === identifier.toLowerCase()
           );
           if (userByUsername) {
-            userData = await userApi.getUserProfile(userByUsername.id);
+            const userResult = await userApi.getUserProfile(userByUsername.id);
+            userData = {
+              id: userResult.id,
+              identityUserId: userByUsername.id, // Use the found user's id as identityUserId
+              username: userResult.username,
+              displayName: userResult.displayName,
+              bio: userResult.bio,
+              email: userResult.email,
+              isPrivate: userResult.isPrivate,
+              followers: userResult.followers,
+              following: userResult.following,
+              playlists: undefined // We don't have playlist details from getUserProfile anymore
+            };
           }
         } catch {
           // Username search failed, continue with null userData
@@ -80,8 +105,8 @@ export default function UserProfilePage() {
         return;
       }
 
-      // Use the passed user parameter instead of state currentUser
-      const activeUser = authenticatedUser || currentUser;
+      // Use the passed user parameter - don't reference currentUser to avoid dependency issues
+      const activeUser = authenticatedUser;
 
       // Fetch listening history for the user's own profile
       let recentActivity: { action: string; item: string; artist: string; coverUrl?: string; time: string }[] = [];
@@ -90,7 +115,7 @@ export default function UserProfilePage() {
         try {
           const listeningHistory = await userApi.getListeningHistory(userData.identityUserId);
           // Transform listening history into recent activity format
-          recentActivity = listeningHistory.slice(0, 10).map((item: {songTitle?: string; title?: string; artist?: string | any; coverUrl?: string; playedAt: string}) => ({
+          recentActivity = listeningHistory.slice(0, 10).map((item: {songTitle?: string; title?: string; artist?: string | { name: string }; coverUrl?: string; playedAt: string}) => ({
             action: 'Listened to',
             item: item.songTitle || item.title || 'Unknown Song',
             artist: typeof item.artist === 'string' ? item.artist : (item.artist?.name || 'Unknown Artist'),
@@ -109,7 +134,7 @@ export default function UserProfilePage() {
       }
 
       // Fetch user's playlists
-      let userPlaylists: any[] = [];
+      let userPlaylists: Playlist[] = [];
       try {
         if (userData.playlists && Array.isArray(userData.playlists) && userData.playlists.length > 0) {
           // Get playlist details from Music API
@@ -123,7 +148,7 @@ export default function UserProfilePage() {
             }
           });
           const playlists = await Promise.all(playlistPromises);
-          userPlaylists = playlists.filter((playlist: any) => playlist !== null);
+          userPlaylists = playlists.filter((playlist): playlist is Playlist => playlist !== null);
         }
       } catch (error) {
         console.error('Failed to load user playlists:', error);
@@ -143,9 +168,9 @@ export default function UserProfilePage() {
         publicPlaylists: userPlaylists,
       });
 
-      if (currentUser && userData.identityUserId !== currentUser.id) {
+      if (activeUser && userData.identityUserId !== activeUser.id) {
         try {
-          const status = await userApi.getFriendshipStatus(currentUser.id, userData.identityUserId);
+          const status = await userApi.getFriendshipStatus(activeUser.id, userData.identityUserId);
           setFriendshipStatus(status);
         } catch (error) {
           console.warn('Failed to get friendship status:', error);
@@ -194,7 +219,7 @@ export default function UserProfilePage() {
     } else {
       router.replace(`/user/${user.id}`);
     }
-  }, [userId, router]); // Removed the callback functions from dependencies
+  }, [userId, router, loadUserProfile, loadFriendshipStatus]);
 
   // Separate useEffect for event listener to avoid dependency issues
   useEffect(() => {

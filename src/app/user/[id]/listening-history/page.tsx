@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
@@ -29,7 +29,7 @@ export default function ListeningHistoryPage() {
   const router = useRouter();
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryItem[]>([]);
   const [profileUser, setProfileUser] = useState<User | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -40,7 +40,7 @@ export default function ListeningHistoryPage() {
   const userId = Array.isArray(id) ? id[0] : id;
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
 
-  const loadListeningHistory = async (skipAmount = 0, reset = false) => {
+  const loadListeningHistory = useCallback(async (skipAmount = 0, reset = false) => {
     if (!profileUser) return;
 
     if (!reset && skipAmount > 0) {
@@ -65,7 +65,7 @@ export default function ListeningHistoryPage() {
     } finally {
       setIsLoadingMore(false);
     }
-  };
+  }, [profileUser]);
 
   const loadMore = () => {
     if (!isLoadingMore && hasMore) {
@@ -96,7 +96,7 @@ export default function ListeningHistoryPage() {
           const userData = await userApi.getUserProfileByIdentityId(userId);
           setProfileUser({
             id: userData.id,
-            identityUserId: userData.identityUserId,
+            identityUserId: userId, // Use the passed userId as identityUserId
             username: userData.username,
             displayName: userData.displayName,
             isPrivate: userData.isPrivate || false
@@ -125,7 +125,7 @@ export default function ListeningHistoryPage() {
       loadListeningHistory(0, true);
       setIsLoading(false);
     }
-  }, [profileUser, currentUser]);
+  }, [profileUser, currentUser, loadListeningHistory]);
 
   if (isLoading) {
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useRef, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useRef, useEffect, useCallback, ReactNode } from 'react';
 import { Song, API_CONFIG, userApi } from './api';
 
 interface AudioState {
@@ -362,11 +362,30 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     // Reset listening time tracking for new song
     listeningStartTimeRef.current = null;
     hasAddedToHistoryRef.current = false;
-  }, [state.currentSong?.id]);
+  }, [state.currentSong, state.isPlaying]);
 
   // Listening time tracking refs
   const listeningStartTimeRef = useRef<number | null>(null);
   const hasAddedToHistoryRef = useRef<boolean>(false);
+
+  // Function to add songs to listening history
+  const addToListeningHistory = useCallback(async (userId: string, songId: string, actualListenTime?: number) => {
+    try {
+      if (!state.currentSong) return;
+      
+      console.log(`Adding song "${state.currentSong.title}" to listening history after ${actualListenTime || 0} seconds`);
+      
+      await userApi.addToListeningHistory(userId, {
+        songId,
+        songTitle: state.currentSong.title || 'Unknown Song',
+        artist: state.currentSong.artists ? state.currentSong.artists.map(a => a.name).join(', ') : 'Unknown Artist',
+        coverUrl: state.currentSong.coverUrl,
+        duration: actualListenTime || Math.round(state.duration)
+      });
+    } catch (error) {
+      console.warn('Error adding to listening history:', error);
+    }
+  }, [state.currentSong, state.duration]);
 
   // Effect to track listening time and add to history after 30 seconds
   useEffect(() => {
@@ -418,26 +437,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
     };
-  }, [state.currentSong?.id, state.isPlaying]);
-
-  // Function to add songs to listening history
-  const addToListeningHistory = async (userId: string, songId: string, actualListenTime?: number) => {
-    try {
-      if (!state.currentSong) return;
-      
-      console.log(`Adding song "${state.currentSong.title}" to listening history after ${actualListenTime || 0} seconds`);
-      
-      await userApi.addToListeningHistory(userId, {
-        songId,
-        songTitle: state.currentSong.title || 'Unknown Song',
-        artist: state.currentSong.artists ? state.currentSong.artists.map(a => a.name).join(', ') : 'Unknown Artist',
-        coverUrl: state.currentSong.coverUrl,
-        duration: actualListenTime || Math.round(state.duration)
-      });
-    } catch (error) {
-      console.warn('Error adding to listening history:', error);
-    }
-  };
+  }, [addToListeningHistory, state.currentSong, state.isPlaying]);
 
   const playSong = (song: Song, playlist?: Song[]) => {
     if (playlist && playlist.length > 0) {
