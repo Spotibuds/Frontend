@@ -23,9 +23,9 @@ export default function MusicPage() {
         setError(null);
         
         const [songsResult, albumsResult, artistsResult] = await Promise.allSettled([
-          musicApi.getSongs(),
-          musicApi.getAlbums(),
-          musicApi.getArtists(),
+          musicApi.getSongs(10), // Only need 10 songs for display
+          musicApi.getAlbums(20), // Limit albums for better performance
+          musicApi.getArtists(15), // Limit artists for better performance
         ]);
 
         if (songsResult.status === 'fulfilled') {
@@ -198,7 +198,7 @@ export default function MusicPage() {
             </div>
             
             <div className="space-y-2">
-              {songs.slice(0, 10).map((song) => (
+              {songs.map((song) => (
                 <SongCard 
                   key={song.id} 
                   song={song}

@@ -34,37 +34,16 @@ export default function AlbumPage() {
         if (albumData.status === 'fulfilled') {
           setAlbum(albumData.value);
         } else {
-          // If specific album endpoint fails, try to find it from all albums
-          try {
-            const allAlbums = await musicApi.getAlbums();
-            const foundAlbum = allAlbums.find(a => a.id === albumId);
-            if (foundAlbum) {
-              setAlbum(foundAlbum);
-            } else {
-              setError('Album not found');
-              return;
-            }
-          } catch {
-            setError('Failed to load album');
-            return;
-          }
+          console.error('Failed to load album:', albumData.reason);
+          setError('Album not found or unavailable');
+          return;
         }
 
         if (albumSongs.status === 'fulfilled') {
           setSongs(albumSongs.value);
         } else {
-          // If specific album songs endpoint fails, try to find songs from all songs
-          try {
-            const allSongs = await musicApi.getSongs();
-            const albumSpecificSongs = allSongs.filter(song => 
-              song.album?.id === albumId || 
-              (song.album && song.album.title === album?.title)
-            );
-            setSongs(albumSpecificSongs);
-          } catch {
-            console.warn('Failed to load album songs');
-            setSongs([]);
-          }
+          console.warn('Failed to load album songs:', albumSongs.reason);
+          setSongs([]);
         }
       } catch (error) {
         console.error('Error fetching album data:', error);
@@ -81,7 +60,7 @@ export default function AlbumPage() {
     if (!album?.artist) return;
     
     // Try to find the artist by name and navigate to their page
-    musicApi.getArtists().then(artists => {
+    musicApi.getArtists(50).then(artists => { // Limit the search
       const artist = artists.find(a => 
         a.name.toLowerCase() === album.artist?.name.toLowerCase()
       );

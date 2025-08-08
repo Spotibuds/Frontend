@@ -33,12 +33,9 @@ export default function ArtistPage() {
         try {
           artistData = await musicApi.getArtist(artistId);
         } catch {
-          try {
-            const allArtists = await musicApi.getArtists();
-            artistData = allArtists.find(a => a.id === artistId) || null;
-          } catch (e) {
-            console.error('Failed to get artists list:', e);
-          }
+          console.error('Failed to load artist - artist not found');
+          setError('Artist not found');
+          return;
         }
 
         if (!artistData) {
@@ -49,34 +46,22 @@ export default function ArtistPage() {
 
         setArtist(artistData);
 
-        const [allAlbums, allSongs] = await Promise.allSettled([
-          musicApi.getAlbums(),
-          musicApi.getSongs()
+        // Use the new efficient endpoints for artist-specific data
+        const [albumsResult, songsResult] = await Promise.allSettled([
+          musicApi.getArtistAlbums(artistId, 20),
+          musicApi.getArtistSongs(artistId, 30)
         ]);
 
-        if (allAlbums.status === 'fulfilled') {
-          const artistAlbums = allAlbums.value.filter(album => {
-            const albumArtist = safeString(album.artist).toLowerCase();
-            const targetName = safeString(artistData.name).toLowerCase();
-            return albumArtist === targetName || albumArtist.includes(targetName);
-          });
-          setAlbums(artistAlbums);
+        if (albumsResult.status === 'fulfilled') {
+          setAlbums(albumsResult.value);
         } else {
-          console.warn('Failed to load albums:', allAlbums.reason);
+          console.warn('Failed to load artist albums:', albumsResult.reason);
         }
 
-        if (allSongs.status === 'fulfilled') {
-          const artistSongs = allSongs.value.filter(song => {
-            const artists = Array.isArray(song.artists) ? song.artists : [song.artists];
-            const targetName = safeString(artistData.name).toLowerCase();
-            return artists.some((artist: {id: string; name: string}) => 
-              safeString(artist.name).toLowerCase() === targetName ||
-              safeString(artist.name).toLowerCase().includes(targetName)
-            );
-          });
-          setSongs(artistSongs);
+        if (songsResult.status === 'fulfilled') {
+          setSongs(songsResult.value);
         } else {
-          console.warn('Failed to load songs:', allSongs.reason);
+          console.warn('Failed to load artist songs:', songsResult.reason);
         }
 
       } catch (error) {

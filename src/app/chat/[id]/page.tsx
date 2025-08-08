@@ -216,8 +216,8 @@ export default function ChatPage() {
   const processedMessagesRef = useRef(new Set<string>());
 
   useEffect(() => {
-    // Mark messages as read when chat is opened
-    if (chatMessages.length > 0 && currentUser) {
+    // Mark messages as read when chat is opened and SignalR is connected
+    if (chatMessages.length > 0 && currentUser && isConnected) {
       const unreadMessages = chatMessages.filter(msg => 
         !msg.isRead && 
         msg.senderId !== currentUser.id && 
@@ -251,7 +251,7 @@ export default function ChatPage() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR]); // Using chatMessages.length instead of chatMessages to avoid infinite loops
+  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR, isConnected]); // Added isConnected dependency
 
   if (isLoading) {
     return (

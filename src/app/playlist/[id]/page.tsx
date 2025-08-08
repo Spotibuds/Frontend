@@ -31,14 +31,19 @@ export default function PlaylistPage() {
         // Fetch song details for each song in the playlist
         if (playlistData.songs && playlistData.songs.length > 0) {
           try {
-            const allSongs = await musicApi.getSongs();
-            const playlistSongs = playlistData.songs
-              .map(songData => {
-                // Handle both string IDs and Song objects
-                const songId = typeof songData === 'string' ? songData : songData.id;
-                return allSongs.find(song => song.id === songId);
-              })
-              .filter((song): song is Song => song !== undefined);
+            // Fetch individual songs instead of loading all songs
+            const songPromises = playlistData.songs.map(async (songData) => {
+              const songId = typeof songData === 'string' ? songData : songData.id;
+              try {
+                return await musicApi.getSong(songId);
+              } catch (error) {
+                console.warn(`Failed to load song ${songId}:`, error);
+                return null;
+              }
+            });
+            
+            const songResults = await Promise.all(songPromises);
+            const playlistSongs = songResults.filter((song): song is Song => song !== null);
             setSongs(playlistSongs);
           } catch (error) {
             console.warn('Failed to load playlist songs:', error);

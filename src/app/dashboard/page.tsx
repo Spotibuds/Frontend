@@ -32,9 +32,9 @@ export default function DashboardPage() {
         setError(null);
         
         const [songsResult, albumsResult, artistsResult] = await Promise.allSettled([
-          musicApi.getSongs(),
-          musicApi.getAlbums(),
-          musicApi.getArtists(),
+          musicApi.getSongs(20), // Limit to 20 songs for dashboard
+          musicApi.getAlbums(12), // Limit to 12 albums for dashboard  
+          musicApi.getArtists(10), // Limit to 10 artists for dashboard
         ]);
 
         if (songsResult.status === 'fulfilled') {
