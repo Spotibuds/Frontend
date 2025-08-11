@@ -8,7 +8,7 @@ import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
-import { userApi, identityApi, safeString } from '@/lib/api';
+import { userApi, identityApi, safeString, type Artist } from '@/lib/api';
 import { Playlist } from '@/lib/playlist';
 
 
@@ -68,9 +68,9 @@ export default function UserProfilePage() {
         return;
       }
       const musicApi = (await import('@/lib/api')).musicApi;
-      const allArtists = await musicApi.getArtists();
-      const hydrated = profileUser.topArtists.map((a: any) => {
-        const found = allArtists.find((art: any) => art.name.toLowerCase() === a.name.toLowerCase());
+      const allArtists: Artist[] = await musicApi.getArtists();
+      const hydrated = profileUser.topArtists.map((a: { name: string; count: number }) => {
+        const found = allArtists.find((art: Artist) => art.name.toLowerCase() === a.name.toLowerCase());
         return {
           id: found?.id || '',
           name: a.name,

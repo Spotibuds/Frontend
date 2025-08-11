@@ -1,5 +1,12 @@
 'use client';
 
+// Internal augmentation for our audio element to track direct/proxy URLs
+type ExtendedHTMLAudioElement = HTMLAudioElement & {
+  _directUrl?: string;
+  _proxyUrl?: string;
+  _proxyTried?: boolean;
+};
+
 import { createContext, useContext, useReducer, useRef, useEffect, useCallback, ReactNode } from 'react';
 import { Song, API_CONFIG, userApi } from './api';
 
@@ -273,11 +280,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         src: audio.src
       });
       // On first error with direct URL, fallback to proxy endpoint and retry once
-      const anyAudio = audio as any;
-      const direct = anyAudio._directUrl as string | undefined;
-      const proxy = anyAudio._proxyUrl as string | undefined;
-      if (direct && proxy && audio.src === direct && !anyAudio._proxyTried) {
-        anyAudio._proxyTried = true;
+      const ext = audio as ExtendedHTMLAudioElement;
+      const direct = ext._directUrl;
+      const proxy = ext._proxyUrl;
+      if (direct && proxy && audio.src === direct && !ext._proxyTried) {
+        ext._proxyTried = true;
         console.warn('Falling back to proxied audio endpoint');
         audio.src = proxy;
         audio.load();
@@ -323,7 +330,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('playing', handlePlaying);
     };
-  }, [state.isSeeking, state.repeatMode]); // Add dependency for repeatMode
+  }, [state.isSeeking, state.repeatMode, state.isPlaying]); // include isPlaying for completeness
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -369,10 +376,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       ? directUrl
       : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(directUrl)}`;
     const useDirect = !!directUrl && (!isAzureBlob || hasSasToken);
-    const anyAudio = audio as any;
-    anyAudio._directUrl = useDirect ? directUrl : undefined;
-    anyAudio._proxyUrl = proxyUrl;
-    anyAudio._proxyTried = !useDirect; // if we start with proxy, mark as tried to suppress fallback
+  const ext = audio as ExtendedHTMLAudioElement;
+  ext._directUrl = useDirect ? directUrl : undefined;
+  ext._proxyUrl = proxyUrl;
+  ext._proxyTried = !useDirect; // if we start with proxy, mark as tried to suppress fallback
     audio.crossOrigin = 'anonymous';
     audio.src = useDirect ? directUrl : proxyUrl;
     audio.load();

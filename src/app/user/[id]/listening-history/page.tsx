@@ -35,10 +35,11 @@ export default function ListeningHistoryPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [skip, setSkip] = useState(0);
-  const limit = 50;
+  // Pagination controls (reserved for future incremental loading)
+  // const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // const [hasMore, setHasMore] = useState(true);
+  // const [skip, setSkip] = useState(0);
+  // const limit = 50;
 
   const userId = Array.isArray(id) ? id[0] : id;
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
@@ -46,12 +47,12 @@ export default function ListeningHistoryPage() {
   const loadListeningHistory = useCallback(async (skipAmount = 0, reset = false) => {
     if (!profileUser) return;
 
-    if (!reset && skipAmount > 0) {
-      setIsLoadingMore(true);
-    }
+  // if (!reset && skipAmount > 0) {
+  //   setIsLoadingMore(true);
+  // }
 
     try {
-      const history = await userApi.getListeningHistory(profileUser.identityUserId, limit, skipAmount);
+  const history = await userApi.getListeningHistory(profileUser.identityUserId, 50, skipAmount);
       
       if (reset) {
         setListeningHistory(history);
@@ -59,24 +60,17 @@ export default function ListeningHistoryPage() {
         setListeningHistory(prev => [...prev, ...history]);
       }
       
-      setHasMore(history.length === limit);
+  // setHasMore(history.length === limit);
     } catch (error) {
       console.error('Failed to load listening history:', error);
       if (skipAmount === 0) {
         setError('Failed to load listening history');
       }
     } finally {
-      setIsLoadingMore(false);
+      // setIsLoadingMore(false);
     }
   }, [profileUser]);
 
-  const loadMore = () => {
-    if (!isLoadingMore && hasMore) {
-      const newSkip = skip + limit;
-      setSkip(newSkip);
-      loadListeningHistory(newSkip);
-    }
-  };
 
   const getArtistName = (artist: string | { name: string }) => {
     return typeof artist === 'string' ? artist : (artist?.name || 'Unknown Artist');
@@ -174,9 +168,9 @@ export default function ListeningHistoryPage() {
   // List of months from registration to now
   const monthOptions = useMemo(() => {
     if (!registrationDate) return [];
-    const now = new Date();
-    const months = [];
-    let d = new Date(registrationDate.getFullYear(), registrationDate.getMonth(), 1);
+  const now = new Date();
+  const months: string[] = [];
+  const d = new Date(registrationDate.getFullYear(), registrationDate.getMonth(), 1);
     while (d <= now) {
       months.push(`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}`);
       d.setMonth(d.getMonth() + 1);

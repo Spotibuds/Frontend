@@ -138,7 +138,7 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.href = '/';
     }
   };
 
