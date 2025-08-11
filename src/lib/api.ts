@@ -126,14 +126,21 @@ const refreshToken = async (): Promise<string | null> => {
 
 async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  
   const defaultHeaders: HeadersInit = {
     'Content-Type': 'application/json',
   };
-
   if (token) {
     defaultHeaders['Authorization'] = `Bearer ${token}`;
   }
+  // Helper: redirect to login
+  const redirectToLogin = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+  };
 
   // Debug logging for friend requests (disabled to reduce console noise)
   // if (url.includes('/api/friends/')) {
@@ -186,6 +193,7 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
             return apiRequest<T>(url, options);
           } else {
             processQueue(new Error('Token refresh failed'));
+            redirectToLogin();
             throw new Error('Authentication failed. Please log in again.');
           }
         } finally {
@@ -716,7 +724,7 @@ export const userApi = {
     }
   },
 
-  getUserProfileByIdentityId: async (identityUserId: string): Promise<User> => {
+  getUserProfileByIdentityId: async (identityUserId: string): Promise<User & { createdAt?: string }> => {
     try {
       const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`);
       return {
@@ -728,7 +736,8 @@ export const userApi = {
         followers: userData.followers.length,
         following: userData.followedUsers.length,
         playlists: userData.playlists.length, // Convert to count
-        isPrivate: userData.isPrivate
+        isPrivate: userData.isPrivate,
+        createdAt: userData.createdAt
       };
     } catch (error) {
       throw error;
@@ -925,6 +934,10 @@ export const userApi = {
 
   getListeningHistory: (userId: string, limit = 50, skip = 0) =>
     apiRequest<Array<{ songId: string; songTitle: string; artist: string; duration?: number; playedAt: string }>>(`${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`),
+
+  // Weekly Top Artists (current week, cached server-side)
+  getWeeklyTopArtists: (identityUserId: string) =>
+    apiRequest<Array<{ name: string; count: number }>>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/top-artists/week/current`),
 }; 
 
 export interface FollowStats {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
@@ -28,6 +29,13 @@ interface UserProfile {
   playlists?: { id: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   topArtists?: any[];
+  // Enhanced: hydrated artist details
+  hydratedTopArtists?: Array<{
+    id: string;
+    name: string;
+    imageUrl?: string;
+    count: number;
+  }>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   recentActivity?: { action: string; item: string; artist?: string; coverUrl?: string; time: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,6 +49,7 @@ export default function UserProfilePage() {
   
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
+  const [hydratedTopArtists, setHydratedTopArtists] = useState<Array<{id: string; name: string; imageUrl?: string; count: number;}>>([]);
   const [friendshipStatus, setFriendshipStatus] = useState<{ status: string; friendshipId?: string; requesterId?: string; addresseeId?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
@@ -51,7 +60,28 @@ export default function UserProfilePage() {
 
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
 
-  // Define callback functions before useEffects
+  // Hydrate top artists with artist details (id, image)
+  useEffect(() => {
+    const fetchArtistDetails = async () => {
+      if (!profileUser?.topArtists || profileUser.topArtists.length === 0) {
+        setHydratedTopArtists([]);
+        return;
+      }
+      const musicApi = (await import('@/lib/api')).musicApi;
+      const allArtists = await musicApi.getArtists();
+      const hydrated = profileUser.topArtists.map((a: any) => {
+        const found = allArtists.find((art: any) => art.name.toLowerCase() === a.name.toLowerCase());
+        return {
+          id: found?.id || '',
+          name: a.name,
+          imageUrl: found?.imageUrl,
+          count: a.count,
+        };
+      });
+      setHydratedTopArtists(hydrated);
+    };
+    fetchArtistDetails();
+  }, [profileUser?.topArtists]);
   const loadUserProfile = useCallback(async (identifier: string, authenticatedUser?: { id: string; username: string } | null) => {
     try {
       setIsLoading(true);
@@ -154,6 +184,17 @@ export default function UserProfilePage() {
         console.error('Failed to load user playlists:', error);
       }
 
+      // Fetch weekly top artists (only for own profile as marked private)
+      let topArtists: Array<{ name: string; count: number }> = [];
+      try {
+        if (userData.identityUserId) {
+          topArtists = await userApi.getWeeklyTopArtists(userData.identityUserId);
+        }
+  } catch {
+        // Non-blocking
+        topArtists = [];
+      }
+
       setProfileUser({
         id: userData.id,
         identityUserId: userData.identityUserId,
@@ -163,7 +204,7 @@ export default function UserProfilePage() {
         followerCount: userData.followers || 0,
         followingCount: userData.following || 0,
         playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
-        topArtists: [],
+        topArtists,
         recentActivity: recentActivity,
         publicPlaylists: userPlaylists,
       });
@@ -645,7 +686,7 @@ export default function UserProfilePage() {
             {(isOwnProfile || !profileUser.isPrivate) && (
               <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-white">Top Artists</h3>
+                  <h3 className="text-xl font-bold text-white">Top Artists (This Week)</h3>
                   {isOwnProfile && (
                     <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-medium rounded-full">
                       Private
@@ -653,18 +694,26 @@ export default function UserProfilePage() {
                   )}
                 </div>
                 <div className="space-y-4">
-                  {profileUser.topArtists && profileUser.topArtists.length > 0 ? (
-                    profileUser.topArtists.map((artist, index) => (
-                      <div key={index} className="flex items-center space-x-4 p-3 hover:bg-gray-700/30 rounded-xl transition-colors">
-                        <span className="text-gray-400 font-bold text-lg w-6">{index + 1}</span>
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold text-sm">{safeString(artist.name).charAt(0)}</span>
+                  {hydratedTopArtists && hydratedTopArtists.length > 0 ? (
+                    hydratedTopArtists.slice(0, 3).map((artist, index) => (
+                      <Link key={artist.id || artist.name} href={artist.id ? `/artist/${artist.id}` : '#'} className="block">
+                        <div className="flex items-center space-x-4 p-3 hover:bg-gray-700/30 rounded-xl transition-colors">
+                          <span className="text-gray-400 font-bold text-lg w-6">{index + 1}</span>
+                          <MusicImage
+                            src={artist.imageUrl}
+                            alt={safeString(artist.name || '')}
+                            fallbackText={safeString(artist.name || '')}
+                            size="small"
+                            type="circle"
+                            className="border-2 border-blue-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-medium truncate">{safeString(artist.name || '')}</p>
+                            <p className="text-gray-400 text-sm">Artist</p>
+                          </div>
+                          <span className="text-blue-400 font-bold text-lg ml-2">{artist.count}</span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium truncate">{safeString(artist.name)}</p>
-                          <p className="text-gray-400 text-sm">Artist</p>
-                        </div>
-                      </div>
+                      </Link>
                     ))
                   ) : (
                     <div className="text-center py-8">

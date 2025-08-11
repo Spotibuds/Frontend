@@ -82,11 +82,11 @@ function audioReducer(state: AudioState, action: AudioAction): AudioState {
         return {
           ...state,
           currentSong: nextSong,
+          queue: state.queue.slice(1),
           currentTime: 0,
-          isSeeking: false,
-          queue: state.queue.slice(1) // Remove the first song from queue
+          isSeeking: false
         };
-      }
+  }
       
       // Otherwise, use regular playlist navigation
       const nextIndex = getNextIndex(state.currentIndex, state.playlist.length, state.shuffleMode, state.repeatMode);
@@ -272,6 +272,20 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         readyState: audio.readyState,
         src: audio.src
       });
+      // On first error with direct URL, fallback to proxy endpoint and retry once
+      const anyAudio = audio as any;
+      const direct = anyAudio._directUrl as string | undefined;
+      const proxy = anyAudio._proxyUrl as string | undefined;
+      if (direct && proxy && audio.src === direct && !anyAudio._proxyTried) {
+        anyAudio._proxyTried = true;
+        console.warn('Falling back to proxied audio endpoint');
+        audio.src = proxy;
+        audio.load();
+        if (state.isPlaying) {
+          audio.play().catch(console.error);
+        }
+        return;
+      }
       dispatch({ type: 'SET_LOADING', payload: false });
       dispatch({ type: 'PAUSE' });
     };
@@ -346,13 +360,37 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !state.currentSong) return;
 
-    // Load the new song
-    const proxiedAudioUrl = state.currentSong.fileUrl?.includes('/api/media/audio') 
-      ? state.currentSong.fileUrl
-      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(state.currentSong.fileUrl || '')}`;
-
-    audio.src = proxiedAudioUrl;
+    // Load the new song: prefer direct blob URL; fallback to proxy on error
+    const directUrl = state.currentSong.fileUrl || '';
+    const isAzureBlob = directUrl.includes('blob.core.windows.net');
+    // Heuristic: only use direct Azure Blob URL if it carries a SAS/token; otherwise proxy to avoid CORS/public-access errors
+    const hasSasToken = /[?&](sig|sp|se|sr|skoid|sktid|skt|ske|sks|skv)=/i.test(directUrl);
+    const proxyUrl = directUrl.includes('/api/media/audio')
+      ? directUrl
+      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(directUrl)}`;
+    const useDirect = !!directUrl && (!isAzureBlob || hasSasToken);
+    const anyAudio = audio as any;
+    anyAudio._directUrl = useDirect ? directUrl : undefined;
+    anyAudio._proxyUrl = proxyUrl;
+    anyAudio._proxyTried = !useDirect; // if we start with proxy, mark as tried to suppress fallback
+    audio.crossOrigin = 'anonymous';
+    audio.src = useDirect ? directUrl : proxyUrl;
     audio.load();
+
+    // If we were already in playing state, ensure the new source actually starts
+    if (state.isPlaying) {
+      const tryPlay = () => {
+        if (state.isPlaying) {
+          audio.play().catch(console.error);
+        }
+        audio.removeEventListener('canplay', tryPlay);
+      };
+      if (audio.readyState >= 2) {
+        audio.play().catch(console.error);
+      } else {
+        audio.addEventListener('canplay', tryPlay);
+      }
+    }
 
     // Reset playing state temporarily while loading
     if (state.isPlaying) {

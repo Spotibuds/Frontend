@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
@@ -28,6 +28,9 @@ export default function ListeningHistoryPage() {
   const { id } = useParams();
   const router = useRouter();
   const [listeningHistory, setListeningHistory] = useState<ListeningHistoryItem[]>([]);
+  const [registrationDate, setRegistrationDate] = useState<Date | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [selectedWeek, setSelectedWeek] = useState<number>(1);
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -101,6 +104,12 @@ export default function ListeningHistoryPage() {
             displayName: userData.displayName,
             isPrivate: userData.isPrivate || false
           });
+          if ('createdAt' in userData && userData.createdAt) {
+            setRegistrationDate(new Date(userData.createdAt));
+          } else {
+            // fallback: use earliest playedAt in history after fetch
+            setRegistrationDate(null);
+          }
         } catch (error) {
           console.error('Failed to load user profile:', error);
           setError('Failed to load user profile');
@@ -115,17 +124,77 @@ export default function ListeningHistoryPage() {
     if (profileUser && currentUser) {
       // Check if user can view this listening history
       const canView = currentUser.id === profileUser.identityUserId || !profileUser.isPrivate;
-      
       if (!canView) {
         setError('This user\'s listening history is private');
         setIsLoading(false);
         return;
       }
-
       loadListeningHistory(0, true);
       setIsLoading(false);
     }
   }, [profileUser, currentUser, loadListeningHistory]);
+
+  // Set registration date fallback if not set
+  useEffect(() => {
+    if (!registrationDate && listeningHistory.length > 0) {
+      const earliest = listeningHistory.reduce((min, item) => {
+        const d = new Date(item.playedAt);
+        return d < min ? d : min;
+      }, new Date(listeningHistory[0].playedAt));
+      setRegistrationDate(earliest);
+    }
+  }, [registrationDate, listeningHistory]);
+
+  // Set default selected month/week after data load
+  useEffect(() => {
+    if (listeningHistory.length > 0) {
+      const latest = new Date(listeningHistory[0].playedAt);
+      const monthStr = `${latest.getFullYear()}-${(latest.getMonth()+1).toString().padStart(2,'0')}`;
+      setSelectedMonth(monthStr);
+      setSelectedWeek(1);
+    }
+  }, [listeningHistory]);
+  // Group history by month and week
+  const groupedHistory = useMemo(() => {
+    if (!registrationDate || listeningHistory.length === 0) return {};
+    const groups: Record<string, Record<number, ListeningHistoryItem[]>> = {};
+    listeningHistory.forEach(item => {
+      const d = new Date(item.playedAt);
+      const monthKey = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}`;
+      // Week number in month (1-based)
+      const firstOfMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      const week = Math.floor((d.getDate() + firstOfMonth.getDay() - 1) / 7) + 1;
+      if (!groups[monthKey]) groups[monthKey] = {};
+      if (!groups[monthKey][week]) groups[monthKey][week] = [];
+      groups[monthKey][week].push(item);
+    });
+    return groups;
+  }, [listeningHistory, registrationDate]);
+
+  // List of months from registration to now
+  const monthOptions = useMemo(() => {
+    if (!registrationDate) return [];
+    const now = new Date();
+    const months = [];
+    let d = new Date(registrationDate.getFullYear(), registrationDate.getMonth(), 1);
+    while (d <= now) {
+      months.push(`${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}`);
+      d.setMonth(d.getMonth() + 1);
+    }
+    return months.reverse(); // latest first
+  }, [registrationDate]);
+
+  // Weeks in selected month
+  const weekOptions = useMemo(() => {
+    if (!selectedMonth || !groupedHistory[selectedMonth]) return [];
+    return Object.keys(groupedHistory[selectedMonth]).map(Number).sort((a,b)=>a-b);
+  }, [selectedMonth, groupedHistory]);
+
+  // Songs for selected month/week
+  const selectedSongs = useMemo(() => {
+    if (!selectedMonth || !selectedWeek || !groupedHistory[selectedMonth] || !groupedHistory[selectedMonth][selectedWeek]) return [];
+    return groupedHistory[selectedMonth][selectedWeek];
+  }, [selectedMonth, selectedWeek, groupedHistory]);
 
   if (isLoading) {
   return (
@@ -204,10 +273,38 @@ export default function ListeningHistoryPage() {
             </div>
           </div>
 
-          {/* Listening History List */}
-          {listeningHistory.length > 0 ? (
+          {/* Month Selector */}
+          {monthOptions.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {monthOptions.map(month => (
+                <button
+                  key={month}
+                  className={`px-4 py-2 rounded-full font-semibold transition-colors ${selectedMonth === month ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                  onClick={() => { setSelectedMonth(month); setSelectedWeek(1); }}
+                >
+                  {new Date(month + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Week Selector */}
+          {weekOptions.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-6">
+              {weekOptions.map(week => (
+                <button
+                  key={week}
+                  className={`px-3 py-1 rounded-full font-medium transition-colors ${selectedWeek === week ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                  onClick={() => setSelectedWeek(week)}
+                >
+                  Week {week}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Grouped Songs List */}
+          {selectedSongs.length > 0 ? (
             <div className="space-y-2">
-              {listeningHistory.map((item, index) => (
+              {selectedSongs.map((item, index) => (
                 <div
                   key={`${item.songId}-${item.playedAt}-${index}`}
                   className="flex items-center space-x-4 p-4 hover:bg-gray-800/50 rounded-lg transition-colors group"
@@ -221,7 +318,6 @@ export default function ListeningHistoryPage() {
                       <PlayIcon className="w-4 h-4 text-white ml-0.5" />
                     </button>
                   </div>
-
                   {/* Song Cover */}
                   <div className="flex-shrink-0">
                     {item.coverUrl ? (
@@ -241,13 +337,11 @@ export default function ListeningHistoryPage() {
                       </div>
                     )}
                   </div>
-
                   {/* Song Info */}
                   <div className="flex-1 min-w-0">
                     <h3 className="text-white font-medium truncate">{item.songTitle}</h3>
                     <p className="text-gray-400 text-sm truncate">{getArtistName(item.artist)}</p>
                   </div>
-
                   {/* Duration and Time */}
                   <div className="flex items-center space-x-4 text-gray-400 text-sm">
                     <span className="text-xs">
@@ -262,19 +356,6 @@ export default function ListeningHistoryPage() {
                   </div>
                 </div>
               ))}
-
-              {/* Load More Button */}
-              {hasMore && (
-                <div className="text-center pt-6">
-                  <button
-                    onClick={loadMore}
-                    disabled={isLoadingMore}
-                    className="px-6 py-3 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-full transition-colors"
-                  >
-                    {isLoadingMore ? 'Loading...' : 'Load More'}
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             <div className="text-center py-16 bg-gray-800/40 backdrop-blur-sm border border-gray-700 rounded-2xl">
