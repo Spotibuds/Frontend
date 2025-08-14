@@ -239,7 +239,25 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
       throw new Error(errorMessage);
     }
 
-    return response.json();
+    // Safely handle empty or non-JSON responses
+    const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+    if (response.status === 204) {
+      return undefined as unknown as T;
+    }
+    const responseText = await response.text();
+    if (!responseText) {
+      return undefined as unknown as T;
+    }
+    if (contentType.includes('application/json')) {
+      try {
+        return JSON.parse(responseText) as T;
+      } catch {
+        // If body isn't valid JSON despite header, return raw text
+        return responseText as unknown as T;
+      }
+    }
+    // For other content types, return raw text
+    return responseText as unknown as T;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {

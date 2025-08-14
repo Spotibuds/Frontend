@@ -17,6 +17,12 @@ export default function EditProfilePage() {
     bio: '',
     isPrivate: false
   });
+  const [initialData, setInitialData] = useState({
+    username: '',
+    displayName: '',
+    bio: '',
+    isPrivate: false
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -35,12 +41,14 @@ export default function EditProfilePage() {
   const loadUserProfile = async (userId: string) => {
     try {
       const userData = await userApi.getUserProfileByIdentityId(userId);
-      setProfileData({
+      const nextData = {
         username: userData.username,
         displayName: userData.displayName || '',
         bio: userData.bio || '',
         isPrivate: userData.isPrivate || false
-      });
+      };
+      setProfileData(nextData);
+      setInitialData(nextData);
     } catch (error) {
       console.error('Failed to load user profile:', error);
     } finally {
@@ -71,8 +79,18 @@ export default function EditProfilePage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const hasChanges = () => {
+    return (
+      profileData.username !== initialData.username ||
+      profileData.displayName !== initialData.displayName ||
+      profileData.bio !== initialData.bio ||
+      profileData.isPrivate !== initialData.isPrivate
+    );
+  };
+
   const handleSave = async () => {
     if (!currentUser || !validateForm()) return;
+    if (!hasChanges()) return;
 
     setIsSaving(true);
     try {
@@ -250,7 +268,7 @@ export default function EditProfilePage() {
           <Button
             onClick={handleSave}
             className="bg-green-500 hover:bg-green-600 text-black font-semibold px-8"
-            disabled={isSaving}
+            disabled={isSaving || !hasChanges()}
           >
             {isSaving ? (
               <div className="flex items-center space-x-2">
