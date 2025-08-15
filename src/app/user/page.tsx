@@ -1,35 +1,27 @@
 "use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
-import { identityApi } from '@/lib/api';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { identityApi } from "@/lib/api";
 
-export default function UserRedirectPage() {
+export default function UserIndexPage() {
   const router = useRouter();
 
   useEffect(() => {
-    try {
-      const currentUser = identityApi.getCurrentUser();
-      if (currentUser && currentUser.id) {
-        router.replace(`/user/${currentUser.id}`);
-      } else {
-        router.replace('/dashboard');
-      }
-    } catch (error) {
-      console.error('Failed to get current user:', error);
-      router.replace('/dashboard');
+    const me = identityApi.getCurrentUser();
+    if (me?.id) {
+      router.replace(`/user/${me.id}`);
+    } else {
+      router.replace("/");
     }
   }, [router]);
 
   return (
-    <AppLayout>
-      <div className="p-6 flex items-center justify-center">
-        <div className="flex items-center space-x-3">
-          <div className="w-6 h-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent"></div>
-          <span className="text-white">Loading your profile...</span>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-black">
+      <div className="text-center">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <div className="text-white">Loading your profile…</div>
       </div>
-    </AppLayout>
+    </div>
   );
 }

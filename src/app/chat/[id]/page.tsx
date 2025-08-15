@@ -9,6 +9,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Toast } from '../../../components/ui/Toast';
 import MusicImage from '../../../components/ui/MusicImage';
+import AppLayout from '@/components/layout/AppLayout';
 
 interface User {
   id: string;
@@ -214,135 +215,167 @@ export default function ChatPage() {
 
   // Track which messages have been marked as read to avoid infinite loops
   const processedMessagesRef = useRef(new Set<string>());
+  const pendingRetryRef = useRef(new Set<string>());
 
   useEffect(() => {
     // Mark messages as read when chat is opened and SignalR is connected
     if (chatMessages.length > 0 && currentUser && isConnected) {
-      const unreadMessages = chatMessages.filter(msg => 
-        !msg.isRead && 
-        msg.senderId !== currentUser.id && 
+      const unreadMessages = chatMessages.filter(msg =>
+        !msg.isRead &&
+        msg.senderId !== currentUser.id &&
         !processedMessagesRef.current.has(msg.messageId)
       );
-      
+
       unreadMessages.forEach(async (msg) => {
         // Mark this message as being processed
         processedMessagesRef.current.add(msg.messageId);
-        
+
         try {
           // Mark as read via SignalR for real-time updates
           await markMessageAsReadSignalR(msg.messageId);
-          
+
           // Also mark via API for persistence (backup)
           try {
             await userApi.markMessageAsRead(msg.messageId);
           } catch (apiError) {
             console.warn('API mark as read failed, but SignalR succeeded:', apiError);
           }
-          
+
           // Update local state
-          setChatMessages(prev => prev.map(m => 
+          setChatMessages(prev => prev.map(m =>
             m.messageId === msg.messageId ? { ...m, isRead: true } : m
           ));
         } catch (error) {
           console.error('Failed to mark message as read:', error);
-          // Remove from processed set on error so it can be retried
+          // Remove from processed set on error so it can be retried, and queue for reconnect
           processedMessagesRef.current.delete(msg.messageId);
+          pendingRetryRef.current.add(msg.messageId);
         }
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR, isConnected]); // Added isConnected dependency
+  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR, isConnected]);
+
+  // Retry any failed read acknowledgements once the connection is back
+  useEffect(() => {
+    if (!isConnected || !currentUser) return;
+    if (pendingRetryRef.current.size === 0) return;
+
+    const retry = async () => {
+      const ids = Array.from(pendingRetryRef.current);
+      for (const id of ids) {
+        try {
+          await markMessageAsReadSignalR(id);
+          try {
+            await userApi.markMessageAsRead(id);
+          } catch {}
+          setChatMessages(prev => prev.map(m => m.messageId === id ? { ...m, isRead: true } : m));
+          pendingRetryRef.current.delete(id);
+          processedMessagesRef.current.add(id);
+        } catch (e) {
+          // Keep it in the retry set; will retry on next reconnect
+        }
+      }
+    };
+
+    retry();
+  }, [isConnected, currentUser, markMessageAsReadSignalR, setChatMessages]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading chat...</p>
+      <AppLayout>
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+            <p className="mt-4 text-gray-400">Loading chat...</p>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!currentUser) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-white mb-2">Authentication Required</h2>
-          <p className="text-gray-400">Please log in to access this chat.</p>
+      <AppLayout>
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-white mb-2">Authentication Required</h2>
+            <p className="text-gray-400">Please log in to access this chat.</p>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!chat) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
+      <AppLayout>
+        <div className="p-6 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-white mb-2">Chat Not Found</h2>
+            <p className="text-gray-400">This chat doesn&apos;t exist or you don&apos;t have access to it.</p>
           </div>
-          <h2 className="text-xl font-semibold text-white mb-2">Chat Not Found</h2>
-          <p className="text-gray-400">This chat doesn&apos;t exist or you don&apos;t have access to it.</p>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900">
-      <div className="flex flex-col h-screen">
-        {/* Chat Header */}
-        <div className="bg-white/10 backdrop-blur-sm border-b border-white/20 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <MusicImage
-                src={otherParticipant?.avatarUrl} // In real app, get other participant's avatar
-                alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
-                className="w-10 h-10 rounded-full"
-              />
-              <div>
-                <h1 className="text-lg font-semibold text-white">
-                  {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
-                </h1>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={`w-2 h-2 rounded-full ${
-                    isConnected ? 'bg-green-500' : 'bg-red-500'
-                  }`}></span>
-                  <span className="text-gray-400">
-                    {connectionState === 'Connected' ? 'Online' : connectionState}
-                  </span>
+    <AppLayout>
+  <div className="fixed inset-x-0 top-16 bottom-28 lg:left-64">
+        <div className="flex flex-col h-full">
+          {/* Chat Header */}
+          <div className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <MusicImage
+                  src={otherParticipant?.avatarUrl}
+                  alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
+                  className="w-10 h-10 rounded-full"
+                />
+                <div>
+                  <h1 className="text-lg font-semibold text-white">
+                    {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
+                  </h1>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                    <span className="text-gray-400">
+                      {connectionState === 'Connected' ? 'Online' : connectionState}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                className="text-gray-400 hover:text-white"
-                onClick={() => {/* Add call functionality */}}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-              </Button>
-              <Button
-                variant="ghost"
-                className="text-gray-400 hover:text-white"
-                onClick={() => {/* Add video call functionality */}}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  className="text-gray-400 hover:text-white"
+                  onClick={() => { /* Add call functionality */ }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="text-gray-400 hover:text-white"
+                  onClick={() => { /* Add video call functionality */ }}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Messages Area */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
           {chatMessages.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -395,42 +428,43 @@ export default function ChatPage() {
             })
           )}
           <div ref={messagesEndRef} />
-        </div>
+          </div>
 
-        {/* Message Input */}
-        <div className="bg-white/10 backdrop-blur-sm border-t border-white/20 p-4">
-          <div className="flex gap-2">
-            <Input
-              ref={inputRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type a message..."
-              className="flex-1 bg-gray-800/50 border-gray-600 text-white placeholder-gray-400"
-              disabled={!isConnected}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!message.trim() || !isConnected}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            </Button>
+          {/* Message Input */}
+          <div className="p-4">
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Type a message..."
+                className="flex-1 bg-gray-800/50 border-gray-600 text-white placeholder-gray-400"
+                disabled={!isConnected}
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={!message.trim() || !isConnected}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Toasts */}
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => removeToast(toast.id)}
-        />
-      ))}
-    </div>
+        {/* Toasts */}
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
+    </AppLayout>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import MusicImage from "@/components/ui/MusicImage";
@@ -13,6 +14,7 @@ import {
   UserGroupIcon,
 
   ChatBubbleLeftRightIcon,
+  NewspaperIcon,
   SpeakerWaveIcon,
   SpeakerXMarkIcon,
   PlayIcon,
@@ -174,6 +176,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   const navigation = [
     { name: "Home", href: "/dashboard", icon: HomeIcon, current: pathname === "/dashboard" },
+  { name: "Feed", href: "/feed", icon: NewspaperIcon, current: pathname === "/feed" },
     { name: "Browse", href: "/music", icon: MusicalNoteIcon, current: pathname === "/music" },
     { name: "Search", href: "/search", icon: MagnifyingGlassIcon, current: pathname === "/search" },
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
@@ -224,10 +227,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col`}>
         {/* Sidebar header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
-          <div className="flex items-center space-x-3">
-            <MusicalNoteIcon className="h-8 w-8 text-purple-400" />
-            <span className="text-xl font-bold text-white">SpotiBuds</span>
-          </div>
+          <Link href="/dashboard" className="flex items-center space-x-3">
+            <Image src="/logo.svg" alt="Spotibuds Logo" width={200} height={60} className="h-12 w-auto" priority />
+          </Link>
           <button
             className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
             onClick={() => setSidebarOpen(false)}

@@ -7,7 +7,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
-import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon, HeartIcon } from '@heroicons/react/24/outline';
 import { userApi, identityApi, safeString, type Artist } from '@/lib/api';
 import { Playlist } from '@/lib/playlist';
 
@@ -55,6 +55,8 @@ export default function UserProfilePage() {
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string }>>([]);
+  const [isLoadingReactions, setIsLoadingReactions] = useState(false);
 
 
 
@@ -82,6 +84,18 @@ export default function UserProfilePage() {
     };
     fetchArtistDetails();
   }, [profileUser?.topArtists]);
+  const loadReactions = useCallback(async (identityUserId: string) => {
+    try {
+      setIsLoadingReactions(true);
+      const data = await userApi.getLatestReactions(identityUserId, 10, 0);
+      setReactions(data);
+    } catch (error) {
+      console.error('Failed to load reactions:', error);
+    } finally {
+      setIsLoadingReactions(false);
+    }
+  }, []);
+
   const loadUserProfile = useCallback(async (identifier: string, authenticatedUser?: { id: string; username: string } | null) => {
     try {
       setIsLoading(true);
@@ -208,6 +222,11 @@ export default function UserProfilePage() {
         recentActivity: recentActivity,
         publicPlaylists: userPlaylists,
       });
+
+      // Load reactions for this user
+      if (userData.identityUserId) {
+        loadReactions(userData.identityUserId);
+      }
 
       if (activeUser && userData.identityUserId !== activeUser.id) {
         try {
@@ -742,10 +761,10 @@ export default function UserProfilePage() {
                   </button>
                 )}
               </div>
-              <div className="space-y-4">
+      <div className="space-y-4">
                 {(isOwnProfile || !profileUser.isPrivate) ? (
                   profileUser.recentActivity && profileUser.recentActivity.length > 0 ? (
-                    profileUser.recentActivity.map((activity, index) => (
+        profileUser.recentActivity.slice(0, 3).map((activity, index) => (
                       <div key={index} className="flex items-center justify-between p-4 hover:bg-gray-700/30 rounded-xl transition-colors">
                         <div className="flex items-center space-x-4">
                           {activity.coverUrl ? (
@@ -798,8 +817,70 @@ export default function UserProfilePage() {
             </div>
           </div>
 
-          {/* Public Playlists */}
-          <div className="mt-8">
+          {/* Reactions (private to the owner) */}
+          <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 mt-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <HeartIcon className="w-5 h-5 mr-2 text-red-400" />
+                Recent Reactions
+              </h3>
+            </div>
+            {isOwnProfile ? (
+              <div className="space-y-4">
+                {isLoadingReactions ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-400 text-sm">Loading reactions...</p>
+                  </div>
+                ) : reactions.length > 0 ? (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reactions.map((reaction, index) => {
+                      const search = new URLSearchParams({
+                        focusType: reaction.contextType || 'recent_song',
+                        to: profileUser!.identityUserId,
+                      });
+                      if ((reaction.contextType === 'recent_song' || !reaction.contextType) && reaction.songId) {
+                        search.set('songId', reaction.songId);
+                      }
+                      const href = `/feed?${search.toString()}`;
+                      return (
+                        <div key={index} role="button" onClick={() => router.push(href)} className="bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-colors cursor-pointer">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <span className="text-2xl select-none">{reaction.emoji}</span>
+                              <div>
+                                <Link href={`/user/${reaction.fromIdentityUserId}`} onClick={(e) => e.stopPropagation()} className="text-purple-300 font-medium hover:underline">
+                                  {reaction.fromUserName || "Unknown User"}
+                                </Link>
+                                {reaction.songTitle && (
+                                  <p className="text-gray-400 text-sm">on {reaction.songTitle}</p>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-gray-500 text-xs">
+                              {new Date(reaction.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
+                      <HeartIcon className="w-8 h-8 text-gray-600" />
+                    </div>
+                    <p className="text-gray-400 text-sm">No reactions yet</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400 text-sm">Reactions are private to this user.</div>
+            )}
+          </div>
+
+        {/* Public Playlists */}
+        <div className="mt-8">
             <h2 className="text-2xl font-bold text-white mb-6">Public Playlists</h2>
             {profileUser.publicPlaylists && profileUser.publicPlaylists.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">

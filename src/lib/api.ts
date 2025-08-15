@@ -155,7 +155,8 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   // Add timeout to prevent hanging - longer timeout for registration
   const controller = new AbortController();
   const isRegistration = url.includes('/api/auth/register');
-  const timeoutDuration = isRegistration ? 30000 : 10000; // 30 seconds for registration, 10 seconds for others
+  const isFeedEndpoint = url.includes('/api/feed/');
+  const timeoutDuration = isRegistration ? 30000 : isFeedEndpoint ? 15000 : 10000; // Longer timeout for feed endpoints
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   try {
@@ -738,7 +739,25 @@ export const userApi = {
         isPrivate: userData.isPrivate
       };
     } catch (error) {
-      throw error;
+      // Fallback to Identity service (basic info only)
+      try {
+        const identityUser = await apiRequest<{ id: string; userName: string; email?: string; isPrivate?: boolean; createdAt?: string }>(
+          `${API_CONFIG.IDENTITY_API}/api/auth/users/${userId}`
+        );
+        return {
+          id: identityUser.id,
+          username: identityUser.userName,
+          displayName: identityUser.userName,
+          bio: undefined,
+          avatarUrl: undefined,
+          followers: 0,
+          following: 0,
+          playlists: 0,
+          isPrivate: identityUser.isPrivate ?? false,
+        };
+      } catch (e) {
+        throw error;
+      }
     }
   },
 
@@ -956,6 +975,22 @@ export const userApi = {
   // Weekly Top Artists (current week, cached server-side)
   getWeeklyTopArtists: (identityUserId: string) =>
     apiRequest<Array<{ name: string; count: number }>>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/top-artists/week/current`),
+
+  // Feed slides
+  getFeedSlides: (identityUserId: string, limit = 20, skip = 0) =>
+    apiRequest<Array<any>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
+
+  // Reactions
+  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }) =>
+    apiRequest<{ success: boolean; message: string }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getLatestReactions: (identityUserId: string, limit = 20, skip = 0) =>
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/latest?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
+    ),
 }; 
 
 export interface FollowStats {
