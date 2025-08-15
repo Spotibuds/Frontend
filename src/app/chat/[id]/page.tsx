@@ -272,7 +272,7 @@ export default function ChatPage() {
           setChatMessages(prev => prev.map(m => m.messageId === id ? { ...m, isRead: true } : m));
           pendingRetryRef.current.delete(id);
           processedMessagesRef.current.add(id);
-        } catch (e) {
+  } catch {
           // Keep it in the retry set; will retry on next reconnect
         }
       }

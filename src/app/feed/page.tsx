@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
@@ -43,7 +43,7 @@ type Slide =
 		topSongs: Array<{ songId?: string; songTitle?: string; artist?: string; count: number }>;
 	};
 
-export default function FeedPage() {
+function FeedInner() {
 	const searchParams = useSearchParams();
 	const [slides, setSlides] = useState<Slide[]>([]);
 	const slidesRef = useRef<Slide[]>([]);
@@ -259,7 +259,6 @@ export default function FeedPage() {
 				if (reset) {
 					seenMapRef.current = loadSeen();
 				}
-				const now = Date.now();
 				const batchUnique: Slide[] = [];
 				for (const s of newSlides) {
 					const k = keyOf(s);
@@ -766,6 +765,24 @@ export default function FeedPage() {
 				)}
 			</div>
 		</AppLayout>
+	);
+}
+
+export default function FeedPage() {
+	return (
+		<Suspense
+			fallback={
+				<AppLayout>
+					<div className="px-4 pt-8 max-w-2xl mx-auto">
+						<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300">
+							Loading feed...
+						</div>
+					</div>
+				</AppLayout>
+			}
+		>
+			<FeedInner />
+		</Suspense>
 	);
 }
 

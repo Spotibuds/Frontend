@@ -755,7 +755,7 @@ export const userApi = {
           playlists: 0,
           isPrivate: identityUser.isPrivate ?? false,
         };
-      } catch (e) {
+  } catch {
         throw error;
       }
     }
