@@ -340,6 +340,17 @@ export interface Song {
   releaseDate?: string;
 }
 
+export interface AdminStats {
+  TotalArtists: number;
+  TotalAlbums: number;
+  TotalSongs: number;
+  TotalPlaylists: number;
+  RecentArtists: number;
+  RecentAlbums: number;
+  RecentSongs: number;
+  RecentPlaylists: number;
+}
+
 export interface Album {
   id: string;
   title: string;
@@ -1035,3 +1046,206 @@ export function processArtists(artists: unknown): string[] {
   }
   return ['Unknown Artist'];
 }
+
+// Admin API
+export const adminApi = {
+
+  // SONGS
+  async createSong(data: Partial<Song>): Promise<Song | null> {
+    try {
+      return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to create song:', error);
+      return null;
+    }
+  },
+
+  async updateSong(id: string, data: Partial<Song>): Promise<Song | null> {
+    try {
+      return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to update song:', error);
+      return null;
+    }
+  },
+
+  async deleteSong(id: string): Promise<boolean> {
+    try {
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, { method: 'DELETE' });
+      return true;
+    } catch (error) {
+      console.error('Failed to delete song:', error);
+      return false;
+    }
+  },
+
+  // ALBUMS
+  async createAlbum(data: Partial<Album>): Promise<Album | null> {
+    try {
+      return await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to create album:', error);
+      return null;
+    }
+  },
+
+  async updateAlbum(id: string, data: Partial<Album>): Promise<Album | null> {
+    try {
+      return await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to update album:', error);
+      return null;
+    }
+  },
+
+  async deleteAlbum(id: string): Promise<boolean> {
+    try {
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, { method: 'DELETE' });
+      return true;
+    } catch (error) {
+      console.error('Failed to delete album:', error);
+      return false;
+    }
+  },
+
+  // ARTISTS
+  async createArtist(data: Partial<Artist>): Promise<Artist | null> {
+    try {
+      return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to create artist:', error);
+      return null;
+    }
+  },
+
+  async updateArtist(id: string, data: Partial<Artist>): Promise<Artist | null> {
+    try {
+      return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('Failed to update artist:', error);
+      return null;
+    }
+  },
+
+  async deleteArtist(id: string): Promise<boolean> {
+    try {
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, { method: 'DELETE' });
+      return true;
+    } catch (error) {
+      console.error('Failed to delete artist:', error);
+      return false;
+    }
+  },
+
+  // PLAYLISTS
+   async createPlaylist(userId: string, name: string): Promise<Playlist | null> {
+    try {
+      return await apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/admin/playlists`, {
+        method: "POST",
+        body: JSON.stringify({ userId, name }),
+      });
+    } catch (error) {
+      console.error("Failed to create playlist:", error);
+      return null;
+    }
+  },
+
+  async addSongToPlaylist(playlistId: string, songId: string): Promise<boolean> {
+    try {
+      await apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`, {
+        method: "POST",
+        body: JSON.stringify({ songId }),
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to add song to playlist:", error);
+      return false;
+    }
+  },
+
+  async deletePlaylist(id: string): Promise<boolean> {
+    try {
+      await apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${id}`, {
+        method: "DELETE",
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to delete playlist:", error);
+      return false;
+    }
+  },
+
+  async getPlaylists(limit?: number): Promise<Playlist[]> {
+    try {
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/admin/playlists?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/admin/playlists`;
+      const response = await apiRequest<Playlist[]>(url);
+      return Array.isArray(response) ? response : [];
+    } catch (error) {
+      console.warn("Failed to fetch playlists:", error);
+      return [];
+    }
+  },
+
+  async getPlaylist(id: string): Promise<Playlist | null> {
+    try {
+      return await apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${id}`);
+    } catch (error) {
+      console.warn("Failed to fetch playlist:", error);
+      return null;
+    }
+  },
+
+  async getPlaylistSongs(playlistId: string): Promise<Song[]> {
+    try {
+      const response = await apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`);
+      return Array.isArray(response) ? response : [];
+    } catch (error) {
+      console.warn("Failed to fetch playlist songs:", error);
+      return [];
+    }
+  },
+
+  async getStatistics(): Promise<AdminStats | null> {
+    try {
+      return await apiRequest<AdminStats>(`${API_CONFIG.MUSIC_API}/api/admin/statistics`);
+    } catch (error) {
+      console.error("Failed to fetch admin statistics:", error);
+      return null;
+    }
+  },
+
+  async removeSongFromPlaylist(playlistId: string, songId: string): Promise<boolean> {
+  try {
+    await apiRequest<void>(
+      `${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs/${songId}`,
+      {
+        method: "DELETE",
+      }
+    );
+    return true;
+  } catch (error) {
+    console.error("Failed to remove song from playlist:", error);
+    return false;
+  }
+},
+};
