@@ -15,7 +15,7 @@ const getApiConfig = () => {
   };
 
   // Development URLs
-  const developmentUrls = {
+  const developmentUrls = {    
     IDENTITY_API: 'http://localhost:5000',
     MUSIC_API: 'http://localhost:5001',
     USER_API: 'http://localhost:5002'
@@ -381,6 +381,7 @@ export interface User {
   followers?: number;
   following?: number;
   playlists?: number;
+  roles?: string[];
 }
 
 export interface UserDto {

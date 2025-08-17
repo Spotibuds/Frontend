@@ -12,6 +12,7 @@ import {
   MusicalNoteIcon,
   MagnifyingGlassIcon,
   UserGroupIcon,
+  BriefcaseIcon,
 
   ChatBubbleLeftRightIcon,
   NewspaperIcon,
@@ -50,6 +51,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
   const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
 
@@ -67,15 +69,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   };
 
-
-
+  
   useEffect(() => {
     const currentUser = identityApi.getCurrentUser();
     if (currentUser) {
       setIsLoggedIn(true);
       setUser(currentUser);
       loadFriendRequests(currentUser.id);
+      setIsAdmin(currentUser.roles?.includes("Admin"));
     }
+    
     setIsLoading(false);
   }, []);
 
@@ -182,6 +185,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
     { name: "Friends", href: "/friends", icon: UserGroupIcon, current: pathname === "/friends" },
     { name: "Chat", href: "/chat", icon: ChatBubbleLeftRightIcon, current: pathname === "/chat" },
+    ...(isAdmin
+      ? [{ name: "Admin", href: "/admin", icon: BriefcaseIcon , current: pathname === "/admin" }]
+      : []),
   ];
 
   if (isLoading) {
