@@ -1131,7 +1131,7 @@ export const adminApi = {
   },
 
   // ARTISTS
-  async createArtist(data: Partial<Artist>): Promise<Artist | null> {
+  async createArtist(data: FormData): Promise<Artist | null> {
     try {
       return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
         method: 'POST',
@@ -1143,7 +1143,7 @@ export const adminApi = {
     }
   },
 
-  async updateArtist(id: string, data: Partial<Artist>): Promise<Artist | null> {
+  async updateArtist(id: string, data: FormData): Promise<Artist | null> {
     try {
       return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
         method: 'PUT',
@@ -1258,4 +1258,93 @@ export const adminApi = {
     return false;
   }
 },
+
+async getAllUsers(): Promise<User[]> {
+    try {
+      const response = await apiRequest<User[]>(`${API_CONFIG.IDENTITY_API}/api/auth/users`);
+      return Array.isArray(response) ? response : [];
+    } catch (error) {
+      console.error("Failed to fetch all users:", error);
+      return [];
+    }
+  },
+
+  async getAllAdmins(): Promise<User[]> {
+    try {
+      const response = await apiRequest<User[]>(`${API_CONFIG.IDENTITY_API}/api/auth/admins`);
+      return Array.isArray(response) ? response : [];
+    } catch (error) {
+      console.error("Failed to fetch all admins:", error);
+      return [];
+    }
+  },
+
+  async updateUser(id: string, data: { userName: string; email: string; }): Promise<User | null> {
+    try {
+      const updatedUser = await apiRequest<User>(`${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      });
+      return updatedUser;
+    } catch (error) {
+      console.error(`Failed to update user ${id}:`, error);
+      return null;
+    }
+  },
+
+  async deleteUser(id: string): Promise<boolean> {
+    try {
+      await apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`, {
+        method: "DELETE",
+      });
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete user ${id}:`, error);
+      return false;
+    }
+  },
+
+    createAdmin: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
+    try {
+      const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/create-admin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Failed to create admin:", text);
+        return null;
+      }
+      return await res.json();
+    } catch (error) {
+      console.error("Error creating admin:", error);
+      return null;
+    }
+  },
+
+    createUser: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
+    try {
+      const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Failed to create user:", text);
+        return null;
+      }
+
+      return await res.json();
+    } catch (error) {
+      console.error("Error creating user:", error);
+      return null;
+    }
+  },
 };

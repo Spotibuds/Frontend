@@ -9,7 +9,7 @@ const navItems = [
   { name: "Songs", href: "/admin/songs", icon: Music },
   { name: "Artists", href: "/admin/artists", icon: ListMusic },
   { name: "Users", href: "/admin/users", icon: Users },
-  { name: "Admins", href: "/admin/admin", icon: UserCog },
+  { name: "Admins", href: "/admin/admins", icon: UserCog },
 ];
 
 export default function TopNavigation() {

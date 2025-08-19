@@ -1,13 +1,339 @@
-import AppLayout from '@/components/layout/AppLayout';
-import SidebarNavigation from '../../../components/AdminNavigation';
+"use client";
 
-export default function AdminPageArtists() {
-    return (
-        <AppLayout>
-            <SidebarNavigation />
-            <main className="p-4">
-                <h1 className="text-2xl font-bold text-purple-400">Artists Dashboard</h1>
-            </main>
-        </AppLayout>
-    );
+import React, { useEffect, useState } from "react";
+import AppLayout from "@/components/layout/AppLayout";
+import SidebarNavigation from "../../../components/AdminNavigation";
+import MusicImage from "@/components/ui/MusicImage";
+import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
+
+export default function AdminPageForArtists() {
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [albumsMap, setAlbumsMap] = useState<Record<string, Album[]>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  // Modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [modalData, setModalData] = useState<{
+        id: string;
+        name: string;
+        bio?: string;
+        imageUrl?: string;
+        albums?: string[];
+        createdAt?: string;
+  }>({
+    name: "",
+    id: "",
+    createdAt: "",
+    imageUrl: undefined,
+  });
+
+  // Fetch artists 
+  const fetchArtists = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+  
+        const data = await musicApi.getArtists();
+        setArtists(data);
+  
+        const albumsPromises = data.map((artist) =>
+          musicApi
+            .getArtistAlbums(artist.id)
+            .then((albums) => ({ id: artist.id, albums }))
+            .catch(() => ({ id: artist.id, albums: [] }))
+        );
+  
+        const albumsResults = await Promise.all(albumsPromises);
+        const albumsObj: Record<string, Album[]> = {};
+        albumsResults.forEach((res) => {
+          albumsObj[res.id] = res.albums;
+        });
+        setAlbumsMap(albumsObj);
+      } catch (err) {
+        console.error(err);
+        setError("Failed to load albums");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  useEffect(() => {
+    fetchArtists();
+  }, []);
+
+  // Delete artist
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure? This cannot be undone.")) return;
+    try {
+      const success = await adminApi.deleteArtist(id);
+      if (success) {
+        setArtists(artists.filter((a) => a.id !== id));
+        alert("Artist deleted successfully");
+      } else {
+        alert("Failed to delete artist");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    }
+  };
+
+  // Open create modal
+  const openCreateModal = () => {
+    setModalData({ name: "", id: "", createdAt: "", imageUrl: undefined });
+    setIsCreateModalOpen(true);
+  };
+
+  // Open update modal
+  const openUpdateModal = (artist: Artist) => {
+    setModalData({
+      id: artist.id,
+      name: artist.name,
+      bio: artist.bio || "",
+      createdAt: artist.createdAt || "",
+      imageUrl: undefined,
+    });
+    setIsUpdateModalOpen(true);
+  };
+
+  // Handle modal input change
+  const handleModalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, files } = e.target;
+    if (name === "coverFile") {
+      setModalData((prev) => ({ ...prev, coverFile: files?.[0] || null }));
+    } else {
+      setModalData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // Submit create modal
+  const handleCreateSubmit = async () => {
+    if (!modalData.name ) {
+      alert("Name is required");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("Name", modalData.name);
+      formData.append("ArtistId", modalData.id);
+      if (modalData.createdAt) formData.append("ReleaseDate", modalData.createdAt);
+      if (modalData.imageUrl) formData.append("CoverFile", modalData.imageUrl);
+
+      const newArtist = await adminApi.createArtist(formData);
+
+      if (newArtist) {
+        setArtists((prev) => [...prev, newArtist]);
+        setIsCreateModalOpen(false);
+        alert("Artist created successfully");
+      } else {
+        alert("Failed to create artist");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    }
+  };
+
+  // Submit update modal
+  const handleUpdateSubmit = async () => {
+    if (!modalData.name) {
+      alert("Name is required");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("Name", modalData.name);
+      if (modalData.bio) formData.append("Bio", modalData.bio);
+      if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
+      if (modalData.imageUrl) formData.append("CoverFile", modalData.imageUrl);
+
+      const updatedArtist = await adminApi.updateArtist(modalData.id!, formData);
+      if (updatedArtist) {
+        setArtists((prev) =>
+          prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedArtist } : a))
+        );
+        setIsUpdateModalOpen(false);
+        alert("Artist updated successfully");
+      } else {
+        alert("Failed to update artist");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong");
+    }
+  };
+
+  return (
+    <AppLayout>
+      <SidebarNavigation />
+      <main className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-purple-400">Artist Dashboard</h1>
+          <button
+            onClick={openCreateModal}
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+          >
+            Create New Artist
+          </button>
+        </div>
+
+        {loading ? (
+          <p className="text-gray-400">Loading artists...</p>
+        ) : error ? (
+          <p className="text-red-400">{error}</p>
+        ) : artists.length === 0 ? (
+          <p className="text-gray-400">No artists found</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {artists.map((artist) => (
+              <div
+                key={artist.id}
+                className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
+              >
+                <MusicImage
+                  src={artist.imageUrl}
+                  alt={artist.name}
+                  fallbackText={artist.name}
+                  size="medium"
+                  type="square"
+                  className="rounded shadow-lg"
+                />
+                <div className="flex-1">
+                  <p className="text-white font-semibold">{artist.name}</p>
+                  <p className="text-gray-400 text-sm">
+                     {albumsMap[artist.id]?.length ?? 0}{" "}
+                    albums
+                  </p>
+                  <div className="mt-2 space-x-2">
+                    <button
+                      onClick={() => openUpdateModal(artist)}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      Update
+                    </button>
+                    <button
+                      onClick={() => handleDelete(artist.id)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Create Modal */}
+        {isCreateModalOpen && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
+            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
+              <h2 className="text-xl font-bold mb-4 text-white">Create New Artist</h2>
+              <input
+                type="text"
+                name="name"
+                placeholder="Name"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.name}
+                onChange={handleModalChange}
+              />
+               <input
+                type="text"
+                name="bio"
+                placeholder="BIO"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.bio}
+                onChange={handleModalChange}
+              />
+              <input
+                type="date"
+                name="createdAt"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.createdAt}
+                onChange={handleModalChange}
+              />
+              <input
+                type="file"
+                name="coverFile"
+                accept="image/*"
+                className="w-full mb-4"
+                onChange={handleModalChange}
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+                  onClick={() => setIsCreateModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+                  onClick={handleCreateSubmit}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Update Modal */}
+        {isUpdateModalOpen && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
+            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
+              <h2 className="text-xl font-bold mb-4 text-white">Update Artist</h2>
+              <input
+                type="text"
+                name="title"
+                placeholder="Title"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.name}
+                onChange={handleModalChange}
+              />
+              <input
+                type="text"
+                name="bio"
+                placeholder="BIO"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.bio}
+                onChange={handleModalChange}
+              />
+              <input
+                type="date"
+                name="createdAt"
+                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                value={modalData.createdAt}
+                onChange={handleModalChange}
+              />
+              <input
+                type="file"
+                name="coverFile"
+                accept="image/*"
+                className="w-full mb-4"
+                onChange={handleModalChange}
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+                  onClick={() => setIsUpdateModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded"
+                  onClick={handleUpdateSubmit}
+                >
+                  Update
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </AppLayout>
+  );
 }
