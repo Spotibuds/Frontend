@@ -1052,7 +1052,7 @@ export function processArtists(artists: unknown): string[] {
 export const adminApi = {
 
   // SONGS
-  async createSong(data: Partial<Song>): Promise<Song | null> {
+  async createSong(data: FormData): Promise<Song | null> {
     try {
       return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
         method: 'POST',
@@ -1064,7 +1064,7 @@ export const adminApi = {
     }
   },
 
-  async updateSong(id: string, data: Partial<Song>): Promise<Song | null> {
+  async updateSong(id: string, data: FormData): Promise<Song | null> {
     try {
       return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
         method: 'PUT',
