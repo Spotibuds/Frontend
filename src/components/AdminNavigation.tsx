@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, Music, ListMusic, Disc, UserCog, User } from "lucide-react";
+import { Users, Music, ListMusic, Disc, UserCog, User, Music2 } from "lucide-react";
 
 const navItems = [
   { name: "Albums", href: "/admin", icon: Disc },
   { name: "Songs", href: "/admin/songs", icon: Music },
   { name: "Artists", href: "/admin/artists", icon: ListMusic },
+  { name: "Playlists", href: "/admin/playlists", icon: Music2 },
   { name: "Users", href: "/admin/users", icon: Users },
   { name: "Admins", href: "/admin/admins", icon: UserCog },
 ];

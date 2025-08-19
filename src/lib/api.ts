@@ -489,6 +489,11 @@ export interface MessageRead {
   userId: string;
   readAt: string;
 }
+export interface UpdatePlaylistDto
+{
+    Name : string;
+    Description :string;
+} 
 
 // API Functions
 export const identityApi = {
@@ -548,6 +553,25 @@ export const musicApi = {
       return null;
     }
   },
+
+  updatePlaylist: async (
+  id: string,
+  dto: UpdatePlaylistDto
+): Promise<boolean> => {
+  const res = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dto),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+},
+
 
   async getSongs(limit?: number): Promise<Song[]> {
     try {
@@ -1166,11 +1190,11 @@ export const adminApi = {
   },
 
   // PLAYLISTS
-   async createPlaylist(userId: string, name: string): Promise<Playlist | null> {
+   async createPlaylist(description: string, name: string): Promise<Playlist | null> {
     try {
       return await apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/admin/playlists`, {
         method: "POST",
-        body: JSON.stringify({ userId, name }),
+        body: JSON.stringify({ description, name }),
       });
     } catch (error) {
       console.error("Failed to create playlist:", error);
