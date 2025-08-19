@@ -16,7 +16,7 @@ const getApiConfig = () => {
 
   // Development URLs
   const developmentUrls = {    
-    IDENTITY_API: 'http://localhost:5000',
+     IDENTITY_API: 'http://localhost:5000',
     MUSIC_API: 'http://localhost:5001',
     USER_API: 'http://localhost:5002'
   };
@@ -1087,19 +1087,28 @@ export const adminApi = {
   },
 
   // ALBUMS
-  async createAlbum(data: Partial<Album>): Promise<Album | null> {
+  async createAlbum(data: FormData): Promise<Album | null> {
     try {
-      return await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
-        method: 'POST',
-        body: JSON.stringify(data),
+      const res = await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
+        method: "POST",
+        body: data, 
       });
-    } catch (error) {
-      console.error('Failed to create album:', error);
-      return null;
-    }
-  },
+     
+      if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const album: Album = await res.json();
+    return album;
 
-  async updateAlbum(id: string, data: Partial<Album>): Promise<Album | null> {
+  } catch (error) {
+    console.error("Failed to create album:", error);
+    return null;
+  }
+},
+
+
+  async updateAlbum(id: string, data: FormData): Promise<Album | null> {
     try {
       return await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
         method: 'PUT',
