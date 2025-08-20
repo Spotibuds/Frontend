@@ -834,15 +834,11 @@ export default function UserProfilePage() {
                   </div>
                 ) : reactions.length > 0 ? (
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {reactions.map((reaction, index) => {
-                      const search = new URLSearchParams({
-                        focusType: reaction.contextType || 'recent_song',
-                        to: profileUser!.identityUserId,
-                      });
-                      if ((reaction.contextType === 'recent_song' || !reaction.contextType) && reaction.songId) {
-                        search.set('songId', reaction.songId);
-                      }
-                      const href = `/feed?${search.toString()}`;
+                    {reactions.map((reaction: { postId?: string; toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }, index) => {
+                      // Prefer direct post link when postId is available
+                      const href = reaction.postId 
+                        ? `/feed/post/${reaction.postId}`
+                        : `/feed?focusType=${reaction.contextType || 'recent_song'}&to=${profileUser!.identityUserId}${reaction.songId ? `&songId=${reaction.songId}` : ''}`;
                       return (
                         <div key={index} role="button" onClick={() => router.push(href)} className="bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-colors cursor-pointer">
                           <div className="flex items-center justify-between">

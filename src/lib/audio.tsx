@@ -484,6 +484,34 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
   }, [addToListeningHistory, state.currentSong, state.isPlaying]);
 
+  // Now Playing heartbeat (throttled)
+  useEffect(() => {
+    let timer: any;
+    const send = async () => {
+      try {
+        if (!state.currentSong || typeof window === 'undefined') return;
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+        if (!currentUser?.id) return;
+        const audio = audioRef.current;
+        const positionSec = audio ? Math.floor(audio.currentTime || 0) : 0;
+        await userApi.setNowPlaying({
+          identityUserId: currentUser.id,
+          songId: state.currentSong.id,
+          songTitle: state.currentSong.title,
+          artist: state.currentSong.artists ? state.currentSong.artists.map(a => a.name).join(', ') : undefined,
+          coverUrl: state.currentSong.coverUrl,
+          positionSec,
+          isPlaying: state.isPlaying,
+        }, 90);
+      } catch {}
+    };
+
+    // send on changes with throttle
+    send();
+    timer = setInterval(send, 15000);
+    return () => { if (timer) clearInterval(timer); };
+  }, [state.currentSong, state.isPlaying]);
+
   const playSong = (song: Song, playlist?: Song[]) => {
     if (playlist && playlist.length > 0) {
       const songIndex = playlist.findIndex(s => s.id === song.id);

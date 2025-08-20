@@ -12,6 +12,7 @@ type Slide =
 	| {
 		type: "recent_song";
 		identityUserId: string;
+		postId?: string;
 		username?: string;
 		displayName?: string;
 		songId: string;
@@ -19,6 +20,16 @@ type Slide =
 		artist?: string;
 		coverUrl?: string;
 		playedAt?: string;
+	}
+	| {
+		type: "now_playing";
+		identityUserId: string;
+		songId: string;
+		songTitle?: string;
+		artist?: string;
+		coverUrl?: string;
+		positionSec?: number;
+		updatedAt?: string;
 	}
 	| {
 		type: "top_artists_week";
@@ -91,7 +102,12 @@ function FeedInner() {
 	const authorOf = (s: Slide) => s.identityUserId;
 	const keyOf = (s: Slide) => {
 		const base = `${s.type}:${s.identityUserId}`;
-		if (s.type === 'recent_song') return `${base}:song:${(s as any).songId}`;
+		if (s.type === 'recent_song') {
+			const rs = s as Extract<Slide, { type: 'recent_song' }>;
+			if (rs.postId) return `${base}:post:${rs.postId}`;
+			return `${base}:song:${rs.songId}`;
+		}
+		if ((s as any).postId) return `${base}:post:${(s as any).postId}`;
 		if (s.type === 'top_songs_week') {
 			const names = (s as any).topSongs?.map((x: any) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
 			return `${base}:top_songs:${names}`;
@@ -170,7 +186,7 @@ function FeedInner() {
 
 	const [songsById, setSongsById] = useState<Record<string, Song | null>>({});
 	const [artists, setArtists] = useState<Artist[]>([]);
-	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string }>>({});
+	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string; displayName?: string; username?: string }>>({});
 
 	// Snap container + sections for one-by-one navigation
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -222,10 +238,10 @@ function FeedInner() {
 		if (!missing.length) return;
 
 		const profiles = await Promise.allSettled(missing.map((id) => userApi.getUserProfileByIdentityId(id)));
-		const meta: Record<string, { avatarUrl?: string }> = {};
+		const meta: Record<string, { avatarUrl?: string; displayName?: string; username?: string }> = {};
 		profiles.forEach((res, idx) => {
 			const id = missing[idx];
-			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl };
+			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl, displayName: res.value.displayName, username: res.value.username };
 		});
 		setUserMetaById((prev) => ({ ...prev, ...meta }));
 	}, [userMetaById]);
@@ -305,12 +321,15 @@ function FeedInner() {
 		let cancelled = false;
 		const run = async () => {
 			if (!slides.length) return;
+			const postId = searchParams?.get("postId");
 			const type = searchParams?.get("focusType");
 			const to = searchParams?.get("to");
 			const songId = searchParams?.get("songId");
-			if (!type || !to) return;
 			// find in current slides
 			const matchIndex = (arr: Slide[]) => arr.findIndex((s) => {
+				// Prefer postId for any slide type
+				if (postId && (s as any).postId === postId) return true;
+				if (!type || !to) return false;
 				if (s.identityUserId !== to) return false;
 				if (s.type !== (type as Slide["type"])) return false;
 				if (type === "recent_song" && songId) {
@@ -462,20 +481,26 @@ function FeedInner() {
 					fromUserName: me.username,
 					emoji,
 				};
+				let postId: string | undefined;
 				if (target.type === "recent_song") {
+					postId = (target as Extract<Slide, { type: 'recent_song' }>).postId;
 					await userApi.sendReaction({
 						...base,
 						contextType: "recent_song",
+						postId,
 						songId: target.songId,
 						songTitle: target.songTitle,
 						artist: target.artist,
 					});
 				} else if (target.type === "top_artists_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_artists_week" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "top_artists_week", postId });
 				} else if (target.type === "common_artists") {
-					await userApi.sendReaction({ ...base, contextType: "common_artists" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "common_artists", postId });
 				} else if (target.type === "top_songs_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_songs_week" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "top_songs_week", postId });
 				}
 				if (typeof index === 'number') {
 					setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
@@ -487,6 +512,9 @@ function FeedInner() {
 						});
 					}, 1200);
 				}
+				if (postId) {
+					window.dispatchEvent(new CustomEvent('reaction:refresh', { detail: { postId } }));
+				}
 			} catch (e) {
 				console.error("Failed to send reaction:", e);
 			}
@@ -496,7 +524,9 @@ function FeedInner() {
 
 	const UserHeader = ({ slide }: { slide: Slide }) => {
 		const meta = userMetaById[slide.identityUserId];
-		const name = slide.displayName || slide.username || "User";
+		const name = meta?.displayName || meta?.username || (('displayName' in slide && (slide as any).displayName) ? (slide as any).displayName : undefined)
+			|| (('username' in slide && (slide as any).username) ? (slide as any).username : undefined)
+			|| "User";
 		return (
 			<div className="flex items-center gap-3">
 				<MusicImage src={meta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
@@ -528,41 +558,132 @@ function FeedInner() {
 							{em}
 						</button>
 					))}
+					{flash && (
+						<div className="pointer-events-none mt-2 text-xs px-2 py-1 rounded bg-purple-600/80 text-white">Sent</div>
+					)}
 					{/* Sent chip removed per request */}
 				</div>
 			);
 		};
 
+	const ReactionCluster = ({ postId }: { postId: string }) => {
+		const [reactions, setReactions] = useState<Array<{ emoji: string; fromIdentityUserId: string; fromUserName?: string; createdAt: string }>>([]);
+		const [open, setOpen] = useState(false);
+		const [isLoading, setIsLoading] = useState(true);
+		const refresh = useCallback(async () => {
+			try {
+				setIsLoading(true);
+				const data = await userApi.getReactionsByPost(postId);
+				setReactions(data || []);
+			} catch (e) {
+				console.warn('Failed to load reactions for', postId, e);
+			} finally {
+				setIsLoading(false);
+			}
+		}, [postId]);
+		useEffect(() => {
+			let mounted = true;
+			(async () => { if (mounted) await refresh(); })();
+			const onRefresh = (e: Event) => {
+				const detail = (e as CustomEvent).detail;
+				if (detail?.postId === postId) refresh();
+			};
+			window.addEventListener('reaction:refresh', onRefresh as any);
+			return () => { mounted = false; window.removeEventListener('reaction:refresh', onRefresh as any); };
+		}, [refresh, postId]);
+		
+		// Show loading state briefly, then show empty state or reactions
+		if (isLoading) {
+			return (
+				<div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
+					<div className="w-3 h-3 border border-white/20 border-t-white/60 rounded-full animate-spin"></div>
+				</div>
+			);
+		}
+		
+		if (!reactions.length) {
+			return (
+				<div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-30">
+					<span className="text-xs text-white/40">💬</span>
+				</div>
+			);
+		}
+		
+		const counts = reactions.reduce<Record<string, number>>((acc, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {});
+		const items = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,6);
+		return (
+			<div>
+				<button className="flex -space-x-2" onClick={() => setOpen(true)} aria-label="View reactions">
+					{items.map(([em, count]) => (
+						<span key={em} className="relative inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-base">
+							{em}
+							<span className="absolute -bottom-1 -right-1 text-[10px] bg-purple-600 text-white rounded px-1">{count}</span>
+						</span>
+					))}
+				</button>
+				{open && (
+					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setOpen(false)}>
+						<div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+							<div className="flex items-center justify-between mb-2">
+								<div className="text-white font-semibold">Reactions</div>
+								<button className="text-gray-400 hover:text-white" onClick={() => setOpen(false)}>✕</button>
+							</div>
+							<div className="max-h-80 overflow-y-auto space-y-2">
+								{reactions.map((r, i) => (
+									<div key={i} className="flex items-center justify-between bg-white/5 rounded-lg p-2">
+										<div className="flex items-center gap-2">
+											<span className="text-xl">{r.emoji}</span>
+											<Link href={`/user/${r.fromIdentityUserId}`} className="text-purple-300 hover:underline">{r.fromUserName || 'User'}</Link>
+										</div>
+										<span className="text-gray-500 text-xs">{new Date(r.createdAt).toLocaleString()}</span>
+									</div>
+								))}
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
+		);
+	};
+
 	const RecentSongCard = ({ slide }: { slide: Extract<Slide, { type: "recent_song" }> }) => (
 		<Card>
-			<div className="flex items-start gap-4">
-				<div className="flex-1">
-					<UserHeader slide={slide} />
-					<div className="mt-4 flex items-center gap-4">
-						<button
-							className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
-							title="Play"
-						>
-							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
-						</button>
-						<div className="min-w-0">
-							<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
-							<div className="text-gray-300 truncate">
-								{songsById[slide.songId]?.artists?.length
-									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
-										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
-										</Link>
-									))
-									: slide.artist}
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				{slide.postId && (
+					<div className="absolute right-3 top-3 z-10">
+						<ReactionCluster postId={slide.postId} />
+					</div>
+				)}
+				<div className="flex items-start gap-4">
+					<div className="flex-1">
+						<UserHeader slide={slide} />
+						<div className="mt-4 flex items-center gap-4">
+							<button
+								className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
+								onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+								title="Play"
+							>
+								<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+							</button>
+							<div className="min-w-0">
+								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
+								<div className="text-gray-300 truncate">
+									{songsById[slide.songId]?.artists?.length
+										? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+												{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+											</Link>
+										))
+										: slide.artist}
+								</div>
+								{(songsById[slide.songId] as any)?.album?.id && (
+									<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+								)}
+								{slide.playedAt && (
+									<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleDateString()}</div>
+								)}
 							</div>
-							{(songsById[slide.songId] as any)?.album?.id && (
-								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
-							)}
-							{slide.playedAt && (
-								<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleString()}</div>
-							)}
 						</div>
 					</div>
 				</div>
@@ -572,90 +693,170 @@ function FeedInner() {
 
 	const TopArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "top_artists_week" }> }) => (
 		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top artists this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topArtists.slice(0, 5).map((a, i) => {
-					const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							<div className="w-12 h-12 rounded-lg overflow-hidden">
-								<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				{(slide as any).postId && (
+					<div className="absolute right-3 top-3 z-10">
+						<ReactionCluster postId={(slide as any).postId} />
+					</div>
+				)}
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Top artists this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topArtists.slice(0, 5).map((a, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								<div className="w-12 h-12 rounded-lg overflow-hidden">
+									<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
+								</div>
+								<div className="text-left flex-1 min-w-0">
+										{artistDetails?.id ? (
+											<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
+										) : (
+											<div className="text-white font-semibold truncate">{a.name}</div>
+										)}
+									<div className="text-gray-300 text-xs">{a.count} plays</div>
+								</div>
 							</div>
-							<div className="text-left flex-1 min-w-0">
-									{artistDetails?.id ? (
-										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
-									) : (
-										<div className="text-white font-semibold truncate">{a.name}</div>
-									)}
-								<div className="text-gray-300 text-xs">{a.count} plays</div>
-							</div>
-						</div>
-					);
-				})}
+						);
+					})}
+				</div>
 			</div>
 		</Card>
 	);
 
 	const TopSongsCard = ({ slide }: { slide: Extract<Slide, { type: "top_songs_week" }> }) => (
 		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top songs this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topSongs.slice(0, 5).map((ts, i) => {
-					const song = ts.songId ? songsById[ts.songId] : null;
-					const title = song?.title || ts.songTitle || "Unknown Song";
-					const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							{(song as any)?.album?.id ? (
-								<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
-								</Link>
-							) : (
-								<div className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				{(slide as any).postId && (
+					<div className="absolute right-3 top-3 z-10">
+						<ReactionCluster postId={(slide as any).postId} />
+					</div>
+				)}
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Top songs this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topSongs.slice(0, 5).map((ts, i) => {
+						const song = ts.songId ? songsById[ts.songId] : null;
+						const title = song?.title || ts.songTitle || "Unknown Song";
+						const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								{(song as any)?.album?.id ? (
+									<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</Link>
+								) : (
+									<div className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</div>
+								)}
+								<div className="text-left flex-1 min-w-0">
+									<div className="text-white font-semibold truncate">{title}</div>
+									<div className="text-gray-300 text-xs truncate">
+										{(song as any)?.artists?.length
+											? ((song as any).artists as any[]).map((a: any, j: number) => (
+												<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+													{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
+												</Link>
+											))
+											: artistName}
+										<span className="text-gray-500"> • {ts.count} plays</span>
+									</div>
 								</div>
-							)}
-							<div className="text-left flex-1 min-w-0">
-								<div className="text-white font-semibold truncate">{title}</div>
-								<div className="text-gray-300 text-xs truncate">
-									{(song as any)?.artists?.length
-										? ((song as any).artists as any[]).map((a: any, j: number) => (
-											<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
-											</Link>
-										))
-										: artistName}
-									<span className="text-gray-500"> • {ts.count} plays</span>
-								</div>
+								<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
+									Play
+								</button>
 							</div>
-							<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
-								Play
-							</button>
+						);
+					})}
+				</div>
+			</div>
+		</Card>
+	);
+
+	const NowPlayingCard = ({ slide }: { slide: Extract<Slide, { type: "now_playing" }> }) => (
+		<Card>
+			<div className="flex items-start gap-4">
+				<div className="flex-1">
+					<div className="flex items-center justify-between">
+						<UserHeader slide={slide} />
+						<span className="text-green-300 text-xs bg-green-500/10 border border-green-400/30 px-2 py-0.5 rounded">Now Playing</span>
+					</div>
+					<div className="mt-4 flex items-center gap-4">
+						<button
+							className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
+							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+							title="Play"
+						>
+							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+						</button>
+						<div className="min-w-0">
+							<div className="text-white text-xl font-semibold truncate">{slide.songTitle || 'Listening now'}</div>
+							<div className="text-gray-200 truncate">
+								{songsById[slide.songId]?.artists?.length
+									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+										</Link>
+									))
+									: slide.artist}
+							</div>
+							{(songsById[slide.songId] as any)?.album?.id && (
+								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
+							)}
+							{typeof slide.positionSec === 'number' && (
+								<div className="text-emerald-300/90 text-xs mt-1">{Math.floor((slide.positionSec || 0) / 60)}:{String((slide.positionSec || 0) % 60).padStart(2,'0')} elapsed</div>
+							)}
+							{slide.updatedAt && (
+								<div className="text-gray-400 text-xs mt-1">Updated {new Date(slide.updatedAt).toLocaleTimeString()}</div>
+							)}
 						</div>
-					);
-				})}
+					</div>
+				</div>
 			</div>
 		</Card>
 	);
 
 	const CommonArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "common_artists" }> }) => (
 		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">You both listen to</div>
-			</div>
-			<div className="mt-4 grid grid-cols-2 gap-2">
-				{slide.commonArtists.slice(0, 8).map((name, i) => (
-					<div key={i} className="bg-white/5 rounded-xl p-3 text-white text-sm truncate">
-						{name}
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				{(slide as any).postId && (
+					<div className="absolute right-3 top-3 z-10">
+						<ReactionCluster postId={(slide as any).postId} />
 					</div>
-				))}
+				)}
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Artists in common</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.commonArtists.slice(0, 5).map((artist, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === artist.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								<div className="w-12 h-12 rounded-lg overflow-hidden">
+									<MusicImage src={artistDetails?.imageUrl} alt={artist} size="medium" className="w-12 h-12" />
+								</div>
+								<div className="text-left flex-1 min-w-0">
+									{artistDetails?.id ? (
+										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{artist}</Link>
+									) : (
+										<div className="text-white font-semibold truncate">{artist}</div>
+									)}
+									<div className="text-gray-300 text-xs">Shared artist</div>
+								</div>
+							</div>
+						);
+					})}
+				</div>
 			</div>
 		</Card>
 	);
@@ -706,12 +907,13 @@ function FeedInner() {
 									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-24"
 								>
 									{slide.type === "recent_song" && <RecentSongCard slide={slide} />}
+									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} />}
 									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} />}
 									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} />}
-									{slide.type === "common_artists" && <CommonArtistsCard slide={slide} />}
+									{slide.type === "common_artists" && <CommonArtistsCard slide={slide as any} />}
 
-									{/* Right-side reactions anchored to page edge for this section */}
-									<ReactionBar slide={slide} index={idx} />
+									{/* Right-side reactions shown only for the active slide to avoid duplicates */}
+									{idx === currentIndex && <ReactionBar slide={slide} index={idx} />}
 								</section>
 							))}
 

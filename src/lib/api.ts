@@ -981,15 +981,38 @@ export const userApi = {
     apiRequest<Array<any>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
 
   // Reactions
-  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }) =>
+  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; postId?: string; songId?: string; songTitle?: string; artist?: string }) =>
     apiRequest<{ success: boolean; message: string }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
 
   getLatestReactions: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }>>(
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; postId?: string; songId?: string; songTitle?: string; artist?: string }>>(
       `${API_CONFIG.USER_API}/api/feed/reactions/latest?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
+    ),
+
+  getReactionsByPost: (postId: string) =>
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; postId?: string; songId?: string; songTitle?: string; artist?: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/by-post?postId=${encodeURIComponent(postId)}`
+    ),
+
+  getPostById: (postId: string) =>
+    apiRequest<any>(`${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}`),
+
+  // Now Playing
+  setNowPlaying: (payload: { identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec: number; isPlaying: boolean }, ttlSec = 90) =>
+    apiRequest<{ success: boolean }>(`${API_CONFIG.USER_API}/api/feed/nowplaying?ttlSec=${ttlSec}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getNowPlayingBatch: (userIds: string[]) =>
+    apiRequest<Array<{ identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec: number; isPlaying: boolean; updatedAt: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/nowplaying/batch`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      }
     ),
 }; 
 
