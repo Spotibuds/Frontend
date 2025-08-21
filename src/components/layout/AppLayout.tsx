@@ -48,9 +48,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [friendRequests, setFriendRequests] = useState<{ requestId: string; requesterId: string; requesterUsername: string; requesterAvatar?: string; requestedAt: string }[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likedSongsPlaylistId, setLikedSongsPlaylistId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
-  const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
+  const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, toggleMute, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
 
   
@@ -145,6 +148,57 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Real-time friend request updates - handled by useFriendHub hook in individual pages
   // Removed duplicate event handler setup to prevent infinite loop
+
+  const handleLikeSong = async () => {
+    if (!state.currentSong || !user || isLiking) return;
+
+    try {
+      setIsLiking(true);
+      
+      // Import playlist service
+      const { PlaylistService } = await import('@/lib/playlist');
+      
+      let playlistId = likedSongsPlaylistId;
+      
+      // Create "Liked Songs" playlist if it doesn't exist
+      if (!playlistId) {
+        try {
+          // First, check if a "Liked Songs" playlist already exists
+          const userPlaylists = await PlaylistService.getUserPlaylists(user.id);
+          const existingLikedSongs = userPlaylists.find(p => p.name === 'Liked Songs');
+          
+          if (existingLikedSongs) {
+            playlistId = existingLikedSongs.id;
+          } else {
+            // Create new "Liked Songs" playlist
+            const newPlaylist = await PlaylistService.createPlaylist(user.id, {
+              name: 'Liked Songs',
+              description: 'Your favorite songs'
+            });
+            playlistId = newPlaylist.id;
+          }
+          
+          setLikedSongsPlaylistId(playlistId);
+        } catch (error) {
+          console.error('Failed to create/find Liked Songs playlist:', error);
+          return;
+        }
+      }
+      
+      // Add song to "Liked Songs" playlist
+      if (playlistId) {
+        await PlaylistService.addSongToPlaylist(playlistId, state.currentSong.id);
+        setIsLiked(true);
+        
+        // Show success feedback
+        setTimeout(() => setIsLiked(false), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to like song:', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
 
   const handleLogout = () => {
     identityApi.logout();
@@ -516,8 +570,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       'Select a song'}
                   </p>
                 </div>
-                <button className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0">
-                  <HeartIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                <button 
+                  onClick={handleLikeSong}
+                  className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                  title="Add to Liked Songs"
+                  disabled={!state.currentSong || isLiking}
+                >
+                  {isLiking ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
+                  ) : (
+                    <HeartIcon className={`w-5 h-5 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-white'}`} />
+                  )}
                 </button>
               </div>
 
@@ -633,11 +696,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </span>
                   )}
                 </button>
-                <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
-                  {state.volume > 0 ? (
-                    <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-                  ) : (
+                <button 
+                  onClick={toggleMute}
+                  className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                  title={state.isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {state.isMuted || state.volume === 0 ? (
                     <SpeakerXMarkIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  ) : (
+                    <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   )}
                 </button>
                 <div 

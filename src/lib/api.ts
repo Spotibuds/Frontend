@@ -152,11 +152,14 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   //   });
   // }
 
-  // Add timeout to prevent hanging - longer timeout for registration
+  // Add timeout to prevent hanging - longer timeout for registration and chat endpoints
   const controller = new AbortController();
   const isRegistration = url.includes('/api/auth/register');
   const isFeedEndpoint = url.includes('/api/feed/');
-  const timeoutDuration = isRegistration ? 30000 : isFeedEndpoint ? 15000 : 10000; // Longer timeout for feed endpoints
+  const isChatEndpoint = url.includes('/api/chats/');
+  const timeoutDuration = isRegistration ? 30000 : 
+                         isChatEndpoint ? 20000 : 
+                         isFeedEndpoint ? 15000 : 10000; // Longer timeout for chat endpoints
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   try {
@@ -978,11 +981,11 @@ export const userApi = {
 
   // Feed slides
   getFeedSlides: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<any>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
+    apiRequest<Array<Record<string, unknown>>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
 
   // Reactions
   sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }) =>
-    apiRequest<{ success: boolean; message: string }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
+    apiRequest<{ success: boolean; message: string; action: "added" | "removed" }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -991,6 +994,54 @@ export const userApi = {
     apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }>>(
       `${API_CONFIG.USER_API}/api/feed/reactions/latest?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
     ),
+
+  getReactionsByPost: (postId: string, currentUserId?: string) =>
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/by-post?postId=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`
+    ),
+
+  // Profile picture upload
+  uploadProfilePicture: async (userId: string, file: File): Promise<{ avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch(`${API_CONFIG.USER_API}/api/users/${userId}/profile-picture`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type for FormData, let the browser set it with boundary
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  },
+
+  uploadProfilePictureByIdentityId: async (identityUserId: string, file: File): Promise<{ avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/profile-picture`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type for FormData, let the browser set it with boundary
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  },
 }; 
 
 export interface FollowStats {

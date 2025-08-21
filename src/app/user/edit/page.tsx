@@ -6,7 +6,8 @@ import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { identityApi, userApi, safeString } from '@/lib/api';
+import ProfilePictureUpload from '@/components/ui/ProfilePictureUpload';
+import { identityApi, userApi } from '@/lib/api';
 
 export default function EditProfilePage() {
   const router = useRouter();
@@ -15,13 +16,15 @@ export default function EditProfilePage() {
     username: '',
     displayName: '',
     bio: '',
-    isPrivate: false
+    isPrivate: false,
+    avatarUrl: ''
   });
   const [initialData, setInitialData] = useState({
     username: '',
     displayName: '',
     bio: '',
-    isPrivate: false
+    isPrivate: false,
+    avatarUrl: ''
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,7 +48,8 @@ export default function EditProfilePage() {
         username: userData.username,
         displayName: userData.displayName || '',
         bio: userData.bio || '',
-        isPrivate: userData.isPrivate || false
+        isPrivate: userData.isPrivate || false,
+        avatarUrl: userData.avatarUrl || ''
       };
       setProfileData(nextData);
       setInitialData(nextData);
@@ -84,7 +88,8 @@ export default function EditProfilePage() {
       profileData.username !== initialData.username ||
       profileData.displayName !== initialData.displayName ||
       profileData.bio !== initialData.bio ||
-      profileData.isPrivate !== initialData.isPrivate
+      profileData.isPrivate !== initialData.isPrivate ||
+      profileData.avatarUrl !== initialData.avatarUrl
     );
   };
 
@@ -98,7 +103,8 @@ export default function EditProfilePage() {
         username: profileData.username,
         displayName: profileData.displayName || undefined,
         bio: profileData.bio || undefined,
-        isPrivate: profileData.isPrivate
+        isPrivate: profileData.isPrivate,
+        avatarUrl: profileData.avatarUrl || undefined
       });
 
       // Update the current user in localStorage if display name changed
@@ -155,17 +161,14 @@ export default function EditProfilePage() {
             )}
 
             {/* Profile Picture Section */}
-            <div className="flex items-center space-x-4">
-              <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-bold text-2xl">
-                  {safeString(profileData.displayName || profileData.username).charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <p className="text-white font-medium">Profile Picture</p>
-                <p className="text-gray-400 text-sm">Avatar upload coming soon</p>
-              </div>
-            </div>
+            <ProfilePictureUpload
+              currentUserId={currentUser?.id || ''}
+              currentAvatarUrl={profileData.avatarUrl}
+              onUploadSuccess={(newAvatarUrl) => {
+                setProfileData(prev => ({ ...prev, avatarUrl: newAvatarUrl }));
+                setErrors(prev => ({ ...prev, profilePicture: '' }));
+              }}
+            />
 
             {/* Username */}
             <div className="space-y-2">

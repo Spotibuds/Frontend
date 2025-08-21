@@ -8,6 +8,13 @@ import MusicImage from "@/components/ui/MusicImage";
 import { identityApi, musicApi, userApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
 
+interface Reaction {
+	emoji: string;
+	fromIdentityUserId: string;
+	fromUserName?: string;
+	count?: number;
+}
+
 type Slide =
 	| {
 		type: "recent_song";
@@ -66,7 +73,7 @@ function FeedInner() {
 	const SEEN_KEY = 'feed_seen_v1';
 	const SEEN_TTL_MS = 72 * 60 * 60 * 1000; // 72h
 	const seenMapRef = useRef<Record<string, number>>({});
-	const loadSeen = () => {
+	const loadSeen = useCallback(() => {
 		try {
 			const raw = typeof window !== 'undefined' ? localStorage.getItem(SEEN_KEY) : null;
 			if (!raw) return {} as Record<string, number>;
@@ -80,97 +87,37 @@ function FeedInner() {
 		} catch {
 			return {} as Record<string, number>;
 		}
-	};
+	}, [SEEN_TTL_MS]); // Include SEEN_TTL_MS dependency
 	const saveSeen = () => {
 		try {
 			if (typeof window !== 'undefined') localStorage.setItem(SEEN_KEY, JSON.stringify(seenMapRef.current));
 		} catch {}
 	};
 
-	// Utility: slide author and key (for dedupe/seen)
-	const authorOf = (s: Slide) => s.identityUserId;
+	// Utility: slide key (for dedupe/seen)
 	const keyOf = (s: Slide) => {
 		const base = `${s.type}:${s.identityUserId}`;
-		if (s.type === 'recent_song') return `${base}:song:${(s as any).songId}`;
+		if (s.type === 'recent_song') return `${base}:song:${s.songId}`;
 		if (s.type === 'top_songs_week') {
-			const names = (s as any).topSongs?.map((x: any) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
+			const names = s.topSongs?.map((x) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
 			return `${base}:top_songs:${names}`;
 		}
 		if (s.type === 'top_artists_week') {
-			const names = (s as any).topArtists?.map((x: any) => (x.name || '').toLowerCase()).join('|') || '';
+			const names = s.topArtists?.map((x) => (x.name || '').toLowerCase()).join('|') || '';
 			return `${base}:top_artists:${names}`;
 		}
 		if (s.type === 'common_artists') {
-			const withId = (s as any).withIdentityUserId || '';
-			const names = (s as any).commonArtists?.slice(0, 8).map((x: any) => (x || '').toLowerCase()).join('|') || '';
+			const withId = s.withIdentityUserId || '';
+			const names = s.commonArtists?.slice(0, 8).map((x) => (x || '').toLowerCase()).join('|') || '';
 			return `${base}:common:${withId}:${names}`;
 		}
 		return base;
 	};
 
-	// PRNG and chunked shuffle
-	const mulberry32 = (a: number) => () => {
-		let t = (a += 0x6D2B79F5);
-		t = Math.imul(t ^ (t >>> 15), t | 1);
-		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-	};
-	const hashString = (str: string) => {
-		let h = 2166136261;
-		for (let i = 0; i < str.length; i++) {
-			h ^= str.charCodeAt(i);
-			h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
-		}
-		return h >>> 0;
-	};
-	const chunkedShuffle = (arr: Slide[], seedStr: string, chunkSize = 4) => {
-		if (arr.length <= 1) return arr.slice();
-		const out: Slide[] = [];
-		for (let i = 0; i < arr.length; i += chunkSize) {
-			const chunk = arr.slice(i, i + chunkSize);
-			const rng = mulberry32(hashString(seedStr + ':' + i));
-			// Fisher-Yates
-			for (let j = chunk.length - 1; j > 0; j--) {
-				const k = Math.floor(rng() * (j + 1));
-				[chunk[j], chunk[k]] = [chunk[k], chunk[j]];
-			}
-			out.push(...chunk);
-		}
-		return out;
-	};
-
-	// De-clump by author within a batch and at the boundary with previous author
-	const declumpAuthors = (batch: Slide[]) => {
-		if (batch.length <= 1) return batch;
-		const res = batch.slice();
-		// boundary check
-		if (lastAuthorRef.current && authorOf(res[0]) === lastAuthorRef.current) {
-			const idx = res.findIndex((s) => authorOf(s) !== lastAuthorRef.current);
-			if (idx > 0) {
-				const [swap] = res.splice(idx, 1);
-				res.unshift(swap);
-			}
-		}
-		// internal pass: avoid 3+ in a row
-		for (let i = 1; i < res.length; i++) {
-			const prev = authorOf(res[i - 1]);
-			const cur = authorOf(res[i]);
-			if (prev === cur) {
-				const altIdx = res.findIndex((s, j) => j > i && authorOf(s) !== cur);
-				if (altIdx > i) {
-					const [alt] = res.splice(altIdx, 1);
-					res.splice(i, 0, alt);
-				}
-			}
-		}
-		// update boundary author
-		lastAuthorRef.current = authorOf(res[res.length - 1]);
-		return res;
-	};
-
 	const [songsById, setSongsById] = useState<Record<string, Song | null>>({});
 	const [artists, setArtists] = useState<Artist[]>([]);
 	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string }>>({});
+	const [reactionsBySlide, setReactionsBySlide] = useState<Record<string, Reaction[]>>({});
 
 	// Snap container + sections for one-by-one navigation
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -228,7 +175,99 @@ function FeedInner() {
 			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl };
 		});
 		setUserMetaById((prev) => ({ ...prev, ...meta }));
-	}, [userMetaById]);
+	}, [userMetaById]); // Include userMetaById since we read it inside the function
+
+	const preloadReactions = useCallback(async (newSlides: Slide[]) => {
+		if (!newSlides.length) return;
+
+		const reactionPromises = newSlides.map(async (slide) => {
+			try {
+				const slideKey = keyOf(slide);
+				
+				// Generate postId for this slide to fetch reactions - use multiple formats
+				const postIds = [];
+				
+				if (slide.type === 'recent_song') {
+					// Use the slideKey format as the primary format
+					postIds.push(slideKey); // This will be something like "recent_song:userId:song:songId"
+					// Also try the simple format 
+					postIds.push(`recent_song:${slide.identityUserId}:${slide.songId}`);
+					// Also try the feed item ID format (found in slide.feedId if it exists)
+					if ('feedId' in slide) {
+						postIds.push(slide.feedId as string);
+					}
+				} else if (slide.type === 'top_artists_week') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`weekly:artists:${slide.identityUserId}:${weekKey}`);
+				} else if (slide.type === 'top_songs_week') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`weekly:songs:${slide.identityUserId}:${weekKey}`);
+				} else if (slide.type === 'common_artists') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`common:${me?.id}:${slide.identityUserId}:${weekKey}`);
+				}
+
+				// Try each postId format until we find reactions
+				let allReactions: Reaction[] = [];
+				for (const postId of postIds) {
+					try {
+						const reactions = await userApi.getReactionsByPost(postId, me?.id);
+						if (reactions && reactions.length > 0) {
+							allReactions = [...allReactions, ...reactions];
+						}
+					} catch {
+						// Silently continue to next postId format
+					}
+				}
+
+				if (allReactions.length > 0) {
+					// Group reactions by emoji and count them
+					const groupedReactions: Record<string, {
+						emoji: string;
+						fromIdentityUserId: string;
+						fromUserName?: string;
+						count: number;
+					}> = {};
+					
+					allReactions.forEach((reaction: Reaction) => {
+						if (!groupedReactions[reaction.emoji]) {
+							groupedReactions[reaction.emoji] = {
+								emoji: reaction.emoji,
+								fromIdentityUserId: reaction.fromIdentityUserId,
+								fromUserName: reaction.fromUserName,
+								count: 1
+							};
+						} else {
+							groupedReactions[reaction.emoji].count++;
+						}
+					});
+
+					// Use slideKey for consistency
+					return { slideKey, reactions: Object.values(groupedReactions) };
+				}
+			} catch (error) {
+				console.warn('Failed to load reactions for slide:', error);
+			}
+			return { slideKey: keyOf(slide), reactions: [] };
+		});
+
+		const results = await Promise.allSettled(reactionPromises);
+		const newReactions: Record<string, Reaction[]> = {};
+
+		results.forEach(result => {
+			if (result.status === 'fulfilled' && result.value) {
+				newReactions[result.value.slideKey] = result.value.reactions;
+			}
+		});
+
+		setReactionsBySlide(prev => ({ ...prev, ...newReactions }));
+	}, [me?.id]); // Remove userMetaById as it's not actually used in this function
 
 	const loadSlides = useCallback(
 		async (reset = false) => {
@@ -255,31 +294,33 @@ function FeedInner() {
 				const data = await userApi.getFeedSlides(me.id, 10, currentSkip);
 				const newSlides = Array.isArray(data) ? (data as Slide[]) : [];
 
+				// Skip processing if no new slides and this is not a reset
+				if (newSlides.length === 0 && !reset) {
+					setHasMore(false);
+					setIsLoading(false);
+					setIsLoadingMore(false);
+					return;
+				}
+
 				// Build processed batch: de-dupe, prioritize unseen, light shuffle, de-clump
 				if (reset) {
 					seenMapRef.current = loadSeen();
 				}
-				const batchUnique: Slide[] = [];
-				for (const s of newSlides) {
-					const k = keyOf(s);
-					if (globalKeySetRef.current.has(k)) continue; // drop duplicates across pages
-					globalKeySetRef.current.add(k);
-					batchUnique.push(s);
-				}
-
-				// Unseen first within the batch
-				const seed = `${sessionSeedRef.current}:${currentSkip}`;
-				const unseen = batchUnique.filter((s) => !(keyOf(s) in seenMapRef.current));
-				const seen = batchUnique.filter((s) => keyOf(s) in seenMapRef.current);
-				const shuffledUnseen = chunkedShuffle(unseen, seed, 4);
-				const reordered = declumpAuthors([...shuffledUnseen, ...seen]);
+				
+				// TEMPORARY: Skip all complex processing and just show raw slides
+				const reordered = newSlides;
 
 				if (!newSlides.length) setHasMore(false);
-				setSlides((prev) => (reset ? reordered : [...prev, ...reordered]));
+				
+				// Only update slides if we have content OR this is a reset
+				if (reordered.length > 0 || reset) {
+					setSlides((prev) => (reset ? reordered : [...prev, ...reordered]));
+				}
+				
 				setSkip(currentSkip + newSlides.length);
 
 				// parallel preloads (for processed batch)
-				await Promise.allSettled([preloadSongs(reordered), preloadUserMeta(reordered)]);
+				await Promise.allSettled([preloadSongs(reordered), preloadUserMeta(reordered), preloadReactions(reordered)]);
 			} catch (e) {
 				console.error("Failed to load slides:", e);
 				setError("Failed to load feed");
@@ -288,17 +329,18 @@ function FeedInner() {
 				setIsLoadingMore(false);
 			}
 		},
-		[me, skip, preloadSongs, preloadUserMeta]
+		[me, skip, preloadSongs, preloadUserMeta, preloadReactions, loadSeen] // Add missing dependencies
 	);
 
 	// keep a live ref of slides for deep-link fallback logic
-	useEffect(() => { slidesRef.current = slides; }, [slides]);
+	useEffect(() => { 
+		slidesRef.current = slides; 
+	}, [slides]);
 
 	// initial load once
 	useEffect(() => {
 		loadSlides(true);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [me]);
+	}, [me?.id, loadSlides]); // Include loadSlides dependency
 
 	// deep-link: focus a slide based on query params (with fallback)
 	useEffect(() => {
@@ -338,7 +380,7 @@ function FeedInner() {
 		run();
 		return () => { cancelled = true; };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [slides.length]);
+	}, [slides.length]); // Keep minimal dependencies to avoid circular issues
 
 	// artists cache once
 	useEffect(() => {
@@ -446,15 +488,21 @@ function FeedInner() {
 		root.addEventListener("touchstart", onTouchStart, { passive: true });
 		root.addEventListener("touchmove", onTouchMove, { passive: false });
 		return () => {
-			root.removeEventListener("wheel", onWheel as any);
-			root.removeEventListener("touchstart", onTouchStart as any);
-			root.removeEventListener("touchmove", onTouchMove as any);
+			root.removeEventListener("wheel", onWheel);
+			root.removeEventListener("touchstart", onTouchStart);
+			root.removeEventListener("touchmove", onTouchMove);
 		};
 	}, [currentIndex, scrollLocked, touchStartY, scrollToIndex]);
 
 	const handleReact = useCallback(
 		async (target: Slide, emoji: string, index?: number) => {
 			if (!me) return;
+			console.log("🎯 handleReact called:", { target: target.type, emoji, me: me.id });
+
+			const slideKey = keyOf(target);
+			const existingReactions = reactionsBySlide[slideKey] || [];
+			console.log("📊 Current reactions for slide:", { slideKey, existingReactions });
+
 			try {
 				const base = {
 					toIdentityUserId: target.identityUserId,
@@ -462,8 +510,11 @@ function FeedInner() {
 					fromUserName: me.username,
 					emoji,
 				};
+
+				// Send the reaction to the server first to get the actual action
+				let response;
 				if (target.type === "recent_song") {
-					await userApi.sendReaction({
+					response = await userApi.sendReaction({
 						...base,
 						contextType: "recent_song",
 						songId: target.songId,
@@ -471,18 +522,47 @@ function FeedInner() {
 						artist: target.artist,
 					});
 				} else if (target.type === "top_artists_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_artists_week" });
+					response = await userApi.sendReaction({ ...base, contextType: "top_artists_week" });
 				} else if (target.type === "common_artists") {
-					await userApi.sendReaction({ ...base, contextType: "common_artists" });
+					response = await userApi.sendReaction({ ...base, contextType: "common_artists" });
 				} else if (target.type === "top_songs_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_songs_week" });
+					response = await userApi.sendReaction({ ...base, contextType: "top_songs_week" });
 				}
+
+				console.log("🚀 Server response:", response);
+
+				// Update UI based on server response
+				if (response?.action === "removed") {
+					// Remove the reaction from UI
+					const updatedReactions = existingReactions.filter(r => !(r.emoji === emoji && r.fromIdentityUserId === me.id));
+					console.log("❌ Removing reaction, updated reactions:", updatedReactions);
+					setReactionsBySlide(prev => ({
+						...prev,
+						[slideKey]: updatedReactions
+					}));
+				} else if (response?.action === "added") {
+					// Add the reaction to UI
+					const newReaction = {
+						emoji,
+						fromIdentityUserId: me.id,
+						fromUserName: me.username,
+						count: 1
+					};
+					const updatedReactions = [...existingReactions, newReaction];
+					console.log("✅ Adding reaction, updated reactions:", updatedReactions);
+					setReactionsBySlide(prev => ({
+						...prev,
+						[slideKey]: updatedReactions
+					}));
+				}
+
+				// Show flash effect
 				if (typeof index === 'number') {
 					setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
 					setTimeout(() => {
 						setReactionFlash(prev => {
-							const copy = { ...prev } as typeof prev;
-							delete (copy as any)[index!];
+							const copy = { ...prev };
+							delete copy[index!];
 							return copy;
 						});
 					}, 1200);
@@ -491,7 +571,7 @@ function FeedInner() {
 				console.error("Failed to send reaction:", e);
 			}
 		},
-		[me]
+		[me, reactionsBySlide]
 	);
 
 	const UserHeader = ({ slide }: { slide: Slide }) => {
@@ -513,35 +593,76 @@ function FeedInner() {
 		</div>
 	);
 
+	// Component to show friend reactions at the top of each post
+	const FriendReactions = ({ slide }: { slide: Slide }) => {
+		const slideKey = keyOf(slide);
+		const reactions = reactionsBySlide[slideKey] || [];
+		
+		if (reactions.length === 0) {
+			return null; // Don't show anything if no reactions
+		}
+
+		return (
+			<div className="mb-3 pb-3 border-b border-gray-800">
+				<div className="flex flex-wrap gap-2 items-center">
+					<span className="text-gray-400 text-xs mr-2">Friends reacted:</span>
+					{reactions.map((reaction, idx) => (
+						<div key={`${reaction.emoji}-${idx}`} 
+							 className="flex items-center gap-1 bg-gray-800/50 rounded-full px-2 py-1 text-sm">
+							<span className="text-base">{reaction.emoji}</span>
+							<span className="text-gray-300 text-xs">{reaction.fromUserName || 'Friend'}</span>
+							{reaction.count && reaction.count > 1 && (
+								<span className="text-gray-400 text-xs">×{reaction.count}</span>
+							)}
+						</div>
+					))}
+				</div>
+			</div>
+		);
+	};
+
 	const ReactionBar = ({ slide, index }: { slide: Slide; index: number }) => {
-			const flash = reactionFlash[index];
-			return (
-		<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
-					{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => (
+		const flash = reactionFlash[index];
+		const slideKey = keyOf(slide);
+		const existingReactions = reactionsBySlide[slideKey] || [];
+		
+		return (
+			<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
+				{/* Reaction buttons */}
+				{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => {
+					const hasReacted = existingReactions.some(r => r.emoji === em && r.fromIdentityUserId === me?.id);
+					return (
 						<button
 							key={em}
 							onClick={(e) => { e.stopPropagation(); handleReact(slide, em, index); }}
-							className={`pointer-events-auto w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${flash?.emoji === em ? 'ring-2 ring-purple-400 animate-pulse' : ''}`}
+							className={`pointer-events-auto w-10 h-10 rounded-full text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${
+								flash?.emoji === em ? 'ring-2 ring-purple-400 animate-pulse' : ''
+							} ${
+								hasReacted 
+									? 'bg-purple-600/50 hover:bg-purple-600/70 text-white' 
+									: 'bg-white/10 hover:bg-white/20 text-white/80'
+							}`}
 							style={{ willChange: 'transform' }}
-							title={`React ${em}`}
+							title={`${hasReacted ? 'Remove' : 'Add'} ${em} reaction`}
 						>
 							{em}
 						</button>
-					))}
-					{/* Sent chip removed per request */}
-				</div>
-			);
-		};
+					);
+				})}
+			</div>
+		);
+	};
 
 	const RecentSongCard = ({ slide }: { slide: Extract<Slide, { type: "recent_song" }> }) => (
 		<Card>
+			<FriendReactions slide={slide} />
 			<div className="flex items-start gap-4">
 				<div className="flex-1">
 					<UserHeader slide={slide} />
 					<div className="mt-4 flex items-center gap-4">
 						<button
 							className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId]!)}
 							title="Play"
 						>
 							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
@@ -550,15 +671,15 @@ function FeedInner() {
 							<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
 							<div className="text-gray-300 truncate">
 								{songsById[slide.songId]?.artists?.length
-									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+									? songsById[slide.songId]!.artists.map((a, i) => (
 										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+											{a.name}{i < (songsById[slide.songId]?.artists?.length || 0) - 1 ? ', ' : ''}
 										</Link>
 									))
 									: slide.artist}
 							</div>
-							{(songsById[slide.songId] as any)?.album?.id && (
-								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+							{songsById[slide.songId]?.album?.id && (
+								<Link href={`/album/${songsById[slide.songId]!.album!.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
 							)}
 							{slide.playedAt && (
 								<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleString()}</div>
@@ -572,6 +693,7 @@ function FeedInner() {
 
 	const TopArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "top_artists_week" }> }) => (
 		<Card>
+			<FriendReactions slide={slide} />
 			<div className="flex items-center justify-between">
 				<UserHeader slide={slide} />
 				<div className="text-white/60 text-xs">Top artists this week</div>
@@ -601,6 +723,7 @@ function FeedInner() {
 
 	const TopSongsCard = ({ slide }: { slide: Extract<Slide, { type: "top_songs_week" }> }) => (
 		<Card>
+			<FriendReactions slide={slide} />
 			<div className="flex items-center justify-between">
 				<UserHeader slide={slide} />
 				<div className="text-white/60 text-xs">Top songs this week</div>
@@ -612,8 +735,8 @@ function FeedInner() {
 					const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
 					return (
 						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							{(song as any)?.album?.id ? (
-								<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
+							{song?.album?.id ? (
+								<Link href={`/album/${song.album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
 									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
 								</Link>
 							) : (
@@ -624,17 +747,17 @@ function FeedInner() {
 							<div className="text-left flex-1 min-w-0">
 								<div className="text-white font-semibold truncate">{title}</div>
 								<div className="text-gray-300 text-xs truncate">
-									{(song as any)?.artists?.length
-										? ((song as any).artists as any[]).map((a: any, j: number) => (
+									{song?.artists?.length
+										? song.artists.map((a, j) => (
 											<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
+												{a.name}{j < (song?.artists?.length || 0) - 1 ? ', ' : ''}
 											</Link>
 										))
 										: artistName}
 									<span className="text-gray-500"> • {ts.count} plays</span>
 								</div>
 							</div>
-							<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
+							<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
 								Play
 							</button>
 						</div>
@@ -646,6 +769,7 @@ function FeedInner() {
 
 	const CommonArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "common_artists" }> }) => (
 		<Card>
+			<FriendReactions slide={slide} />
 			<div className="flex items-center justify-between">
 				<UserHeader slide={slide} />
 				<div className="text-white/60 text-xs">You both listen to</div>
@@ -669,6 +793,8 @@ function FeedInner() {
 			</AppLayout>
 		);
 	}
+
+	console.log(`[Feed Debug] Render state - isLoading: ${isLoading}, slides.length: ${slides.length}, error: ${error}`);
 
 	return (
 		<AppLayout>

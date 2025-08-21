@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
@@ -21,6 +22,7 @@ interface UserProfile {
   displayName?: string;
   bio?: string;
   email?: string;
+  avatarUrl?: string;
   isPrivate?: boolean;
   followerCount?: number;
   followingCount?: number;
@@ -112,6 +114,7 @@ export default function UserProfilePage() {
           displayName: userResult.displayName,
           bio: userResult.bio,
           email: userResult.email,
+          avatarUrl: userResult.avatarUrl,
           isPrivate: userResult.isPrivate,
           followers: userResult.followers,
           following: userResult.following,
@@ -132,6 +135,7 @@ export default function UserProfilePage() {
               displayName: userResult.displayName,
               bio: userResult.bio,
               email: userResult.email,
+              avatarUrl: userResult.avatarUrl,
               isPrivate: userResult.isPrivate,
               followers: userResult.followers,
               following: userResult.following,
@@ -215,6 +219,7 @@ export default function UserProfilePage() {
         username: userData.username,
         displayName: userData.displayName,
         bio: userData.bio,
+        avatarUrl: userData.avatarUrl,
         followerCount: userData.followers || 0,
         followingCount: userData.following || 0,
         playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
@@ -244,7 +249,7 @@ export default function UserProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // Remove currentUser from dependencies since we pass the user as parameter
+  }, [loadReactions]); // Remove currentUser from dependencies since we pass the user as parameter
 
   const loadFriendshipStatus = useCallback(async (currentUserId: string, targetUserId: string) => {
     try {
@@ -631,15 +636,39 @@ export default function UserProfilePage() {
             <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
               {/* Avatar */}
               <div className="relative">
-                <div className="w-32 h-32 lg:w-40 lg:h-40 bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 rounded-full flex items-center justify-center shadow-2xl border-4 border-gray-800">
-                  <span className="text-white font-bold text-4xl lg:text-5xl">
-                    {(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}
-                  </span>
+                <div className="w-32 h-32 lg:w-40 lg:h-40 rounded-full overflow-hidden shadow-2xl border-4 border-gray-800">
+                  {profileUser.avatarUrl ? (
+                    <Image 
+                      src={profileUser.avatarUrl} 
+                      alt={`${profileUser.displayName || profileUser.username}'s profile picture`}
+                      className="w-full h-full object-cover"
+                      width={160}
+                      height={160}
+                      onError={(e) => {
+                        // Fallback to gradient with initials if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.className = "w-32 h-32 lg:w-40 lg:h-40 bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 rounded-full flex items-center justify-center shadow-2xl border-4 border-gray-800";
+                          parent.innerHTML = `<span class="text-white font-bold text-4xl lg:text-5xl">${(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}</span>`;
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 flex items-center justify-center">
+                      <span className="text-white font-bold text-4xl lg:text-5xl">
+                        {(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {isOwnProfile && (
-                  <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors">
-                    <PencilIcon className="w-5 h-5 text-white" />
-                  </button>
+                  <Link href="/user/edit">
+                    <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors">
+                      <PencilIcon className="w-5 h-5 text-white" />
+                    </button>
+                  </Link>
                 )}
               </div>
               

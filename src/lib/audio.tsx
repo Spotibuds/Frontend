@@ -16,6 +16,8 @@ interface AudioState {
   currentTime: number;
   duration: number;
   volume: number;
+  isMuted: boolean;
+  previousVolume: number; // Store volume before muting
   isLoading: boolean;
   isSeeking: boolean;
   playlist: Song[];
@@ -35,6 +37,7 @@ type AudioAction =
   | { type: 'SET_CURRENT_TIME'; payload: number; force?: boolean }
   | { type: 'SET_DURATION'; payload: number }
   | { type: 'SET_VOLUME'; payload: number }
+  | { type: 'TOGGLE_MUTE' }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_SEEKING'; payload: boolean }
   | { type: 'SET_SHUFFLE'; payload: boolean }
@@ -49,6 +52,8 @@ const initialState: AudioState = {
   currentTime: 0,
   duration: 0,
   volume: 0.7,
+  isMuted: false,
+  previousVolume: 0.7,
   isLoading: false,
   isSeeking: false,
   playlist: [],
@@ -121,7 +126,24 @@ function audioReducer(state: AudioState, action: AudioAction): AudioState {
     case 'SET_DURATION':
       return { ...state, duration: action.payload };
     case 'SET_VOLUME':
-      return { ...state, volume: action.payload };
+      return { 
+        ...state, 
+        volume: action.payload,
+        // If we're setting a non-zero volume, unmute
+        isMuted: action.payload === 0 ? state.isMuted : false,
+        // Update previousVolume only if it's not zero (to preserve last non-zero volume)
+        previousVolume: action.payload > 0 ? action.payload : state.previousVolume
+      };
+    case 'TOGGLE_MUTE':
+      return {
+        ...state,
+        isMuted: !state.isMuted,
+        // If muting, save current volume and set to 0
+        // If unmuting, restore previous volume
+        volume: !state.isMuted ? 0 : state.previousVolume,
+        // Update previousVolume when muting (but not when unmuting)
+        previousVolume: !state.isMuted ? state.volume : state.previousVolume
+      };
     case 'SET_LOADING':
       return { ...state, isLoading: action.payload };
     case 'SET_SEEKING':
@@ -210,6 +232,7 @@ interface AudioContextType {
   skipForward: (seconds?: number) => void;
   skipBackward: (seconds?: number) => void;
   setVolume: (volume: number) => void;
+  toggleMute: () => void;
   setShuffle: (shuffle: boolean) => void;
   setRepeat: (repeat: 'off' | 'one' | 'all') => void;
   addToQueue: (songs: Song | Song[]) => void;
@@ -222,6 +245,7 @@ interface AudioContextType {
   currentTime: number;
   duration: number;
   volume: number;
+  isMuted: boolean;
   isLoading: boolean;
   isSeeking: boolean;
   playlist: Song[];
@@ -259,7 +283,13 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         audio.currentTime = 0;
         audio.play().catch(console.error);
       } else {
+        // For repeat all or off, use NEXT_SONG which handles the logic
         dispatch({ type: 'NEXT_SONG' });
+        // Only start playing if we actually have a next song or repeat all is enabled
+        const nextIndex = getNextIndex(state.currentIndex, state.playlist.length, state.shuffleMode, state.repeatMode);
+        if (nextIndex !== state.currentIndex || state.repeatMode === 'all') {
+          dispatch({ type: 'PLAY' });
+        }
       }
     };
 
@@ -330,7 +360,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('playing', handlePlaying);
     };
-  }, [state.isSeeking, state.repeatMode, state.isPlaying]); // include isPlaying for completeness
+  }, [state.isSeeking, state.repeatMode, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode]); // Include all missing dependencies
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -367,21 +397,35 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !state.currentSong) return;
 
+    // Check if the song has actually changed by comparing URLs
+    const currentSrc = audio.src;
+    const newDirectUrl = state.currentSong.fileUrl || '';
+    const isAzureBlob = newDirectUrl.includes('blob.core.windows.net');
+    const hasSasToken = /[?&](sig|sp|se|sr|skoid|sktid|skt|ske|sks|skv)=/i.test(newDirectUrl);
+    const newProxyUrl = newDirectUrl.includes('/api/media/audio')
+      ? newDirectUrl
+      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(newDirectUrl)}`;
+    const shouldUseDirect = !!newDirectUrl && (!isAzureBlob || hasSasToken);
+    const newSrc = shouldUseDirect ? newDirectUrl : newProxyUrl;
+
+    // If the source hasn't changed, don't reload the audio
+    if (currentSrc === newSrc) {
+      // Just ensure playback state is correct
+      if (state.isPlaying && audio.paused) {
+        audio.play().catch(console.error);
+      } else if (!state.isPlaying && !audio.paused) {
+        audio.pause();
+      }
+      return;
+    }
+
     // Load the new song: prefer direct blob URL; fallback to proxy on error
-    const directUrl = state.currentSong.fileUrl || '';
-    const isAzureBlob = directUrl.includes('blob.core.windows.net');
-    // Heuristic: only use direct Azure Blob URL if it carries a SAS/token; otherwise proxy to avoid CORS/public-access errors
-    const hasSasToken = /[?&](sig|sp|se|sr|skoid|sktid|skt|ske|sks|skv)=/i.test(directUrl);
-    const proxyUrl = directUrl.includes('/api/media/audio')
-      ? directUrl
-      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(directUrl)}`;
-    const useDirect = !!directUrl && (!isAzureBlob || hasSasToken);
-  const ext = audio as ExtendedHTMLAudioElement;
-  ext._directUrl = useDirect ? directUrl : undefined;
-  ext._proxyUrl = proxyUrl;
-  ext._proxyTried = !useDirect; // if we start with proxy, mark as tried to suppress fallback
+    const ext = audio as ExtendedHTMLAudioElement;
+    ext._directUrl = shouldUseDirect ? newDirectUrl : undefined;
+    ext._proxyUrl = newProxyUrl;
+    ext._proxyTried = !shouldUseDirect; // if we start with proxy, mark as tried to suppress fallback
     audio.crossOrigin = 'anonymous';
-    audio.src = useDirect ? directUrl : proxyUrl;
+    audio.src = newSrc;
     audio.load();
 
     // If we were already in playing state, ensure the new source actually starts
@@ -407,7 +451,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     // Reset listening time tracking for new song
     listeningStartTimeRef.current = null;
     hasAddedToHistoryRef.current = false;
-  }, [state.currentSong, state.isPlaying]);
+  }, [state.currentSong, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode]);
 
   // Listening time tracking refs
   const listeningStartTimeRef = useRef<number | null>(null);
@@ -485,8 +529,19 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   }, [addToListeningHistory, state.currentSong, state.isPlaying]);
 
   const playSong = (song: Song, playlist?: Song[]) => {
+    // Check if this is the same song that's already loaded
+    const isSameSong = state.currentSong?.id === song.id;
+    
     if (playlist && playlist.length > 0) {
       const songIndex = playlist.findIndex(s => s.id === song.id);
+      
+      // If it's the same song and same playlist, just play/resume
+      if (isSameSong && state.playlist.length > 0 && 
+          state.playlist.some(s => s.id === song.id)) {
+        dispatch({ type: 'PLAY' });
+        return;
+      }
+      
       dispatch({ 
         type: 'SET_PLAYLIST', 
         payload: { 
@@ -495,6 +550,12 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         } 
       });
     } else {
+      // If it's the same song, just resume playback
+      if (isSameSong) {
+        dispatch({ type: 'PLAY' });
+        return;
+      }
+      
       dispatch({ type: 'SET_SONG', payload: song });
     }
     dispatch({ type: 'PLAY' });
@@ -523,16 +584,16 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   };
 
   const nextSong = () => {
-    // Allow advancing if there are songs in the queue OR if there's more than one song in the playlist
-    if (state.queue.length > 0 || state.playlist.length > 1) {
+    // Allow advancing if there are songs in the queue OR if there's more than one song in the playlist OR repeat all is enabled
+    if (state.queue.length > 0 || state.playlist.length > 1 || (state.playlist.length === 1 && state.repeatMode === 'all')) {
       dispatch({ type: 'NEXT_SONG' });
       dispatch({ type: 'PLAY' });
     }
   };
 
   const previousSong = () => {
-    // Allow navigating if there are songs in the queue OR if there's more than one song in the playlist
-    if (state.queue.length > 0 || state.playlist.length > 1) {
+    // Allow navigating if there are songs in the queue OR if there's more than one song in the playlist OR repeat all is enabled
+    if (state.queue.length > 0 || state.playlist.length > 1 || (state.playlist.length === 1 && state.repeatMode === 'all')) {
       // If more than 3 seconds into the song, restart current song
       if (state.currentTime > 3) {
         seekTo(0);
@@ -654,6 +715,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_VOLUME', payload: clampedVolume });
   };
 
+  const toggleMute = () => {
+    dispatch({ type: 'TOGGLE_MUTE' });
+  };
+
   const skipForward = (seconds: number = 10) => {
     const audio = audioRef.current;
     if (!audio || !state.currentSong) return;
@@ -709,6 +774,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     skipForward,
     skipBackward,
     setVolume,
+    toggleMute,
     setShuffle,
     setRepeat,
     addToQueue,
@@ -720,6 +786,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     currentTime: state.currentTime,
     duration: state.duration,
     volume: state.volume,
+    isMuted: state.isMuted,
     isLoading: state.isLoading,
     isSeeking: state.isSeeking,
     playlist: state.playlist,
