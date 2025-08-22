@@ -76,7 +76,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       setIsLoggedIn(true);
       setUser(currentUser);
       loadFriendRequests(currentUser.id);
-      setIsAdmin(currentUser.roles?.includes("Admin"));
+      setIsAdmin(currentUser.roles?.includes("Admin") || false);
     }
     
     setIsLoading(false);

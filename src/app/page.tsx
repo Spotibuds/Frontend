@@ -57,8 +57,6 @@ export default function LoginPage() {
 
     try {
       await identityApi.login(formData);
-      // save user info (optional if API doesn’t already do it)
-      localStorage.setItem("currentUser", JSON.stringify(formData));
       router.push("/dashboard");
     } catch (error) {
       const errorMessage =
