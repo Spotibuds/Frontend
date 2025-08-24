@@ -166,6 +166,8 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
+      mode: 'cors', // Explicitly handle CORS
+      credentials: 'include', // Essential for CORS with authentication
       headers: {
         ...defaultHeaders,
         ...options?.headers,
@@ -270,6 +272,19 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
         ? 'Registration is taking longer than expected. This might be due to high server load. Please try again in a moment.'
         : 'Request timeout - service unavailable';
       throw new Error(timeoutMessage);
+    }
+    // Handle CORS and network errors in production
+    if (error instanceof TypeError && (
+      error.message.includes('NetworkError') || 
+      error.message.includes('Failed to fetch') ||
+      error.message.includes('CORS')
+    )) {
+      console.warn('Network/CORS error detected:', {
+        message: error.message,
+        url: url,
+        isProduction: typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+      });
+      throw new Error('Service unavailable - please try again later');
     }
     throw error;
   }
