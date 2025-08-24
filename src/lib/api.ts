@@ -163,16 +163,27 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   try {
-    const response = await fetch(url, {
+    // Only include credentials for User service and Identity service
+    // Music service uses wildcard CORS which doesn't support credentials
+    const isMusicService = url.includes('music-spotibuds');
+    const needsCredentials = token && !isMusicService;
+    
+    const fetchOptions: RequestInit = {
       ...options,
       signal: controller.signal,
       mode: 'cors', // Explicitly handle CORS
-      credentials: 'include', // Essential for CORS with authentication
       headers: {
         ...defaultHeaders,
         ...options?.headers,
       },
-    });
+    };
+    
+    // Add credentials only for non-Music services
+    if (needsCredentials) {
+      fetchOptions.credentials = 'include';
+    }
+    
+    const response = await fetch(url, fetchOptions);
 
     clearTimeout(timeoutId);
 
@@ -279,12 +290,27 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
       error.message.includes('Failed to fetch') ||
       error.message.includes('CORS')
     )) {
+      const isMusicService = url.includes('music-spotibuds');
+      const isUserService = url.includes('user-spotibuds');
+      const isIdentityService = url.includes('identity-spotibuds');
+      
       console.warn('Network/CORS error detected:', {
         message: error.message,
         url: url,
+        service: isMusicService ? 'Music' : isUserService ? 'User' : isIdentityService ? 'Identity' : 'Unknown',
         isProduction: typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
       });
-      throw new Error('Service unavailable - please try again later');
+      
+      let errorMessage = 'Service unavailable - please try again later';
+      if (isMusicService) {
+        errorMessage = 'Music service temporarily unavailable';
+      } else if (isUserService) {
+        errorMessage = 'User service temporarily unavailable';
+      } else if (isIdentityService) {
+        errorMessage = 'Authentication service temporarily unavailable';
+      }
+      
+      throw new Error(errorMessage);
     }
     throw error;
   }
