@@ -1,4 +1,5 @@
 import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState, HttpTransportType } from '@microsoft/signalr';
+import { notificationService } from './notificationService';
 
 // Production-ready API configuration
 const getApiConfig = () => {
@@ -155,11 +156,24 @@ class FriendHubManager {
       return;
     }
 
+    // CRITICAL: Check if we have a valid token before attempting connection
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.warn('🚫 No authentication token found - skipping SignalR connection');
+      this.onConnectionStateChanged?.('Disconnected');
+      return;
+    }
+
+    // CRITICAL: Limit reconnection attempts to prevent infinite loops
+    if (this.reconnectAttempts >= 3) {
+      console.warn('🚫 Maximum SignalR reconnection attempts reached - stopping');
+      return;
+    }
+
     this.isConnecting = true;
     this.currentUserId = userId;
 
     try {
-      const token = localStorage.getItem('token');
       
       // Reduced logging - only log critical info
       // console.log('Connecting to SignalR Hub...');
@@ -179,13 +193,27 @@ class FriendHubManager {
               return token;
             }
             
-            // If no token, try to refresh
+            // CRITICAL: Only try refresh ONCE to prevent infinite loops
+            console.warn('🔄 No token found, attempting ONE token refresh for SignalR');
             token = await refreshTokenForSignalR();
-            return token || '';
+            if (!token) {
+              console.error('🚫 Token refresh failed - cannot provide authentication token');
+              throw new Error('Authentication failed');
+            }
+            return token;
           }
         })
         .configureLogging(LogLevel.None) // Completely disable SignalR logging to reduce console noise
-        .withAutomaticReconnect([0, 2000, 5000, 10000, 30000])
+        .withAutomaticReconnect({
+          nextRetryDelayInMilliseconds: (retryContext) => {
+            // CRITICAL: Limit retry attempts and use exponential backoff
+            if (retryContext.previousRetryCount >= 2) {
+              console.warn('🚫 SignalR max retries reached - stopping automatic reconnection');
+              return null; // Stop retrying
+            }
+            return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
+          }
+        })
         .build();
 
       this.setupEventHandlers();
@@ -201,27 +229,18 @@ class FriendHubManager {
         console.error('Failed to connect to Friend Hub:', error.message);
       }
       
-      // Check if it's an authentication error
-      if (error instanceof Error && (error.message.includes('Unauthorized') || error.message.includes('401'))) {
-        console.log('Authentication failed, attempting token refresh...');
-        try {
-          const newToken = await refreshTokenForSignalR();
-          if (newToken) {
-            console.log('Token refreshed successfully, retrying connection...');
-            // Retry connection with new token
-            this.reconnectAttempts = 0;
-            setTimeout(() => this.connect(userId), 1000);
-            return;
-          } else {
-            console.error('Token refresh failed, authentication required');
-            this.onError?.('Authentication failed. Please log in again.');
-            return;
-          }
-        } catch (refreshError) {
-          console.error('Token refresh error:', refreshError);
-          this.onError?.('Authentication failed. Please log in again.');
-          return;
-        }
+      // CRITICAL: Stop infinite retry loops on authentication failures
+      if (error instanceof Error && (
+        error.message.includes('Unauthorized') || 
+        error.message.includes('401') ||
+        error.message.includes('Authentication failed') ||
+        error.message.includes('negotiate')
+      )) {
+        console.error('🚫 SignalR authentication failed - stopping connection attempts');
+        this.reconnectAttempts = 999; // Prevent further attempts
+        this.onConnectionStateChanged?.('Disconnected');
+        this.onError?.('SignalR authentication failed. Please refresh the page.');
+        return;
       }
       
       this.reconnectAttempts++;
@@ -285,6 +304,10 @@ class FriendHubManager {
     // Chat events
     this.connection.on('MessageReceived', (message: ChatMessage) => {
       console.log('MessageReceived event:', message);
+      
+      // Handle notifications through the notification service
+      notificationService.handleMessage(message);
+      
       if (this.onMessageReceived) {
         this.onMessageReceived(message);
       }

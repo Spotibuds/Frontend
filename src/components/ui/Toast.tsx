@@ -7,9 +7,13 @@ interface ToastProps {
   type: 'success' | 'error' | 'info';
   duration?: number;
   onClose: () => void;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
-export function Toast({ message, type, duration = 5000, onClose }: ToastProps) {
+export function Toast({ message, type, duration = 5000, onClose, action }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
@@ -38,19 +42,40 @@ export function Toast({ message, type, duration = 5000, onClose }: ToastProps) {
     <div
       className={`fixed top-4 right-4 z-50 p-4 rounded-lg border shadow-lg transition-all duration-300 ${
         isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full'
-      } ${getTypeStyles()}`}
+      } ${getTypeStyles()} ${action ? 'cursor-pointer hover:opacity-90' : ''}`}
+      onClick={action ? () => {
+        action.onClick();
+        setIsVisible(false);
+        setTimeout(onClose, 300);
+      } : undefined}
     >
-      <div className="flex items-center space-x-2">
-        <span className="text-sm font-medium">{message}</span>
-        <button
-          onClick={() => {
-            setIsVisible(false);
-            setTimeout(onClose, 300);
-          }}
-          className="ml-2 text-white hover:text-gray-200"
-        >
-          ×
-        </button>
+      <div className="flex items-center justify-between space-x-3">
+        <span className="text-sm font-medium flex-1">{message}</span>
+        <div className="flex items-center space-x-2">
+          {action && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                action.onClick();
+                setIsVisible(false);
+                setTimeout(onClose, 300);
+              }}
+              className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-medium transition-colors"
+            >
+              {action.label}
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsVisible(false);
+              setTimeout(onClose, 300);
+            }}
+            className="text-white hover:text-gray-200 text-lg leading-none"
+          >
+            ×
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -61,6 +86,10 @@ interface ToastContainerProps {
     id: string;
     message: string;
     type: 'success' | 'error' | 'info';
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
   }>;
   onRemoveToast: (id: string) => void;
 }
@@ -77,6 +106,7 @@ export function ToastContainer({ toasts, onRemoveToast }: ToastContainerProps) {
           key={toast.id}
           message={toast.message}
           type={toast.type}
+          action={toast.action}
           onClose={() => onRemoveToast(toast.id)}
         />
       ))}

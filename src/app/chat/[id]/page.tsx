@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
 import { userApi, identityApi } from '../../../lib/api';
+import { notificationService } from '../../../lib/notificationService';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -208,6 +209,17 @@ export default function ChatPage() {
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
+
+  // Set current chat ID for notification service
+  useEffect(() => {
+    if (chatId) {
+      notificationService.setCurrentChatId(chatId);
+    }
+    
+    return () => {
+      notificationService.setCurrentChatId(null);
+    };
+  }, [chatId]);
 
   useEffect(() => {
     scrollToBottom();

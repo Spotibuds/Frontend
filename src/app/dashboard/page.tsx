@@ -7,7 +7,7 @@ import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
 import SongCard from '@/components/SongCard';
 import AlbumPlayButton from '@/components/ui/AlbumPlayButton';
-import { identityApi, musicApi, safeString, type User, type Song, type Album, type Artist } from "@/lib/api";
+import { identityApi, musicApi, userApi, safeString, type User, type Song, type Album, type Artist } from "@/lib/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -19,13 +19,29 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const currentUser = identityApi.getCurrentUser();
-    if (!currentUser) {
-      router.push("/");
-      return;
-    }
+    const initializeUser = async () => {
+      const currentUser = identityApi.getCurrentUser();
+      if (!currentUser) {
+        router.push("/");
+        return;
+      }
 
-    setUser(currentUser);
+      // Load full user profile to get avatar and other details
+      try {
+        const fullProfile = await userApi.getCurrentUserProfile();
+        if (fullProfile) {
+          setUser(fullProfile);
+        } else {
+          // Fallback to basic user data
+          setUser(currentUser);
+        }
+      } catch (error) {
+        console.error('Failed to load user profile, using basic data:', error);
+        setUser(currentUser);
+      }
+    };
+
+    initializeUser();
 
     const fetchMusicData = async () => {
       try {
@@ -115,13 +131,24 @@ export default function DashboardPage() {
               {/* User Profile Card */}
               <div className="hidden lg:block bg-black/20 backdrop-blur-sm rounded-lg p-6 min-w-[300px]">
                 <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                    <span className="text-white font-bold text-xl">
-                      {safeString(user.username).charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  {user.avatarUrl ? (
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
+                      <MusicImage
+                        src={user.avatarUrl}
+                        alt={user.username || 'User'}
+                        className="w-full h-full object-cover"
+                        size="small"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-xl">
+                        {safeString(user.username).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <div>
-                    <h3 className="text-white font-semibold text-lg">{safeString(user.username)}</h3>
+                    <h3 className="text-white font-semibold text-lg">{safeString(user.displayName || user.username)}</h3>
                     <p className="text-gray-300 text-sm">SpotiBuds Member</p>
                     <button 
                       onClick={() => router.push('/user')}

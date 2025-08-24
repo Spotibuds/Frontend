@@ -57,7 +57,7 @@ export default function UserProfilePage() {
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string }>>([]);
+  const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; postId?: string }>>([]);
   const [isLoadingReactions, setIsLoadingReactions] = useState(false);
 
 
@@ -871,24 +871,47 @@ export default function UserProfilePage() {
                       if ((reaction.contextType === 'recent_song' || !reaction.contextType) && reaction.songId) {
                         search.set('songId', reaction.songId);
                       }
-                      const href = `/feed?${search.toString()}`;
+                      
+                      // If we have a concrete postId, prefer linking to a post detail route
+                      const href = reaction.postId ? `/feed/post/${encodeURIComponent(reaction.postId)}` : `/feed?${search.toString()}`;
+                      
                       return (
-                        <div key={index} role="button" onClick={() => router.push(href)} className="bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-colors cursor-pointer">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
+                        <div 
+                          key={index} 
+                          className="group bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-all duration-200 cursor-pointer border border-transparent hover:border-purple-500/30"
+                        >
+                          <div 
+                            onClick={() => router.push(href)}
+                            className="flex items-center justify-between h-full"
+                          >
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
                               <span className="text-2xl select-none">{reaction.emoji}</span>
-                              <div>
-                                <Link href={`/user/${reaction.fromIdentityUserId}`} onClick={(e) => e.stopPropagation()} className="text-purple-300 font-medium hover:underline">
-                                  {reaction.fromUserName || "Unknown User"}
-                                </Link>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Link 
+                                    href={`/user/${reaction.fromIdentityUserId}`} 
+                                    onClick={(e) => e.stopPropagation()} 
+                                    className="text-purple-300 font-medium hover:text-purple-200 transition-colors"
+                                  >
+                                    {reaction.fromUserName || "Unknown User"}
+                                  </Link>
+                                  {reaction.postId && (
+                                    <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
+                                      Post
+                                    </span>
+                                  )}
+                                </div>
                                 {reaction.songTitle && (
-                                  <p className="text-gray-400 text-sm">on {reaction.songTitle}</p>
+                                  <p className="text-gray-400 text-sm truncate">on {reaction.songTitle}</p>
                                 )}
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {new Date(reaction.createdAt).toLocaleDateString()} • Click to view
+                                </div>
                               </div>
                             </div>
-                            <span className="text-gray-500 text-xs">
-                              {new Date(reaction.createdAt).toLocaleDateString()}
-                            </span>
+                            <div className="text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                              →
+                            </div>
                           </div>
                         </div>
                       );

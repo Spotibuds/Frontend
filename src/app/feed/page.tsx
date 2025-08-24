@@ -7,18 +7,13 @@ import AppLayout from "@/components/layout/AppLayout";
 import MusicImage from "@/components/ui/MusicImage";
 import { identityApi, musicApi, userApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
-
-interface Reaction {
-	emoji: string;
-	fromIdentityUserId: string;
-	fromUserName?: string;
-	count?: number;
-}
+import { reactionCache, getCacheKey, type CachedReaction } from "@/lib/reactionCache";
 
 type Slide =
 	| {
 		type: "recent_song";
 		identityUserId: string;
+		postId?: string;
 		username?: string;
 		displayName?: string;
 		songId: string;
@@ -26,6 +21,16 @@ type Slide =
 		artist?: string;
 		coverUrl?: string;
 		playedAt?: string;
+	}
+	| {
+		type: "now_playing";
+		identityUserId: string;
+		songId: string;
+		songTitle?: string;
+		artist?: string;
+		coverUrl?: string;
+		positionSec?: number;
+		updatedAt?: string;
 	}
 	| {
 		type: "top_artists_week";
@@ -87,37 +92,103 @@ function FeedInner() {
 		} catch {
 			return {} as Record<string, number>;
 		}
-	}, [SEEN_TTL_MS]); // Include SEEN_TTL_MS dependency
+	}, []);
 	const saveSeen = () => {
 		try {
 			if (typeof window !== 'undefined') localStorage.setItem(SEEN_KEY, JSON.stringify(seenMapRef.current));
 		} catch {}
 	};
 
-	// Utility: slide key (for dedupe/seen)
+	// Utility: slide author and key (for dedupe/seen)
+	const authorOf = (s: Slide) => s.identityUserId;
 	const keyOf = (s: Slide) => {
 		const base = `${s.type}:${s.identityUserId}`;
-		if (s.type === 'recent_song') return `${base}:song:${s.songId}`;
+		if (s.type === 'recent_song') {
+			const rs = s as Extract<Slide, { type: 'recent_song' }>;
+			if (rs.postId) return `${base}:post:${rs.postId}`;
+			return `${base}:song:${rs.songId}`;
+		}
+		if ((s as any).postId) return `${base}:post:${(s as any).postId}`;
 		if (s.type === 'top_songs_week') {
-			const names = s.topSongs?.map((x) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
+			const names = (s as any).topSongs?.map((x: any) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
 			return `${base}:top_songs:${names}`;
 		}
 		if (s.type === 'top_artists_week') {
-			const names = s.topArtists?.map((x) => (x.name || '').toLowerCase()).join('|') || '';
+			const names = (s as any).topArtists?.map((x: any) => (x.name || '').toLowerCase()).join('|') || '';
 			return `${base}:top_artists:${names}`;
 		}
 		if (s.type === 'common_artists') {
-			const withId = s.withIdentityUserId || '';
-			const names = s.commonArtists?.slice(0, 8).map((x) => (x || '').toLowerCase()).join('|') || '';
+			const withId = (s as any).withIdentityUserId || '';
+			const names = (s as any).commonArtists?.slice(0, 8).map((x: any) => (x || '').toLowerCase()).join('|') || '';
 			return `${base}:common:${withId}:${names}`;
 		}
 		return base;
 	};
 
+	// PRNG and chunked shuffle
+	const mulberry32 = (a: number) => () => {
+		let t = (a += 0x6D2B79F5);
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+	const hashString = (str: string) => {
+		let h = 2166136261;
+		for (let i = 0; i < str.length; i++) {
+			h ^= str.charCodeAt(i);
+			h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+		}
+		return h >>> 0;
+	};
+	const chunkedShuffle = useCallback((arr: Slide[], seedStr: string, chunkSize = 4) => {
+		if (arr.length <= 1) return arr.slice();
+		const out: Slide[] = [];
+		for (let i = 0; i < arr.length; i += chunkSize) {
+			const chunk = arr.slice(i, i + chunkSize);
+			const rng = mulberry32(hashString(seedStr + ':' + i));
+			// Fisher-Yates
+			for (let j = chunk.length - 1; j > 0; j--) {
+				const k = Math.floor(rng() * (j + 1));
+				[chunk[j], chunk[k]] = [chunk[k], chunk[j]];
+			}
+			out.push(...chunk);
+		}
+		return out;
+	}, []);
+
+	// De-clump by author within a batch and at the boundary with previous author
+	const declumpAuthors = useCallback((batch: Slide[]) => {
+		if (batch.length <= 1) return batch;
+		const res = batch.slice();
+		// boundary check
+		if (lastAuthorRef.current && authorOf(res[0]) === lastAuthorRef.current) {
+			const idx = res.findIndex((s) => authorOf(s) !== lastAuthorRef.current);
+			if (idx > 0) {
+				const [swap] = res.splice(idx, 1);
+				res.unshift(swap);
+			}
+		}
+		// internal pass: avoid 3+ in a row
+		for (let i = 1; i < res.length; i++) {
+			const prev = authorOf(res[i - 1]);
+			const cur = authorOf(res[i]);
+			if (prev === cur) {
+				const altIdx = res.findIndex((s, j) => j > i && authorOf(s) !== cur);
+				if (altIdx > i) {
+					const [alt] = res.splice(altIdx, 1);
+					res.splice(i, 0, alt);
+				}
+			}
+		}
+		// update boundary author
+		lastAuthorRef.current = authorOf(res[res.length - 1]);
+		return res;
+	}, []);
+
 	const [songsById, setSongsById] = useState<Record<string, Song | null>>({});
 	const [artists, setArtists] = useState<Artist[]>([]);
-	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string }>>({});
-	const [reactionsBySlide, setReactionsBySlide] = useState<Record<string, Reaction[]>>({});
+	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string; displayName?: string; username?: string }>>({});
+	const [reactionsBySlide, setReactionsBySlide] = useState<Record<string, CachedReaction[]>>({});
 
 	// Snap container + sections for one-by-one navigation
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -169,13 +240,13 @@ function FeedInner() {
 		if (!missing.length) return;
 
 		const profiles = await Promise.allSettled(missing.map((id) => userApi.getUserProfileByIdentityId(id)));
-		const meta: Record<string, { avatarUrl?: string }> = {};
+		const meta: Record<string, { avatarUrl?: string; displayName?: string; username?: string }> = {};
 		profiles.forEach((res, idx) => {
 			const id = missing[idx];
-			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl };
+			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl, displayName: res.value.displayName, username: res.value.username };
 		});
 		setUserMetaById((prev) => ({ ...prev, ...meta }));
-	}, [userMetaById]); // Include userMetaById since we read it inside the function
+	}, [userMetaById]);
 
 	const preloadReactions = useCallback(async (newSlides: Slide[]) => {
 		if (!newSlides.length) return;
@@ -183,19 +254,27 @@ function FeedInner() {
 		const reactionPromises = newSlides.map(async (slide) => {
 			try {
 				const slideKey = keyOf(slide);
+				const cacheKey = getCacheKey.slide(slideKey);
 				
-				// Generate postId for this slide to fetch reactions - use multiple formats
-				const postIds = [];
+				// Check cache first
+				const cached = reactionCache.get(cacheKey);
+				if (cached) {
+					return { slideKey, reactions: cached };
+				}
+
+				// Generate postId for this slide to fetch reactions
+				const postIds: string[] = [];
 				
 				if (slide.type === 'recent_song') {
-					// Use the slideKey format as the primary format
-					postIds.push(slideKey); // This will be something like "recent_song:userId:song:songId"
-					// Also try the simple format 
-					postIds.push(`recent_song:${slide.identityUserId}:${slide.songId}`);
-					// Also try the feed item ID format (found in slide.feedId if it exists)
-					if ('feedId' in slide) {
-						postIds.push(slide.feedId as string);
+					if ((slide as any).postId) {
+						postIds.push((slide as any).postId);
+					} else {
+						postIds.push(slideKey);
+						postIds.push(`recent_song:${slide.identityUserId}:${slide.songId}`);
 					}
+				} else if (slide.type === 'now_playing') {
+					postIds.push(slideKey);
+					postIds.push(`now_playing:${slide.identityUserId}:${slide.songId}`);
 				} else if (slide.type === 'top_artists_week') {
 					const weekStart = new Date();
 					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -214,7 +293,7 @@ function FeedInner() {
 				}
 
 				// Try each postId format until we find reactions
-				let allReactions: Reaction[] = [];
+				let allReactions: CachedReaction[] = [];
 				for (const postId of postIds) {
 					try {
 						const reactions = await userApi.getReactionsByPost(postId, me?.id);
@@ -226,39 +305,18 @@ function FeedInner() {
 					}
 				}
 
-				if (allReactions.length > 0) {
-					// Group reactions by emoji and count them
-					const groupedReactions: Record<string, {
-						emoji: string;
-						fromIdentityUserId: string;
-						fromUserName?: string;
-						count: number;
-					}> = {};
-					
-					allReactions.forEach((reaction: Reaction) => {
-						if (!groupedReactions[reaction.emoji]) {
-							groupedReactions[reaction.emoji] = {
-								emoji: reaction.emoji,
-								fromIdentityUserId: reaction.fromIdentityUserId,
-								fromUserName: reaction.fromUserName,
-								count: 1
-							};
-						} else {
-							groupedReactions[reaction.emoji].count++;
-						}
-					});
+				// Store in cache
+				reactionCache.set(cacheKey, allReactions);
 
-					// Use slideKey for consistency
-					return { slideKey, reactions: Object.values(groupedReactions) };
-				}
+				return { slideKey, reactions: allReactions };
 			} catch (error) {
 				console.warn('Failed to load reactions for slide:', error);
+				return { slideKey: keyOf(slide), reactions: [] };
 			}
-			return { slideKey: keyOf(slide), reactions: [] };
 		});
 
 		const results = await Promise.allSettled(reactionPromises);
-		const newReactions: Record<string, Reaction[]> = {};
+		const newReactions: Record<string, CachedReaction[]> = {};
 
 		results.forEach(result => {
 			if (result.status === 'fulfilled' && result.value) {
@@ -267,7 +325,7 @@ function FeedInner() {
 		});
 
 		setReactionsBySlide(prev => ({ ...prev, ...newReactions }));
-	}, [me?.id]); // Remove userMetaById as it's not actually used in this function
+	}, [me?.id]);
 
 	const loadSlides = useCallback(
 		async (reset = false) => {
@@ -294,29 +352,27 @@ function FeedInner() {
 				const data = await userApi.getFeedSlides(me.id, 10, currentSkip);
 				const newSlides = Array.isArray(data) ? (data as Slide[]) : [];
 
-				// Skip processing if no new slides and this is not a reset
-				if (newSlides.length === 0 && !reset) {
-					setHasMore(false);
-					setIsLoading(false);
-					setIsLoadingMore(false);
-					return;
-				}
-
 				// Build processed batch: de-dupe, prioritize unseen, light shuffle, de-clump
 				if (reset) {
 					seenMapRef.current = loadSeen();
 				}
-				
-				// TEMPORARY: Skip all complex processing and just show raw slides
-				const reordered = newSlides;
+				const batchUnique: Slide[] = [];
+				for (const s of newSlides) {
+					const k = keyOf(s);
+					if (globalKeySetRef.current.has(k)) continue; // drop duplicates across pages
+					globalKeySetRef.current.add(k);
+					batchUnique.push(s);
+				}
+
+				// Unseen first within the batch
+				const seed = `${sessionSeedRef.current}:${currentSkip}`;
+				const unseen = batchUnique.filter((s) => !(keyOf(s) in seenMapRef.current));
+				const seen = batchUnique.filter((s) => keyOf(s) in seenMapRef.current);
+				const shuffledUnseen = chunkedShuffle(unseen, seed, 4);
+				const reordered = declumpAuthors([...shuffledUnseen, ...seen]);
 
 				if (!newSlides.length) setHasMore(false);
-				
-				// Only update slides if we have content OR this is a reset
-				if (reordered.length > 0 || reset) {
-					setSlides((prev) => (reset ? reordered : [...prev, ...reordered]));
-				}
-				
+				setSlides((prev) => (reset ? reordered : [...prev, ...reordered]));
 				setSkip(currentSkip + newSlides.length);
 
 				// parallel preloads (for processed batch)
@@ -329,30 +385,53 @@ function FeedInner() {
 				setIsLoadingMore(false);
 			}
 		},
-		[me, skip, preloadSongs, preloadUserMeta, preloadReactions, loadSeen] // Add missing dependencies
+		[me, skip, preloadSongs, preloadUserMeta, preloadReactions, chunkedShuffle, declumpAuthors, loadSeen]
 	);
 
 	// keep a live ref of slides for deep-link fallback logic
-	useEffect(() => { 
-		slidesRef.current = slides; 
-	}, [slides]);
+	useEffect(() => { slidesRef.current = slides; }, [slides]);
 
-	// initial load once
+	// initial load once with safety checks
 	useEffect(() => {
-		loadSlides(true);
-	}, [me?.id, loadSlides]); // Include loadSlides dependency
+		if (!me?.id) {
+			console.log("Feed: User not authenticated yet, skipping load");
+			return;
+		}
+		
+		// Small delay to ensure user context is fully loaded
+		const timeoutId = setTimeout(() => {
+			loadSlides(true);
+		}, 100);
+
+		return () => clearTimeout(timeoutId);
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [me?.id]);
+
+	// Retry mechanism if feed is empty but user is authenticated
+	useEffect(() => {
+		if (me?.id && !isLoading && !isLoadingMore && slides.length === 0 && !error) {
+			console.log("Feed: Retrying load due to empty feed");
+			const retryTimeout = setTimeout(() => {
+				loadSlides(true);
+			}, 1000);
+			return () => clearTimeout(retryTimeout);
+		}
+	}, [me?.id, isLoading, isLoadingMore, slides.length, error, loadSlides]);
 
 	// deep-link: focus a slide based on query params (with fallback)
 	useEffect(() => {
 		let cancelled = false;
 		const run = async () => {
 			if (!slides.length) return;
+			const postId = searchParams?.get("postId");
 			const type = searchParams?.get("focusType");
 			const to = searchParams?.get("to");
 			const songId = searchParams?.get("songId");
-			if (!type || !to) return;
 			// find in current slides
 			const matchIndex = (arr: Slide[]) => arr.findIndex((s) => {
+				// Prefer postId for any slide type
+				if (postId && (s as any).postId === postId) return true;
+				if (!type || !to) return false;
 				if (s.identityUserId !== to) return false;
 				if (s.type !== (type as Slide["type"])) return false;
 				if (type === "recent_song" && songId) {
@@ -380,7 +459,7 @@ function FeedInner() {
 		run();
 		return () => { cancelled = true; };
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [slides.length]); // Keep minimal dependencies to avoid circular issues
+	}, [slides.length]);
 
 	// artists cache once
 	useEffect(() => {
@@ -488,20 +567,49 @@ function FeedInner() {
 		root.addEventListener("touchstart", onTouchStart, { passive: true });
 		root.addEventListener("touchmove", onTouchMove, { passive: false });
 		return () => {
-			root.removeEventListener("wheel", onWheel);
-			root.removeEventListener("touchstart", onTouchStart);
-			root.removeEventListener("touchmove", onTouchMove);
+			root.removeEventListener("wheel", onWheel as any);
+			root.removeEventListener("touchstart", onTouchStart as any);
+			root.removeEventListener("touchmove", onTouchMove as any);
 		};
 	}, [currentIndex, scrollLocked, touchStartY, scrollToIndex]);
 
 	const handleReact = useCallback(
 		async (target: Slide, emoji: string, index?: number) => {
 			if (!me) return;
-			console.log("🎯 handleReact called:", { target: target.type, emoji, me: me.id });
-
+			
 			const slideKey = keyOf(target);
+			const cacheKey = getCacheKey.slide(slideKey);
 			const existingReactions = reactionsBySlide[slideKey] || [];
-			console.log("📊 Current reactions for slide:", { slideKey, existingReactions });
+			
+			// Check if user already reacted with this emoji
+			const hasReacted = existingReactions.some(r => r.emoji === emoji && r.fromIdentityUserId === me.id);
+			const action = hasReacted ? 'remove' : 'add';
+			
+			// Optimistic update
+			const optimisticReactions = reactionCache.optimisticUpdate(
+				cacheKey,
+				me.id,
+				emoji,
+				action,
+				{
+					emoji,
+					fromIdentityUserId: me.id,
+					fromUserName: me.username,
+					toIdentityUserId: target.identityUserId,
+					createdAt: new Date().toISOString(),
+					contextType: target.type,
+					songId: target.type === 'recent_song' || target.type === 'now_playing' ? target.songId : undefined,
+					songTitle: target.type === 'recent_song' || target.type === 'now_playing' ? target.songTitle : undefined,
+					artist: target.type === 'recent_song' || target.type === 'now_playing' ? target.artist : undefined
+				}
+			);
+
+			if (optimisticReactions) {
+				setReactionsBySlide(prev => ({
+					...prev,
+					[slideKey]: optimisticReactions
+				}));
+			}
 
 			try {
 				const base = {
@@ -510,65 +618,51 @@ function FeedInner() {
 					fromUserName: me.username,
 					emoji,
 				};
-
-				// Send the reaction to the server first to get the actual action
-				let response;
+				let postId: string | undefined;
 				if (target.type === "recent_song") {
-					response = await userApi.sendReaction({
+					postId = (target as Extract<Slide, { type: 'recent_song' }>).postId;
+					await userApi.sendReaction({
 						...base,
 						contextType: "recent_song",
+						postId,
 						songId: target.songId,
 						songTitle: target.songTitle,
 						artist: target.artist,
 					});
 				} else if (target.type === "top_artists_week") {
-					response = await userApi.sendReaction({ ...base, contextType: "top_artists_week" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "top_artists_week", postId });
 				} else if (target.type === "common_artists") {
-					response = await userApi.sendReaction({ ...base, contextType: "common_artists" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "common_artists", postId });
 				} else if (target.type === "top_songs_week") {
-					response = await userApi.sendReaction({ ...base, contextType: "top_songs_week" });
+					postId = (target as any).postId;
+					await userApi.sendReaction({ ...base, contextType: "top_songs_week", postId });
 				}
-
-				console.log("🚀 Server response:", response);
-
-				// Update UI based on server response
-				if (response?.action === "removed") {
-					// Remove the reaction from UI
-					const updatedReactions = existingReactions.filter(r => !(r.emoji === emoji && r.fromIdentityUserId === me.id));
-					console.log("❌ Removing reaction, updated reactions:", updatedReactions);
-					setReactionsBySlide(prev => ({
-						...prev,
-						[slideKey]: updatedReactions
-					}));
-				} else if (response?.action === "added") {
-					// Add the reaction to UI
-					const newReaction = {
-						emoji,
-						fromIdentityUserId: me.id,
-						fromUserName: me.username,
-						count: 1
-					};
-					const updatedReactions = [...existingReactions, newReaction];
-					console.log("✅ Adding reaction, updated reactions:", updatedReactions);
-					setReactionsBySlide(prev => ({
-						...prev,
-						[slideKey]: updatedReactions
-					}));
-				}
-
-				// Show flash effect
+				
 				if (typeof index === 'number') {
 					setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
 					setTimeout(() => {
 						setReactionFlash(prev => {
-							const copy = { ...prev };
-							delete copy[index!];
+							const copy = { ...prev } as typeof prev;
+							delete (copy as any)[index!];
 							return copy;
 						});
 					}, 1200);
 				}
+				
+				if (postId) {
+					window.dispatchEvent(new CustomEvent('reaction:refresh', { detail: { postId } }));
+				}
 			} catch (e) {
 				console.error("Failed to send reaction:", e);
+				
+				// Revert optimistic update on error
+				reactionCache.invalidate(cacheKey);
+				setReactionsBySlide(prev => ({
+					...prev,
+					[slideKey]: existingReactions
+				}));
 			}
 		},
 		[me, reactionsBySlide]
@@ -576,7 +670,9 @@ function FeedInner() {
 
 	const UserHeader = ({ slide }: { slide: Slide }) => {
 		const meta = userMetaById[slide.identityUserId];
-		const name = slide.displayName || slide.username || "User";
+		const name = meta?.displayName || meta?.username || (('displayName' in slide && (slide as any).displayName) ? (slide as any).displayName : undefined)
+			|| (('username' in slide && (slide as any).username) ? (slide as any).username : undefined)
+			|| "User";
 		return (
 			<div className="flex items-center gap-3">
 				<MusicImage src={meta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
@@ -593,34 +689,6 @@ function FeedInner() {
 		</div>
 	);
 
-	// Component to show friend reactions at the top of each post
-	const FriendReactions = ({ slide }: { slide: Slide }) => {
-		const slideKey = keyOf(slide);
-		const reactions = reactionsBySlide[slideKey] || [];
-		
-		if (reactions.length === 0) {
-			return null; // Don't show anything if no reactions
-		}
-
-		return (
-			<div className="mb-3 pb-3 border-b border-gray-800">
-				<div className="flex flex-wrap gap-2 items-center">
-					<span className="text-gray-400 text-xs mr-2">Friends reacted:</span>
-					{reactions.map((reaction, idx) => (
-						<div key={`${reaction.emoji}-${idx}`} 
-							 className="flex items-center gap-1 bg-gray-800/50 rounded-full px-2 py-1 text-sm">
-							<span className="text-base">{reaction.emoji}</span>
-							<span className="text-gray-300 text-xs">{reaction.fromUserName || 'Friend'}</span>
-							{reaction.count && reaction.count > 1 && (
-								<span className="text-gray-400 text-xs">×{reaction.count}</span>
-							)}
-						</div>
-					))}
-				</div>
-			</div>
-		);
-	};
-
 	const ReactionBar = ({ slide, index }: { slide: Slide; index: number }) => {
 		const flash = reactionFlash[index];
 		const slideKey = keyOf(slide);
@@ -628,7 +696,6 @@ function FeedInner() {
 		
 		return (
 			<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
-				{/* Reaction buttons */}
 				{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => {
 					const hasReacted = existingReactions.some(r => r.emoji === em && r.fromIdentityUserId === me?.id);
 					return (
@@ -649,41 +716,99 @@ function FeedInner() {
 						</button>
 					);
 				})}
+				{flash && (
+					<div className="pointer-events-none mt-2 text-xs px-2 py-1 rounded bg-purple-600/80 text-white">Sent</div>
+				)}
+			</div>
+		);
+	};
+
+	const ReactionCluster = ({ slide }: { slide: Slide }) => {
+		const slideKey = keyOf(slide);
+		const reactions = reactionsBySlide[slideKey] || [];
+		const [open, setOpen] = useState(false);
+		
+		if (!reactions.length) {
+			return (
+				<div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-30">
+					<span className="text-xs text-white/40">💬</span>
+				</div>
+			);
+		}
+		
+		const counts = reactions.reduce<Record<string, number>>((acc, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {});
+		const items = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,6);
+		return (
+			<div>
+				<button className="flex -space-x-2" onClick={() => setOpen(true)} aria-label="View reactions">
+					{items.map(([em, count]) => (
+						<span key={em} className="relative inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-base">
+							{em}
+							<span className="absolute -bottom-1 -right-1 text-[10px] bg-purple-600 text-white rounded px-1">{count}</span>
+						</span>
+					))}
+				</button>
+				{open && (
+					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setOpen(false)}>
+						<div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+							<div className="flex items-center justify-between mb-2">
+								<div className="text-white font-semibold">Reactions</div>
+								<button className="text-gray-400 hover:text-white" onClick={() => setOpen(false)}>✕</button>
+							</div>
+							<div className="max-h-80 overflow-y-auto space-y-2">
+								{reactions.map((r, i) => (
+									<div key={i} className="flex items-center justify-between bg-white/5 rounded-lg p-2">
+										<div className="flex items-center gap-2">
+											<span className="text-xl">{r.emoji}</span>
+											<Link href={`/user/${r.fromIdentityUserId}`} className="text-purple-300 hover:underline">{r.fromUserName || 'User'}</Link>
+										</div>
+										<span className="text-gray-500 text-xs">{new Date(r.createdAt).toLocaleString()}</span>
+									</div>
+								))}
+							</div>
+						</div>
+					</div>
+				)}
 			</div>
 		);
 	};
 
 	const RecentSongCard = ({ slide }: { slide: Extract<Slide, { type: "recent_song" }> }) => (
 		<Card>
-			<FriendReactions slide={slide} />
-			<div className="flex items-start gap-4">
-				<div className="flex-1">
-					<UserHeader slide={slide} />
-					<div className="mt-4 flex items-center gap-4">
-						<button
-							className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId]!)}
-							title="Play"
-						>
-							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
-						</button>
-						<div className="min-w-0">
-							<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
-							<div className="text-gray-300 truncate">
-								{songsById[slide.songId]?.artists?.length
-									? songsById[slide.songId]!.artists.map((a, i) => (
-										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-											{a.name}{i < (songsById[slide.songId]?.artists?.length || 0) - 1 ? ', ' : ''}
-										</Link>
-									))
-									: slide.artist}
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-start gap-4">
+					<div className="flex-1">
+						<UserHeader slide={slide} />
+						<div className="mt-4 flex items-center gap-4">
+							<button
+								className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
+								onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+								title="Play"
+							>
+								<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+							</button>
+							<div className="min-w-0">
+								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
+								<div className="text-gray-300 truncate">
+									{songsById[slide.songId]?.artists?.length
+										? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+												{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+											</Link>
+										))
+										: slide.artist}
+								</div>
+								{(songsById[slide.songId] as any)?.album?.id && (
+									<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+								)}
+								{slide.playedAt && (
+									<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleDateString()}</div>
+								)}
 							</div>
-							{songsById[slide.songId]?.album?.id && (
-								<Link href={`/album/${songsById[slide.songId]!.album!.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
-							)}
-							{slide.playedAt && (
-								<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleString()}</div>
-							)}
 						</div>
 					</div>
 				</div>
@@ -693,93 +818,164 @@ function FeedInner() {
 
 	const TopArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "top_artists_week" }> }) => (
 		<Card>
-			<FriendReactions slide={slide} />
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top artists this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topArtists.slice(0, 5).map((a, i) => {
-					const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							<div className="w-12 h-12 rounded-lg overflow-hidden">
-								<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Top artists this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topArtists.slice(0, 5).map((a, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								<div className="w-12 h-12 rounded-lg overflow-hidden">
+									<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
+								</div>
+								<div className="text-left flex-1 min-w-0">
+										{artistDetails?.id ? (
+											<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
+										) : (
+											<div className="text-white font-semibold truncate">{a.name}</div>
+										)}
+									<div className="text-gray-300 text-xs">{a.count} plays</div>
+								</div>
 							</div>
-							<div className="text-left flex-1 min-w-0">
-									{artistDetails?.id ? (
-										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
-									) : (
-										<div className="text-white font-semibold truncate">{a.name}</div>
-									)}
-								<div className="text-gray-300 text-xs">{a.count} plays</div>
-							</div>
-						</div>
-					);
-				})}
+						);
+					})}
+				</div>
 			</div>
 		</Card>
 	);
 
 	const TopSongsCard = ({ slide }: { slide: Extract<Slide, { type: "top_songs_week" }> }) => (
 		<Card>
-			<FriendReactions slide={slide} />
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top songs this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topSongs.slice(0, 5).map((ts, i) => {
-					const song = ts.songId ? songsById[ts.songId] : null;
-					const title = song?.title || ts.songTitle || "Unknown Song";
-					const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							{song?.album?.id ? (
-								<Link href={`/album/${song.album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
-								</Link>
-							) : (
-								<div className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Top songs this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topSongs.slice(0, 5).map((ts, i) => {
+						const song = ts.songId ? songsById[ts.songId] : null;
+						const title = song?.title || ts.songTitle || "Unknown Song";
+						const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								{(song as any)?.album?.id ? (
+									<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</Link>
+								) : (
+									<div className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</div>
+								)}
+								<div className="text-left flex-1 min-w-0">
+									<div className="text-white font-semibold truncate">{title}</div>
+									<div className="text-gray-300 text-xs truncate">
+										{(song as any)?.artists?.length
+											? ((song as any).artists as any[]).map((a: any, j: number) => (
+												<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+													{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
+												</Link>
+											))
+											: artistName}
+										<span className="text-gray-500"> • {ts.count} plays</span>
+									</div>
 								</div>
-							)}
-							<div className="text-left flex-1 min-w-0">
-								<div className="text-white font-semibold truncate">{title}</div>
-								<div className="text-gray-300 text-xs truncate">
-									{song?.artists?.length
-										? song.artists.map((a, j) => (
-											<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{j < (song?.artists?.length || 0) - 1 ? ', ' : ''}
-											</Link>
-										))
-										: artistName}
-									<span className="text-gray-500"> • {ts.count} plays</span>
-								</div>
+								<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
+									Play
+								</button>
 							</div>
-							<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
-								Play
-							</button>
+						);
+					})}
+				</div>
+			</div>
+		</Card>
+	);
+
+	const NowPlayingCard = ({ slide }: { slide: Extract<Slide, { type: "now_playing" }> }) => (
+		<Card>
+			<div className="flex items-start gap-4">
+				<div className="flex-1">
+					<div className="flex items-center justify-between">
+						<UserHeader slide={slide} />
+						<span className="text-green-300 text-xs bg-green-500/10 border border-green-400/30 px-2 py-0.5 rounded">Now Playing</span>
+					</div>
+					<div className="mt-4 flex items-center gap-4">
+						<button
+							className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
+							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+							title="Play"
+						>
+							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+						</button>
+						<div className="min-w-0">
+							<div className="text-white text-xl font-semibold truncate">{slide.songTitle || 'Listening now'}</div>
+							<div className="text-gray-200 truncate">
+								{songsById[slide.songId]?.artists?.length
+									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+										</Link>
+									))
+									: slide.artist}
+							</div>
+							{(songsById[slide.songId] as any)?.album?.id && (
+								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
+							)}
+							{typeof slide.positionSec === 'number' && (
+								<div className="text-emerald-300/90 text-xs mt-1">{Math.floor((slide.positionSec || 0) / 60)}:{String((slide.positionSec || 0) % 60).padStart(2,'0')} elapsed</div>
+							)}
+							{slide.updatedAt && (
+								<div className="text-gray-400 text-xs mt-1">Updated {new Date(slide.updatedAt).toLocaleTimeString()}</div>
+							)}
 						</div>
-					);
-				})}
+					</div>
+				</div>
 			</div>
 		</Card>
 	);
 
 	const CommonArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "common_artists" }> }) => (
 		<Card>
-			<FriendReactions slide={slide} />
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">You both listen to</div>
-			</div>
-			<div className="mt-4 grid grid-cols-2 gap-2">
-				{slide.commonArtists.slice(0, 8).map((name, i) => (
-					<div key={i} className="bg-white/5 rounded-xl p-3 text-white text-sm truncate">
-						{name}
-					</div>
-				))}
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} />
+					<div className="text-white/60 text-xs">Artists in common</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.commonArtists.slice(0, 5).map((artist, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === artist.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								<div className="w-12 h-12 rounded-lg overflow-hidden">
+									<MusicImage src={artistDetails?.imageUrl} alt={artist} size="medium" className="w-12 h-12" />
+								</div>
+								<div className="text-left flex-1 min-w-0">
+									{artistDetails?.id ? (
+										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{artist}</Link>
+									) : (
+										<div className="text-white font-semibold truncate">{artist}</div>
+									)}
+									<div className="text-gray-300 text-xs">Shared artist</div>
+								</div>
+							</div>
+						);
+					})}
+				</div>
 			</div>
 		</Card>
 	);
@@ -793,8 +989,6 @@ function FeedInner() {
 			</AppLayout>
 		);
 	}
-
-	console.log(`[Feed Debug] Render state - isLoading: ${isLoading}, slides.length: ${slides.length}, error: ${error}`);
 
 	return (
 		<AppLayout>
@@ -832,12 +1026,13 @@ function FeedInner() {
 									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-24"
 								>
 									{slide.type === "recent_song" && <RecentSongCard slide={slide} />}
+									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} />}
 									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} />}
 									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} />}
-									{slide.type === "common_artists" && <CommonArtistsCard slide={slide} />}
+									{slide.type === "common_artists" && <CommonArtistsCard slide={slide as any} />}
 
-									{/* Right-side reactions anchored to page edge for this section */}
-									<ReactionBar slide={slide} index={idx} />
+									{/* Right-side reactions shown only for the active slide to avoid duplicates */}
+									{idx === currentIndex && <ReactionBar slide={slide} index={idx} />}
 								</section>
 							))}
 
@@ -855,7 +1050,7 @@ function FeedInner() {
 							{!hasMore && (
 								<section className="snap-start min-h-full flex items-center justify-center px-4">
 									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300 w-full max-w-2xl">
-										You’re all caught up. No more posts for now.
+										You&apos;re all caught up. No more posts for now.
 									</div>
 								</section>
 							)}
@@ -911,5 +1106,4 @@ export default function FeedPage() {
 		</Suspense>
 	);
 }
-
 

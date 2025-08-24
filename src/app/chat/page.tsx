@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { userApi, identityApi, Chat, User } from '@/lib/api';
+import { notificationService } from '@/lib/notificationService';
 
 interface ChatWithParticipants extends Chat {
   participantProfiles?: User[];
@@ -33,6 +34,11 @@ export default function ChatPage() {
     };
     
     loadData();
+  }, []);
+
+  // Clear current chat ID when on main chat page
+  useEffect(() => {
+    notificationService.setCurrentChatId(null);
   }, []);
 
   const loadUserChats = async (userId: string) => {

@@ -8,7 +8,7 @@ type ExtendedHTMLAudioElement = HTMLAudioElement & {
 };
 
 import { createContext, useContext, useReducer, useRef, useEffect, useCallback, ReactNode } from 'react';
-import { Song, API_CONFIG, userApi } from './api';
+import { Song, API_CONFIG, userApi, identityApi } from './api';
 
 interface AudioState {
   currentSong: Song | null;
@@ -260,6 +260,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(audioReducer, initialState);
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSeekingRef = useRef(false);
+  const nowPlayingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -527,6 +528,58 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('pause', handlePause);
     };
   }, [addToListeningHistory, state.currentSong, state.isPlaying]);
+
+  // Now Playing Status Integration
+  useEffect(() => {
+    const user = identityApi.getCurrentUser();
+    if (!user || !state.currentSong || !state.isPlaying) {
+      // Clear any pending now playing updates
+      if (nowPlayingTimeoutRef.current) {
+        clearTimeout(nowPlayingTimeoutRef.current);
+        nowPlayingTimeoutRef.current = null;
+      }
+      
+      // Clear now playing if user stops playing
+      if (user && !state.isPlaying && state.currentSong) {
+        userApi.clearNowPlaying(user.id).catch(console.warn);
+      }
+      return;
+    }
+
+    // Set now playing after a short delay to avoid spam during song switching
+    nowPlayingTimeoutRef.current = setTimeout(async () => {
+      try {
+        await userApi.setNowPlaying({
+          identityUserId: user.id,
+          songId: state.currentSong!.id,
+          songTitle: state.currentSong!.title,
+          artist: state.currentSong!.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
+          coverUrl: state.currentSong!.coverUrl,
+          positionSec: Math.floor(state.currentTime),
+          isPlaying: state.isPlaying,
+        });
+      } catch (error) {
+        console.warn('Failed to update now playing status:', error);
+      }
+    }, 2000); // 2 second delay
+
+    return () => {
+      if (nowPlayingTimeoutRef.current) {
+        clearTimeout(nowPlayingTimeoutRef.current);
+        nowPlayingTimeoutRef.current = null;
+      }
+    };
+  }, [state.currentSong, state.isPlaying]);
+
+  // Clear now playing when component unmounts
+  useEffect(() => {
+    return () => {
+      const user = identityApi.getCurrentUser();
+      if (user) {
+        userApi.clearNowPlaying(user.id).catch(console.warn);
+      }
+    };
+  }, []);
 
   const playSong = (song: Song, playlist?: Song[]) => {
     // Check if this is the same song that's already loaded
