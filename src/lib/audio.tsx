@@ -569,7 +569,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         nowPlayingTimeoutRef.current = null;
       }
     };
-  }, [state.currentSong, state.isPlaying]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.currentSong, state.isPlaying]); // Intentionally omit currentTime to avoid excessive updates
 
   // Clear now playing when component unmounts
   useEffect(() => {

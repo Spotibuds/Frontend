@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState, useMemo, memo } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
@@ -92,7 +92,7 @@ function FeedInner() {
 		} catch {
 			return {} as Record<string, number>;
 		}
-	}, []);
+	}, [SEEN_TTL_MS]);
 	const saveSeen = () => {
 		try {
 			if (typeof window !== 'undefined') localStorage.setItem(SEEN_KEY, JSON.stringify(seenMapRef.current));
@@ -108,18 +108,20 @@ function FeedInner() {
 			if (rs.postId) return `${base}:post:${rs.postId}`;
 			return `${base}:song:${rs.songId}`;
 		}
-		if ((s as any).postId) return `${base}:post:${(s as any).postId}`;
 		if (s.type === 'top_songs_week') {
-			const names = (s as any).topSongs?.map((x: any) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
+			const topSongsSlide = s as Extract<Slide, { type: 'top_songs_week' }>;
+			const names = topSongsSlide.topSongs?.map(x => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
 			return `${base}:top_songs:${names}`;
 		}
 		if (s.type === 'top_artists_week') {
-			const names = (s as any).topArtists?.map((x: any) => (x.name || '').toLowerCase()).join('|') || '';
+			const topArtistsSlide = s as Extract<Slide, { type: 'top_artists_week' }>;
+			const names = topArtistsSlide.topArtists?.map(x => (x.name || '').toLowerCase()).join('|') || '';
 			return `${base}:top_artists:${names}`;
 		}
 		if (s.type === 'common_artists') {
-			const withId = (s as any).withIdentityUserId || '';
-			const names = (s as any).commonArtists?.slice(0, 8).map((x: any) => (x || '').toLowerCase()).join('|') || '';
+			const commonArtistsSlide = s as Extract<Slide, { type: 'common_artists' }>;
+			const withId = commonArtistsSlide.withIdentityUserId || '';
+			const names = commonArtistsSlide.commonArtists?.slice(0, 8).map(x => (x || '').toLowerCase()).join('|') || '';
 			return `${base}:common:${withId}:${names}`;
 		}
 		return base;
@@ -263,8 +265,9 @@ function FeedInner() {
 				const postIds: string[] = [];
 				
 				if (slide.type === 'recent_song') {
-					if ((slide as any).postId) {
-						postIds.push((slide as any).postId);
+					const recentSongSlide = slide as Extract<Slide, { type: 'recent_song' }>;
+					if (recentSongSlide.postId) {
+						postIds.push(recentSongSlide.postId);
 					} else {
 						postIds.push(slideKey);
 						postIds.push(`recent_song:${slide.identityUserId}:${slide.songId}`);
@@ -669,9 +672,29 @@ function FeedInner() {
 		slide: Slide;
 		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
 	}) => {
-		const name = userMeta?.displayName || userMeta?.username || (('displayName' in slide && (slide as any).displayName) ? (slide as any).displayName : undefined)
-			|| (('username' in slide && (slide as any).username) ? (slide as any).username : undefined)
-			|| "User";
+		const getSlideDisplayName = (slide: Slide): string | undefined => {
+			switch (slide.type) {
+				case 'top_artists_week':
+				case 'top_songs_week':
+				case 'common_artists':
+					return slide.displayName;
+				default:
+					return undefined;
+			}
+		};
+		
+		const getSlideUsername = (slide: Slide): string | undefined => {
+			switch (slide.type) {
+				case 'top_artists_week':
+				case 'top_songs_week':
+				case 'common_artists':
+					return slide.username;
+				default:
+					return undefined;
+			}
+		};
+		
+		const name = userMeta?.displayName || userMeta?.username || getSlideDisplayName(slide) || getSlideUsername(slide) || "User";
 		return (
 			<div className="flex items-center gap-3">
 				<MusicImage src={userMeta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
@@ -681,6 +704,7 @@ function FeedInner() {
 			</div>
 		);
 	});
+	UserHeader.displayName = 'UserHeader';
 
 		const Card = ({ children }: { children: React.ReactNode }) => (
 		<div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-md w-full max-w-2xl">
@@ -822,6 +846,7 @@ function FeedInner() {
 		</Card>
 		);
 	});
+	RecentSongCard.displayName = 'RecentSongCard';
 
 	const TopArtistsCard = memo(({ slide, userMeta }: { 
 		slide: Extract<Slide, { type: "top_artists_week" }>;
@@ -860,6 +885,7 @@ function FeedInner() {
 			</div>
 		</Card>
 	));
+	TopArtistsCard.displayName = 'TopArtistsCard';
 
 	const TopSongsCard = memo(({ slide, songsById, userMeta }: { 
 		slide: Extract<Slide, { type: "top_songs_week" }>;
@@ -919,6 +945,7 @@ function FeedInner() {
 		</Card>
 		);
 	});
+	TopSongsCard.displayName = 'TopSongsCard';
 
 	const NowPlayingCard = memo(({ slide, song, userMeta }: { 
 		slide: Extract<Slide, { type: "now_playing" }>;
@@ -970,6 +997,7 @@ function FeedInner() {
 		</Card>
 		);
 	});
+	NowPlayingCard.displayName = 'NowPlayingCard';
 
 	const CommonArtistsCard = memo(({ slide, userMeta }: { 
 		slide: Extract<Slide, { type: "common_artists" }>;
@@ -1008,6 +1036,7 @@ function FeedInner() {
 			</div>
 		</Card>
 	));
+	CommonArtistsCard.displayName = 'CommonArtistsCard';
 
 	if (!me) {
 		return (

@@ -117,7 +117,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
     };
 
     initializeUser();
-  }, []); // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount, loadFriendRequests is stable
 
   useEffect(() => {
     // Set up chat notification handler
