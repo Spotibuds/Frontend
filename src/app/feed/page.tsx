@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
@@ -202,9 +202,6 @@ function FeedInner() {
 
 	// Stabilize current user so hooks don't re-create on every render
 	const [me] = useState(() => identityApi.getCurrentUser());
-
-	// Audio controls for play actions from feed
-	const { playSong } = useAudio();
 
 	const preloadSongs = useCallback(async (newSlides: Slide[]) => {
 		const recentSongIds = newSlides
@@ -668,20 +665,22 @@ function FeedInner() {
 		[me, reactionsBySlide]
 	);
 
-	const UserHeader = ({ slide }: { slide: Slide }) => {
-		const meta = userMetaById[slide.identityUserId];
-		const name = meta?.displayName || meta?.username || (('displayName' in slide && (slide as any).displayName) ? (slide as any).displayName : undefined)
+	const UserHeader = memo(({ slide, userMeta }: { 
+		slide: Slide;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const name = userMeta?.displayName || userMeta?.username || (('displayName' in slide && (slide as any).displayName) ? (slide as any).displayName : undefined)
 			|| (('username' in slide && (slide as any).username) ? (slide as any).username : undefined)
 			|| "User";
 		return (
 			<div className="flex items-center gap-3">
-				<MusicImage src={meta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
+				<MusicImage src={userMeta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
 				<Link href={`/user/${slide.identityUserId}`} className="text-white font-medium hover:underline">
 					{name}
 				</Link>
 			</div>
 		);
-	};
+	});
 
 		const Card = ({ children }: { children: React.ReactNode }) => (
 		<div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-md w-full max-w-2xl">
@@ -773,7 +772,14 @@ function FeedInner() {
 		);
 	};
 
-	const RecentSongCard = ({ slide }: { slide: Extract<Slide, { type: "recent_song" }> }) => (
+	const RecentSongCard = memo(({ slide, song, userMeta }: { 
+		slide: Extract<Slide, { type: "recent_song" }>;
+		song: Song | null;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
 		<Card>
 			<div className="relative">
 				{/* Reaction cluster - always visible at top right */}
@@ -782,28 +788,28 @@ function FeedInner() {
 				</div>
 				<div className="flex items-start gap-4">
 					<div className="flex-1">
-						<UserHeader slide={slide} />
+						<UserHeader slide={slide} userMeta={userMeta} />
 						<div className="mt-4 flex items-center gap-4">
 							<button
 								className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-								onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+								onClick={() => song && playSong(song as any)}
 								title="Play"
 							>
-								<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+								<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
 							</button>
 							<div className="min-w-0">
 								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
 								<div className="text-gray-300 truncate">
-									{songsById[slide.songId]?.artists?.length
-										? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+									{song?.artists?.length
+										? (song!.artists as any[]).map((a: any, i: number) => (
 											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+												{a.name}{i < ((song as any)?.artists?.length || 0) - 1 ? ', ' : ''}
 											</Link>
 										))
 										: slide.artist}
 								</div>
-								{(songsById[slide.songId] as any)?.album?.id && (
-									<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+								{(song as any)?.album?.id && (
+									<Link href={`/album/${(song as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
 								)}
 								{slide.playedAt && (
 									<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleDateString()}</div>
@@ -814,9 +820,13 @@ function FeedInner() {
 				</div>
 			</div>
 		</Card>
-	);
+		);
+	});
 
-	const TopArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "top_artists_week" }> }) => (
+	const TopArtistsCard = memo(({ slide, userMeta }: { 
+		slide: Extract<Slide, { type: "top_artists_week" }>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => (
 		<Card>
 			<div className="relative">
 				{/* Reaction cluster - always visible at top right */}
@@ -824,7 +834,7 @@ function FeedInner() {
 					<ReactionCluster slide={slide} />
 				</div>
 				<div className="flex items-center justify-between">
-					<UserHeader slide={slide} />
+					<UserHeader slide={slide} userMeta={userMeta} />
 					<div className="text-white/60 text-xs">Top artists this week</div>
 				</div>
 				<div className="mt-4 grid grid-cols-1 gap-3">
@@ -849,9 +859,16 @@ function FeedInner() {
 				</div>
 			</div>
 		</Card>
-	);
+	));
 
-	const TopSongsCard = ({ slide }: { slide: Extract<Slide, { type: "top_songs_week" }> }) => (
+	const TopSongsCard = memo(({ slide, songsById, userMeta }: { 
+		slide: Extract<Slide, { type: "top_songs_week" }>;
+		songsById: Record<string, Song | null>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
 		<Card>
 			<div className="relative">
 				{/* Reaction cluster - always visible at top right */}
@@ -859,7 +876,7 @@ function FeedInner() {
 					<ReactionCluster slide={slide} />
 				</div>
 				<div className="flex items-center justify-between">
-					<UserHeader slide={slide} />
+					<UserHeader slide={slide} userMeta={userMeta} />
 					<div className="text-white/60 text-xs">Top songs this week</div>
 				</div>
 				<div className="mt-4 grid grid-cols-1 gap-3">
@@ -900,37 +917,45 @@ function FeedInner() {
 				</div>
 			</div>
 		</Card>
-	);
+		);
+	});
 
-	const NowPlayingCard = ({ slide }: { slide: Extract<Slide, { type: "now_playing" }> }) => (
+	const NowPlayingCard = memo(({ slide, song, userMeta }: { 
+		slide: Extract<Slide, { type: "now_playing" }>;
+		song: Song | null;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
 		<Card>
 			<div className="flex items-start gap-4">
 				<div className="flex-1">
 					<div className="flex items-center justify-between">
-						<UserHeader slide={slide} />
+						<UserHeader slide={slide} userMeta={userMeta} />
 						<span className="text-green-300 text-xs bg-green-500/10 border border-green-400/30 px-2 py-0.5 rounded">Now Playing</span>
 					</div>
 					<div className="mt-4 flex items-center gap-4">
 						<button
 							className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
-							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+							onClick={() => song && playSong(song as any)}
 							title="Play"
 						>
-							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+							<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
 						</button>
 						<div className="min-w-0">
 							<div className="text-white text-xl font-semibold truncate">{slide.songTitle || 'Listening now'}</div>
 							<div className="text-gray-200 truncate">
-								{songsById[slide.songId]?.artists?.length
-									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+								{song?.artists?.length
+									? (song!.artists as any[]).map((a: any, i: number) => (
 										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+											{a.name}{i < ((song as any)?.artists?.length || 0) - 1 ? ', ' : ''}
 										</Link>
 									))
 									: slide.artist}
 							</div>
-							{(songsById[slide.songId] as any)?.album?.id && (
-								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
+							{(song as any)?.album?.id && (
+								<Link href={`/album/${(song as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
 							)}
 							{typeof slide.positionSec === 'number' && (
 								<div className="text-emerald-300/90 text-xs mt-1">{Math.floor((slide.positionSec || 0) / 60)}:{String((slide.positionSec || 0) % 60).padStart(2,'0')} elapsed</div>
@@ -943,9 +968,13 @@ function FeedInner() {
 				</div>
 			</div>
 		</Card>
-	);
+		);
+	});
 
-	const CommonArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "common_artists" }> }) => (
+	const CommonArtistsCard = memo(({ slide, userMeta }: { 
+		slide: Extract<Slide, { type: "common_artists" }>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => (
 		<Card>
 			<div className="relative">
 				{/* Reaction cluster - always visible at top right */}
@@ -953,7 +982,7 @@ function FeedInner() {
 					<ReactionCluster slide={slide} />
 				</div>
 				<div className="flex items-center justify-between">
-					<UserHeader slide={slide} />
+					<UserHeader slide={slide} userMeta={userMeta} />
 					<div className="text-white/60 text-xs">Artists in common</div>
 				</div>
 				<div className="mt-4 grid grid-cols-1 gap-3">
@@ -978,7 +1007,7 @@ function FeedInner() {
 				</div>
 			</div>
 		</Card>
-	);
+	));
 
 	if (!me) {
 		return (
@@ -1025,11 +1054,11 @@ function FeedInner() {
 									ref={(el) => { sectionsRef.current[idx] = el; }}
 									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-24"
 								>
-									{slide.type === "recent_song" && <RecentSongCard slide={slide} />}
-									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} />}
-									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} />}
-									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} />}
-									{slide.type === "common_artists" && <CommonArtistsCard slide={slide as any} />}
+									{slide.type === "recent_song" && <RecentSongCard slide={slide} song={songsById[slide.songId] || null} userMeta={userMetaById[slide.identityUserId]} />}
+									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} song={songsById[(slide as any).songId] || null} userMeta={userMetaById[(slide as any).identityUserId]} />}
+									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} userMeta={userMetaById[slide.identityUserId]} />}
+									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} songsById={songsById} userMeta={userMetaById[slide.identityUserId]} />}
+									{slide.type === "common_artists" && <CommonArtistsCard slide={slide as any} userMeta={userMetaById[(slide as any).identityUserId]} />}
 
 									{/* Right-side reactions shown only for the active slide to avoid duplicates */}
 									{idx === currentIndex && <ReactionBar slide={slide} index={idx} />}

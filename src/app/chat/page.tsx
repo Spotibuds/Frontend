@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi, Chat, User } from '@/lib/api';
 import { notificationService } from '@/lib/notificationService';
 
@@ -161,11 +162,14 @@ export default function ChatPage() {
                           onClick={() => handleChatClick(chat.chatId)}
                           className="flex items-center space-x-4 p-4 rounded-lg bg-gray-700/50 hover:bg-gray-700/80 cursor-pointer transition-colors"
                         >
-                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-bold text-lg">
-                              {otherParticipant ? (otherParticipant.displayName || otherParticipant.username).charAt(0).toUpperCase() : '?'}
-                            </span>
-                          </div>
+                          <MusicImage
+                            src={otherParticipant?.avatarUrl}
+                            alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'User'}
+                            fallbackText={otherParticipant ? (otherParticipant.displayName || otherParticipant.username).charAt(0).toUpperCase() : '?'}
+                            type="circle"
+                            size="medium"
+                            className="w-12 h-12"
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
                               <h3 className="text-white font-medium truncate">
@@ -209,11 +213,14 @@ export default function ChatPage() {
                         onClick={() => handleStartChat(friend.id)}
                         className="flex items-center space-x-3 p-3 rounded-lg bg-gray-700/30 hover:bg-gray-700/60 cursor-pointer transition-colors"
                       >
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-blue-500 rounded-full flex items-center justify-center">
-                          <span className="text-white font-bold text-sm">
-                            {(friend.displayName || friend.username).charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        <MusicImage
+                          src={friend.avatarUrl}
+                          alt={friend.displayName || friend.username}
+                          fallbackText={(friend.displayName || friend.username).charAt(0).toUpperCase()}
+                          type="circle"
+                          size="small"
+                          className="w-10 h-10"
+                        />
                         <div className="flex-1 min-w-0">
                           <h4 className="text-white font-medium truncate">{friend.displayName || friend.username}</h4>
                         </div>
