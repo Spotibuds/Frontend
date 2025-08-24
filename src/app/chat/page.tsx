@@ -45,30 +45,28 @@ export default function ChatPage() {
     try {
       const userChats = await userApi.getUserChats(userId);
       
-      // Fetch user profiles for all chat participants
-      const chatsWithProfiles = await Promise.all(
-        userChats.map(async (chat) => {
-          const participantProfiles = await Promise.all(
-            chat.participants.map(async (participantId) => {
-              try {
-                return await userApi.getUserProfile(participantId);
-              } catch (error) {
-                console.error(`Failed to fetch profile for user ${participantId}:`, error);
-                return {
-                  id: participantId,
-                  username: `User ${participantId.slice(0, 8)}`,
-                  displayName: `User ${participantId.slice(0, 8)}`
-                } as User;
-              }
-            })
-          );
-          
-          return {
-            ...chat,
-            participantProfiles
-          };
-        })
+      // Collect all unique participant IDs from all chats
+      const allParticipantIds = Array.from(
+        new Set(userChats.flatMap(chat => chat.participants))
       );
+      
+      // Fetch all participant profiles in one batch call
+      const participantProfiles = await userApi.getUserProfilesBatch(allParticipantIds);
+      
+      // Create a lookup map for fast access
+      const profileMap = new Map(participantProfiles.map(profile => [profile.id, profile]));
+      
+      // Map chats with their participant profiles
+      const chatsWithProfiles = userChats.map(chat => ({
+        ...chat,
+        participantProfiles: chat.participants.map(participantId => 
+          profileMap.get(participantId) || {
+            id: participantId,
+            username: `User ${participantId.slice(0, 8)}`,
+            displayName: `User ${participantId.slice(0, 8)}`
+          } as User
+        )
+      }));
       
       setChats(chatsWithProfiles);
     } catch (error) {
@@ -82,21 +80,8 @@ export default function ChatPage() {
     try {
       const friendIds = await userApi.getFriends(userId);
       
-      // Fetch user profiles for all friends
-      const friendProfiles = await Promise.all(
-        friendIds.map(async (friendId) => {
-          try {
-            return await userApi.getUserProfile(friendId);
-          } catch (error) {
-            console.error(`Failed to fetch profile for friend ${friendId}:`, error);
-            return {
-              id: friendId,
-              username: `Friend ${friendId.slice(0, 8)}`,
-              displayName: `Friend ${friendId.slice(0, 8)}`
-            } as User;
-          }
-        })
-      );
+      // Fetch all friend profiles in one batch call
+      const friendProfiles = await userApi.getUserProfilesBatch(friendIds);
       
       setFriends(friendProfiles);
     } catch (error) {

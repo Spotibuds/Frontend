@@ -1,7 +1,8 @@
-import { Song } from './api';
+import { Song, API_CONFIG } from './api';
 
-const MUSIC_API_URL = process.env.NEXT_PUBLIC_MUSIC_API || 'http://localhost:5001';
-const USER_API_URL = process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002';
+// Use centralized API configuration instead of hardcoded URLs
+const MUSIC_API_URL = API_CONFIG.MUSIC_API;
+const USER_API_URL = API_CONFIG.USER_API;
 
 export interface PlaylistSong extends Song {
   position: number;

@@ -825,6 +825,30 @@ export const userApi = {
     }
   },
 
+  getUserProfilesBatch: async (userIds: string[]): Promise<User[]> => {
+    try {
+      const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/batch`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      });
+      
+      return userDtos.map(userData => ({
+        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
+        username: userData.userName,
+        displayName: userData.displayName,
+        bio: userData.bio,
+        avatarUrl: userData.avatarUrl,
+        followers: userData.followers.length,
+        following: userData.followedUsers.length,
+        playlists: userData.playlists.length, // Convert to count
+        isPrivate: userData.isPrivate,
+        createdAt: userData.createdAt
+      }));
+    } catch (error) {
+      throw error;
+    }
+  },
+
   getAllUsers: () =>
     apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users`),
 
