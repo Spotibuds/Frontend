@@ -6,12 +6,11 @@ import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Song, type Artist, type Album } from "@/lib/api";
 
-export default function AdminPageForSongss() {
+export default function AdminPageForSongs() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [modalData, setModalData] = useState<{
@@ -21,22 +20,21 @@ export default function AdminPageForSongss() {
     genre?: string;
     durationSec: number;
     album?: { id: string; title: string };
-    fileUrl?: string;
-    snippetUrl?: string;
-    coverUrl?: string;
+    coverFile?: File | null;
+    audioFile?: File | null;
     createdAt?: string;
     releaseDate?: string;
   }>({
     title: "",
     id: "",
     createdAt: "",
-    coverUrl: undefined,
     artists: [],
     durationSec: 0,
   });
 
   const [artists, setArtists] = useState<Artist[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [coverPreview, setCoverPreview] = useState<string | undefined>();
 
   // Fetch songs
   const fetchSongs = async () => {
@@ -76,7 +74,16 @@ export default function AdminPageForSongss() {
 
   // Open create modal
   const openCreateModal = async () => {
-    setModalData({ title: "", id: "", createdAt: "", coverUrl: undefined, artists: [], durationSec: 0 });
+    setModalData({
+      title: "",
+      id: "",
+      createdAt: "",
+      artists: [],
+      durationSec: 0,
+      coverFile: undefined,
+      audioFile: undefined,
+    });
+    setCoverPreview(undefined);
     const fetchedArtists = await musicApi.getArtists();
     setArtists(fetchedArtists);
     setAlbums([]);
@@ -90,12 +97,11 @@ export default function AdminPageForSongss() {
       title: song.title || "",
       genre: song.genre,
       releaseDate: song.releaseDate,
-      coverUrl: song.coverUrl,
-      snippetUrl: song.snippetUrl,
       artists: song.artists || [],
       album: song.album,
       durationSec: song.durationSec || 0,
     });
+    setCoverPreview(song.coverUrl);
     const fetchedArtists = await musicApi.getArtists();
     setArtists(fetchedArtists);
 
@@ -103,56 +109,73 @@ export default function AdminPageForSongss() {
       const fetchedAlbums = await musicApi.getArtistAlbums(song.artists[0].id);
       setAlbums(fetchedAlbums);
     }
+
     setIsUpdateModalOpen(true);
   };
 
   // Handle modal input change
   const handleModalChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-   const { name, value, files } = e.target as HTMLInputElement;
+    const { name, value, files } = e.target as HTMLInputElement;
 
     if (name === "coverFile") {
-    const fileNames = files ? Array.from(files).map((f) => f.name) : [];
-    setModalData((prev) => ({ ...prev, coverUrl: fileNames.join(",") })); 
-    } else if (name === "snippetFile") {
-    const fileNames = files ? Array.from(files).map((f) => f.name) : [];
-    setModalData((prev) => ({ ...prev, snippetUrl: fileNames.join(",") }));
-    }
-    else if (name === "artist") {
-      setModalData((prev) => ({ ...prev, artists: [{ id: value, name: artists.find(a => a.id === value)?.name || "" }] }));
-      // Fetch albums for selected artist
+      const file = files?.[0];
+      setModalData(prev => ({ ...prev, coverFile: file }));
+      if (file) setCoverPreview(URL.createObjectURL(file));
+    } else if (name === "audioFile") {
+      const file = files?.[0];
+      if (file) {
+        setModalData(prev => ({ ...prev, audioFile: file }));
+
+        // Get audio duration
+        const audio = document.createElement("audio");
+        audio.src = URL.createObjectURL(file);
+        audio.addEventListener("loadedmetadata", () => {
+          setModalData(prev => ({ ...prev, durationSec: Math.round(audio.duration) }));
+        });
+      }
+    } else if (name === "artist") {
+      setModalData(prev => ({
+        ...prev,
+        artists: [{ id: value, name: artists.find(a => a.id === value)?.name || "" }]
+      }));
       fetchAlbumsForArtist(value);
     } else if (name === "album") {
-      setModalData((prev) => ({ ...prev, album: { id: value, title: albums.find(a => a.id === value)?.title || "" } }));
+      setModalData(prev => ({
+        ...prev,
+        album: { id: value, title: albums.find(a => a.id === value)?.title || "" }
+      }));
     } else {
-      setModalData((prev) => ({ ...prev, [name]: value }));
+      setModalData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const fetchAlbumsForArtist = async (artistId: string) => {
     const artistAlbums = await musicApi.getArtistAlbums(artistId);
     setAlbums(artistAlbums);
-    setModalData((prev) => ({ ...prev, album: undefined })); // reset album selection
+    setModalData(prev => ({ ...prev, album: undefined })); // reset album selection
   };
 
   // Submit create modal
   const handleCreateSubmit = async () => {
-    if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id || !modalData.snippetUrl) {
+    if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id || !modalData.audioFile) {
       alert("Please fill all required fields: Title, Artist, Album, Audio File");
       return;
     }
+
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
       formData.append("ArtistId", modalData.artists[0].id);
       formData.append("AlbumId", modalData.album.id);
       formData.append("Genre", modalData.genre || "");
+      formData.append("Duration", modalData.durationSec.toString());
       if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
-      if (modalData.coverUrl) formData.append("CoverFile", modalData.coverUrl);
-      formData.append("SnippetFile", modalData.snippetUrl );
+      if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
+      formData.append("AudioFile", modalData.audioFile!);
 
       const newSong = await adminApi.createSong(formData);
       if (newSong) {
-        setSongs((prev) => [...prev, newSong]);
+        setSongs(prev => [...prev, newSong]);
         setIsCreateModalOpen(false);
         alert("Song created successfully");
       } else {
@@ -170,21 +193,24 @@ export default function AdminPageForSongss() {
       alert("Please fill all required fields: Title, Artist, Album");
       return;
     }
+
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
       formData.append("ArtistId", modalData.artists[0].id);
       formData.append("AlbumId", modalData.album.id);
       formData.append("Genre", modalData.genre || "");
+      formData.append("Duration", modalData.durationSec.toString());
       if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
-      if (modalData.coverUrl) formData.append("CoverFile", modalData.coverUrl );
-      if (modalData.snippetUrl) formData.append("SnippetFile", modalData.snippetUrl );
+      if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
 
+      formData.append("AudioFile", modalData.audioFile || new Blob()); 
+      
+      
       const updatedSong = await adminApi.updateSong(modalData.id, formData);
+
       if (updatedSong) {
-        setSongs((prev) =>
-          prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedSong } : a))
-        );
+        setSongs(prev => prev.map(a => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
         setIsUpdateModalOpen(false);
         alert("Song updated successfully");
       } else {
@@ -236,6 +262,7 @@ export default function AdminPageForSongss() {
                   <p className="text-gray-400 text-sm">
                     {song.artists.map((a) => a.name).join(", ")} - {song.album?.title}
                   </p>
+                  <p className="text-gray-400 text-sm">Duration: {song.durationSec}s</p>
                   <div className="mt-2 space-x-2">
                     <button
                       onClick={() => openUpdateModal(song)}
@@ -256,97 +283,14 @@ export default function AdminPageForSongss() {
           </div>
         )}
 
-        {/* Create Modal */}
-        {isCreateModalOpen && (
+        {/* Modal component */}
+        {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
             <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Create New Song</h2>
-              <input
-                type="text"
-                name="title"
-                placeholder="Title"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.title}
-                onChange={handleModalChange}
-              />
-              <input
-                type="text"
-                name="genre"
-                placeholder="Genre"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.genre || ""}
-                onChange={handleModalChange}
-              />
-              <input
-                type="date"
-                name="releaseDate"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.releaseDate || ""}
-                onChange={handleModalChange}
-              />
-              <select
-                name="artist"
-                value={modalData.artists[0]?.id || ""}
-                onChange={handleModalChange}
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-              >
-                <option value="">Select Artist</option>
-                {artists.map((artist) => (
-                  <option key={artist.id} value={artist.id}>
-                    {artist.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                name="album"
-                value={modalData.album?.id || ""}
-                onChange={handleModalChange}
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-              >
-                <option value="">Select Album</option>
-                {albums.map((album) => (
-                  <option key={album.id} value={album.id}>
-                    {album.title}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="file"
-                name="coverFile"
-                accept="image/*"
-                className="w-full mb-2"
-                onChange={handleModalChange}
-              />
-              <input
-                type="file"
-                name="snippetFile"
-                accept=".mp3,.wav,.flac,.m4a,.ogg"
-                className="w-full mb-4"
-                onChange={handleModalChange}
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsCreateModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-                  onClick={handleCreateSubmit}
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+              <h2 className="text-xl font-bold mb-4 text-white">
+                {isCreateModalOpen ? "Create New Song" : "Update Song"}
+              </h2>
 
-        {/* Update Modal */}
-        {isUpdateModalOpen && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Update Song</h2>
               <input
                 type="text"
                 name="title"
@@ -396,6 +340,7 @@ export default function AdminPageForSongss() {
                   </option>
                 ))}
               </select>
+
               <input
                 type="file"
                 name="coverFile"
@@ -403,25 +348,43 @@ export default function AdminPageForSongss() {
                 className="w-full mb-2"
                 onChange={handleModalChange}
               />
+              {coverPreview && (
+                <img
+                  src={coverPreview}
+                  alt="cover preview"
+                  className="w-24 h-24 object-cover mb-2 rounded"
+                />
+              )}
+
               <input
                 type="file"
-                name="snippetFile"
+                name="audioFile"
                 accept=".mp3,.wav,.flac,.m4a,.ogg"
-                className="w-full mb-4"
+                className="w-full mb-2"
                 onChange={handleModalChange}
               />
+              {!modalData.audioFile && !isCreateModalOpen && (
+                <p className="text-gray-400 mb-2">Audio file exists. Select a new file to replace it.</p>
+              )}
+              <p className="text-gray-400 mb-4">Duration: {modalData.durationSec}s</p>
+
               <div className="flex justify-end space-x-2">
                 <button
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsUpdateModalOpen(false)}
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    setIsUpdateModalOpen(false);
+                  }}
                 >
                   Cancel
                 </button>
                 <button
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded"
-                  onClick={handleUpdateSubmit}
+                  className={`${
+                    isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded`}
+                  onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
-                  Update
+                  {isCreateModalOpen ? "Create" : "Update"}
                 </button>
               </div>
             </div>

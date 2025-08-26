@@ -16,48 +16,49 @@ export default function AdminPageForArtists() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [modalData, setModalData] = useState<{
-        id: string;
-        name: string;
-        bio?: string;
-        imageUrl?: string;
-        albums?: string[];
-        createdAt?: string;
+    id: string;
+    name: string;
+    bio?: string;
+    imageFile?: File;
+    albums?: string[];
+    createdAt?: string;
   }>({
     name: "",
     id: "",
     createdAt: "",
-    imageUrl: undefined,
   });
+
+  const [imagePreview, setImagePreview] = useState<string | undefined>();
 
   // Fetch artists 
   const fetchArtists = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-  
-        const data = await musicApi.getArtists();
-        setArtists(data);
-  
-        const albumsPromises = data.map((artist) =>
-          musicApi
-            .getArtistAlbums(artist.id)
-            .then((albums) => ({ id: artist.id, albums }))
-            .catch(() => ({ id: artist.id, albums: [] }))
-        );
-  
-        const albumsResults = await Promise.all(albumsPromises);
-        const albumsObj: Record<string, Album[]> = {};
-        albumsResults.forEach((res) => {
-          albumsObj[res.id] = res.albums;
-        });
-        setAlbumsMap(albumsObj);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load albums");
-      } finally {
-        setLoading(false);
-      }
-    };
+    try {
+      setLoading(true);
+      setError(null);
+
+      const data = await musicApi.getArtists();
+      setArtists(data);
+
+      const albumsPromises = data.map((artist) =>
+        musicApi
+          .getArtistAlbums(artist.id)
+          .then((albums) => ({ id: artist.id, albums }))
+          .catch(() => ({ id: artist.id, albums: [] }))
+      );
+
+      const albumsResults = await Promise.all(albumsPromises);
+      const albumsObj: Record<string, Album[]> = {};
+      albumsResults.forEach((res) => {
+        albumsObj[res.id] = res.albums;
+      });
+      setAlbumsMap(albumsObj);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load albums");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchArtists();
@@ -82,7 +83,8 @@ export default function AdminPageForArtists() {
 
   // Open create modal
   const openCreateModal = () => {
-    setModalData({ name: "", id: "", createdAt: "", imageUrl: undefined });
+    setModalData({ name: "", id: "", createdAt: "" });
+    setImagePreview(undefined);
     setIsCreateModalOpen(true);
   };
 
@@ -93,16 +95,18 @@ export default function AdminPageForArtists() {
       name: artist.name,
       bio: artist.bio || "",
       createdAt: artist.createdAt || "",
-      imageUrl: undefined,
     });
+    setImagePreview(artist.imageUrl); // show existing image
     setIsUpdateModalOpen(true);
   };
 
   // Handle modal input change
   const handleModalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, files } = e.target;
-    if (name === "coverFile") {
-      setModalData((prev) => ({ ...prev, coverFile: files?.[0] || null }));
+    if (name === "imageFile") {
+      const file = files?.[0];
+      setModalData((prev) => ({ ...prev, imageFile: file }));
+      if (file) setImagePreview(URL.createObjectURL(file));
     } else {
       setModalData((prev) => ({ ...prev, [name]: value }));
     }
@@ -110,7 +114,7 @@ export default function AdminPageForArtists() {
 
   // Submit create modal
   const handleCreateSubmit = async () => {
-    if (!modalData.name ) {
+    if (!modalData.name) {
       alert("Name is required");
       return;
     }
@@ -118,12 +122,11 @@ export default function AdminPageForArtists() {
     try {
       const formData = new FormData();
       formData.append("Name", modalData.name);
-      formData.append("ArtistId", modalData.id);
-      if (modalData.createdAt) formData.append("ReleaseDate", modalData.createdAt);
-      if (modalData.imageUrl) formData.append("CoverFile", modalData.imageUrl);
+      if (modalData.bio) formData.append("Bio", modalData.bio);
+      if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
+      if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const newArtist = await adminApi.createArtist(formData);
-
       if (newArtist) {
         setArtists((prev) => [...prev, newArtist]);
         setIsCreateModalOpen(false);
@@ -149,7 +152,7 @@ export default function AdminPageForArtists() {
       formData.append("Name", modalData.name);
       if (modalData.bio) formData.append("Bio", modalData.bio);
       if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
-      if (modalData.imageUrl) formData.append("CoverFile", modalData.imageUrl);
+      if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile); // only append if user selected new file
 
       const updatedArtist = await adminApi.updateArtist(modalData.id!, formData);
       if (updatedArtist) {
@@ -205,8 +208,7 @@ export default function AdminPageForArtists() {
                 <div className="flex-1">
                   <p className="text-white font-semibold">{artist.name}</p>
                   <p className="text-gray-400 text-sm">
-                     {albumsMap[artist.id]?.length ?? 0}{" "}
-                    albums
+                     {albumsMap[artist.id]?.length ?? 0} albums
                   </p>
                   <div className="mt-2 space-x-2">
                     <button
@@ -228,11 +230,13 @@ export default function AdminPageForArtists() {
           </div>
         )}
 
-        {/* Create Modal */}
-        {isCreateModalOpen && (
+        {/* Modal */}
+        {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
             <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Create New Artist</h2>
+              <h2 className="text-xl font-bold mb-4 text-white">
+                {isCreateModalOpen ? "Create New Artist" : "Update Artist"}
+              </h2>
               <input
                 type="text"
                 name="name"
@@ -241,59 +245,6 @@ export default function AdminPageForArtists() {
                 value={modalData.name}
                 onChange={handleModalChange}
               />
-               <input
-                type="text"
-                name="bio"
-                placeholder="BIO"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.bio}
-                onChange={handleModalChange}
-              />
-              <input
-                type="date"
-                name="createdAt"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.createdAt}
-                onChange={handleModalChange}
-              />
-              <input
-                type="file"
-                name="coverFile"
-                accept="image/*"
-                className="w-full mb-4"
-                onChange={handleModalChange}
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsCreateModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-                  onClick={handleCreateSubmit}
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Update Modal */}
-        {isUpdateModalOpen && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Update Artist</h2>
-              <input
-                type="text"
-                name="title"
-                placeholder="Title"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.name}
-                onChange={handleModalChange}
-              />
               <input
                 type="text"
                 name="bio"
@@ -311,23 +262,37 @@ export default function AdminPageForArtists() {
               />
               <input
                 type="file"
-                name="coverFile"
+                name="imageFile"
                 accept="image/*"
-                className="w-full mb-4"
+                className="w-full mb-2"
                 onChange={handleModalChange}
               />
+              {imagePreview && (
+                <img
+                  src={imagePreview}
+                  alt="preview"
+                  className="w-24 h-24 object-cover mb-2 rounded"
+                />
+              )}
               <div className="flex justify-end space-x-2">
                 <button
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsUpdateModalOpen(false)}
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    setIsUpdateModalOpen(false);
+                  }}
                 >
                   Cancel
                 </button>
                 <button
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded"
-                  onClick={handleUpdateSubmit}
+                  className={`${
+                    isCreateModalOpen
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded`}
+                  onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
-                  Update
+                  {isCreateModalOpen ? "Create" : "Update"}
                 </button>
               </div>
             </div>

@@ -17,7 +17,23 @@ export default function AdminPageAdmins() {
   const fetchAdmins = async () => {
     setLoading(true);
     const data = await adminApi.getAllAdmins();
-    setAdmins(data);
+
+    // Get current user from localStorage
+    const currentUser = localStorage.getItem("currentUser");
+    let currentUserId = "";
+    if (currentUser) {
+      try {
+        const parsed = JSON.parse(currentUser);
+        currentUserId = parsed.id;
+      } catch (e) {
+        console.error("Failed to parse currentUser from localStorage", e);
+      }
+    }
+
+    // Filter out current user
+    const filteredAdmins = data.filter((admin) => admin.id !== currentUserId);
+
+    setAdmins(filteredAdmins);
     setLoading(false);
   };
 
@@ -95,7 +111,6 @@ export default function AdminPageAdmins() {
           <table className="w-full border-collapse border border-purple-400">
             <thead className="bg-purple-700">
               <tr>
-                <th className="border p-2">ID</th>
                 <th className="border p-2">Username</th>
                 <th className="border p-2">Email</th>
                 <th className="border p-2">Actions</th>
@@ -104,7 +119,6 @@ export default function AdminPageAdmins() {
             <tbody>
               {admins.map((admin) => (
                 <tr key={admin.id} className="hover:bg-gray-900">
-                  <td className="border p-2">{admin.id}</td>
                   <td className="border p-2">{admin.userName}</td>
                   <td className="border p-2">{admin.email}</td>
                   <td className="border p-2">

@@ -15,9 +15,24 @@ export default function UserPageUsers() {
   const [newPassword, setNewPassword] = useState("");
 
   const fetchUsers = async () => {
-    setLoading(true);
+        setLoading(true);
     const data = await adminApi.getAllUsers();
-    setUsers(data);
+
+    // Get current user from localStorage
+    const currentUser = localStorage.getItem("currentUser");
+    let currentUserId = "";
+    if (currentUser) {
+      try {
+        const parsed = JSON.parse(currentUser);
+        currentUserId = parsed.id;
+      } catch (e) {
+        console.error("Failed to parse currentUser from localStorage", e);
+      }
+    }
+
+    const filteredUsers = data.filter((user) => user.id !== currentUserId);
+
+    setUsers(filteredUsers);
     setLoading(false);
   };
 
@@ -46,6 +61,19 @@ export default function UserPageUsers() {
     if (confirm("Are you sure you want to delete this user?")) {
       const success = await adminApi.deleteUser(id);
       if (success) fetchUsers();
+    }
+  };
+
+  // Promote user to admin
+  const handlePromoteToAdmin = async (id: string) => {
+    if (confirm("Are you sure you want to make this user an admin?")) {
+      const success = await adminApi.promoteUserToAdmin({id});
+      if (success) {
+        alert("User promoted to admin successfully");
+        fetchUsers();
+      } else {
+        alert("Failed to promote user");
+      }
     }
   };
 
@@ -95,29 +123,34 @@ export default function UserPageUsers() {
           <table className="w-full border-collapse border border-purple-400">
             <thead className="bg-purple-700">
               <tr>
-                <th className="border p-2">ID</th>
                 <th className="border p-2">Username</th>
                 <th className="border p-2">Email</th>
                 <th className="border p-2">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-900">
-                  <td className="border p-2">{user.id}</td>
-                  <td className="border p-2">{user.userName}</td>
-                  <td className="border p-2">{user.email}</td>
-                  <td className="border p-2">
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+  {users.map((user) => (
+    <tr key={user.id} className="hover:bg-gray-900">
+      <td className="border p-2">{user.userName}</td>
+      <td className="border p-2">{user.email}</td>
+      <td className="border p-2 flex gap-2">
+        <button
+          onClick={() => handleDelete(user.id)}
+          className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white"
+        >
+          Delete
+        </button>
+        <button
+          onClick={() => handlePromoteToAdmin(user.id)}
+          className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-white"
+        >
+          Make Admin
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
+
           </table>
         )}
       </main>

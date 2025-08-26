@@ -1078,10 +1078,16 @@ export const adminApi = {
   // SONGS
   async createSong(data: FormData): Promise<Song | null> {
     try {
-      return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
+      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: data,
       });
+        if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const song: Song = await res.json();
+    return song;
     } catch (error) {
       console.error('Failed to create song:', error);
       return null;
@@ -1090,10 +1096,16 @@ export const adminApi = {
 
   async updateSong(id: string, data: FormData): Promise<Song | null> {
     try {
-      return await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
+      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: data,
       });
+        if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const song: Song = await res.json();
+    return song;
     } catch (error) {
       console.error('Failed to update song:', error);
       return null;
@@ -1133,11 +1145,18 @@ export const adminApi = {
 
 
   async updateAlbum(id: string, data: FormData): Promise<Album | null> {
+
     try {
-      return await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
+      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: data,
       });
+       if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const album: Album = await res.json();
+    return album;
     } catch (error) {
       console.error('Failed to update album:', error);
       return null;
@@ -1157,10 +1176,16 @@ export const adminApi = {
   // ARTISTS
   async createArtist(data: FormData): Promise<Artist | null> {
     try {
-      return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
+      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: data,
       });
+        if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const artist: Artist = await res.json();
+    return artist;
     } catch (error) {
       console.error('Failed to create artist:', error);
       return null;
@@ -1169,10 +1194,16 @@ export const adminApi = {
 
   async updateArtist(id: string, data: FormData): Promise<Artist | null> {
     try {
-      return await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
+      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: data,
       });
+        if (!res.ok) {
+        const text = await res.text(); 
+        throw new Error(text);
+      }
+      const artist: Artist = await res.json();
+    return artist;
     } catch (error) {
       console.error('Failed to update artist:', error);
       return null;
@@ -1204,7 +1235,7 @@ export const adminApi = {
 
   async addSongToPlaylist(playlistId: string, songId: string): Promise<boolean> {
     try {
-      await apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`, {
+       const res = await fetch(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`, {
         method: "POST",
         body: JSON.stringify({ songId }),
       });
@@ -1348,6 +1379,28 @@ async getAllUsers(): Promise<User[]> {
       return null;
     }
   },
+
+promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/auth/users/${data.id}/promote-to-admin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Failed to promote user:", errorData);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error promoting user:", error);
+    return false;
+  }
+},
 
     createUser: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
     try {

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
-import { musicApi, adminApi, type Album, type Song } from "@/lib/api";
+import { musicApi, adminApi, type Album, type Song, type Artist } from "@/lib/api";
 
 export default function AdminPageForAlbums() {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -12,14 +12,14 @@ export default function AdminPageForAlbums() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal state
+  const [artists, setArtists] = useState<Artist[]>([]);
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [modalData, setModalData] = useState<{
     id?: string;
     title: string;
     artistId: string;
-    artistName?: string;
     releaseDate: string;
     coverFile: File | null;
   }>({
@@ -29,7 +29,7 @@ export default function AdminPageForAlbums() {
     coverFile: null,
   });
 
-  // Fetch albums and songs
+  // Fetch albums + songs
   const fetchAlbums = async () => {
     try {
       setLoading(true);
@@ -59,8 +59,19 @@ export default function AdminPageForAlbums() {
     }
   };
 
+  // Fetch artists
+  const fetchArtists = async () => {
+    try {
+      const data = await musicApi.getArtists();
+      setArtists(data);
+    } catch (err) {
+      console.error("Failed to load artists", err);
+    }
+  };
+
   useEffect(() => {
     fetchAlbums();
+    fetchArtists();
   }, []);
 
   // Delete album
@@ -69,7 +80,7 @@ export default function AdminPageForAlbums() {
     try {
       const success = await adminApi.deleteAlbum(id);
       if (success) {
-        setAlbums(albums.filter((a) => a.id !== id));
+        setAlbums((prev) => prev.filter((a) => a.id !== id));
         const newSongsMap = { ...songsMap };
         delete newSongsMap[id];
         setSongsMap(newSongsMap);
@@ -83,28 +94,28 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Open create modal
+  // Open modals
   const openCreateModal = () => {
     setModalData({ title: "", artistId: "", releaseDate: "", coverFile: null });
     setIsCreateModalOpen(true);
   };
 
-  // Open update modal
   const openUpdateModal = (album: Album) => {
     setModalData({
       id: album.id,
       title: album.title,
       artistId: album.artist?.id || "",
-      artistName: album.artist?.name || "",
-      releaseDate: album.releaseDate || "",
+      releaseDate: album.releaseDate
+        ? album.releaseDate.split("T")[0]
+        : "",
       coverFile: null,
     });
     setIsUpdateModalOpen(true);
   };
 
-  // Handle modal input change
-  const handleModalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, files } = e.target;
+  // Modal input change
+  const handleModalChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, files } = e.target as HTMLInputElement;
     if (name === "coverFile") {
       setModalData((prev) => ({ ...prev, coverFile: files?.[0] || null }));
     } else {
@@ -112,10 +123,10 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Submit create modal
+  // Create album
   const handleCreateSubmit = async () => {
     if (!modalData.title || !modalData.artistId) {
-      alert("Title and Artist ID are required");
+      alert("Title and Artist are required");
       return;
     }
 
@@ -123,7 +134,7 @@ export default function AdminPageForAlbums() {
       const formData = new FormData();
       formData.append("Title", modalData.title);
       formData.append("ArtistId", modalData.artistId);
-      if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
+      formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
 
       const newAlbum = await adminApi.createAlbum(formData);
@@ -141,24 +152,24 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Submit update modal
   const handleUpdateSubmit = async () => {
-    if (!modalData.title) {
-      alert("Title is required");
+    if (!modalData.title || !modalData.artistId) {
+      alert("Title and Artist are required");
       return;
     }
 
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
-      if (modalData.artistName) formData.append("ArtistName", modalData.artistName);
-      if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
+      formData.append("ArtistId", modalData.artistId);
+      formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
-
+      
       const updatedAlbum = await adminApi.updateAlbum(modalData.id!, formData);
+
       if (updatedAlbum) {
         setAlbums((prev) =>
-          prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedAlbum } : a))
+          prev.map((a) => (a.id === modalData.id ? updatedAlbum : a))
         );
         setIsUpdateModalOpen(false);
         alert("Album updated successfully");
@@ -209,8 +220,7 @@ export default function AdminPageForAlbums() {
                 <div className="flex-1">
                   <p className="text-white font-semibold">{album.title}</p>
                   <p className="text-gray-400 text-sm">
-                    {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0}{" "}
-                    songs
+                    {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0} songs
                   </p>
                   <div className="mt-2 space-x-2">
                     <button
@@ -245,14 +255,19 @@ export default function AdminPageForAlbums() {
                 value={modalData.title}
                 onChange={handleModalChange}
               />
-              <input
-                type="text"
+              <select
                 name="artistId"
-                placeholder="Artist ID"
                 className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
                 value={modalData.artistId}
                 onChange={handleModalChange}
-              />
+              >
+                <option value="">Select Artist</option>
+                {artists.map((artist) => (
+                  <option key={artist.id} value={artist.id}>
+                    {artist.name}
+                  </option>
+                ))}
+              </select>
               <input
                 type="date"
                 name="releaseDate"
@@ -298,14 +313,19 @@ export default function AdminPageForAlbums() {
                 value={modalData.title}
                 onChange={handleModalChange}
               />
-              <input
-                type="text"
-                name="artistName"
-                placeholder="Artist Name"
+              <select
+                name="artistId"
                 className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.artistName}
+                value={modalData.artistId}
                 onChange={handleModalChange}
-              />
+              >
+                <option value="">Select Artist</option>
+                {artists.map((artist) => (
+                  <option key={artist.id} value={artist.id}>
+                    {artist.name}
+                  </option>
+                ))}
+              </select>
               <input
                 type="date"
                 name="releaseDate"
