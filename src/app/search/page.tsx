@@ -6,9 +6,10 @@ import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MagnifyingGlassIcon, UserIcon, MusicalNoteIcon, PlayIcon } from '@heroicons/react/24/outline';
-import { musicApi, userApi, processArtists, safeString, type Song, type Album, type Artist } from '@/lib/api';
+import { musicApi, userApi, processArtists, safeString, type Song, type Album, type Artist, adminApi } from '@/lib/api';
 import MusicImage from '@/components/ui/MusicImage';
 import { useAudio } from '@/lib/audio';
+import UpdateModal from '@/components/UpdateModal';
 
 type SearchFilter = 'all' | 'users' | 'songs' | 'albums' | 'artists' | 'playlists';
 
@@ -33,6 +34,28 @@ function SearchContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+ const [isAdmin, setIsAdmin] = useState(false);
+ const [updateModalOpen, setUpdateModalOpen] = useState(false);
+const [modalType, setModalType] = useState<"song" | "album" | "artist" | null>(null);
+const [modalData, setModalData] = useState<any>(null);
+
+
+useEffect(() => {
+  try {
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      if (parsedUser?.roles?.includes('Admin')) {
+        setIsAdmin(true);
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to parse currentUser from localStorage', error);
+    setIsAdmin(false);
+  }
+}, []);
+
+
 
   // Load query from URL params on mount
   useEffect(() => {
@@ -157,6 +180,61 @@ function SearchContent() {
     setIsLoading(false);
   };
 
+  async function handleUpdate(type: "artist" | "album" | "song", id: string, formData: FormData) {
+  try {
+    let updated;
+    if(type === "artist") updated = await adminApi.updateArtist(id, formData);
+    if(type === "album") updated = await adminApi.updateAlbum(id, formData);
+    if(type === "song") updated = await adminApi.updateSong(id, formData);
+
+    if(updated) {
+      return updated;
+    } 
+  } catch(err) {
+    console.error(err);
+    alert("Something went wrong");
+  }
+}
+
+
+const handleDelete = async (result: SearchResult) => {
+  if (!confirm("Are you sure? This cannot be undone.")) return;
+
+  try {
+    let success = false;
+
+    switch (result.type) {
+      case 'song':
+        success = await adminApi.deleteSong(result.id);
+        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
+        break;
+      case 'album':
+        success = await adminApi.deleteAlbum(result.id);
+        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
+        break;
+      case 'artist':
+        success = await adminApi.deleteArtist(result.id);
+        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
+        break;
+      case 'user':
+        success = await adminApi.deleteUser(result.id);
+        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
+        break;
+      default:
+        console.warn('Unknown type', result.type);
+    }
+
+    if (success) {
+      alert(`${result.type.charAt(0).toUpperCase() + result.type.slice(1)} deleted successfully`);
+    } else {
+      alert(`Failed to delete ${result.type}`);
+    }
+
+  } catch (err) {
+    console.error(err);
+    alert("Something went wrong");
+  }
+};
 
 
   const handleResultClick = (result: SearchResult) => {
@@ -321,18 +399,66 @@ function SearchContent() {
                           </p>
                         </div>
                         <div className="flex-shrink-0 flex items-center space-x-2">
-                          {result.type === 'song' && (
-                            <Button
-                              size="sm"
-                              className="bg-purple-600 hover:bg-purple-700 text-white rounded-full p-2"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                playSong(result.data);
-                              }}
-                            >
-                              <PlayIcon className="w-4 h-4" />
-                            </Button>
-                          )}
+  {/* Play button for songs */}
+  {result.type === 'song' && (
+    <Button
+      size="sm"
+      className="bg-purple-600 hover:bg-purple-700 text-white rounded-full p-2"
+      onClick={(e) => { e.stopPropagation(); playSong(result.data); }}
+    >
+      <PlayIcon className="w-4 h-4" />
+    </Button>
+  )}
+
+  {/* Admin buttons */}
+  {isAdmin && (
+    <>
+      {(result.type === 'song' || result.type === 'album' || result.type === 'artist') && (
+        <>
+         <Button
+  size="sm"
+  className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-2 py-1 text-xs"
+  onClick={(e) => {
+    e.stopPropagation();
+    setModalType(result.type as "song" | "album" | "artist");
+    setModalData(result.data);
+    setUpdateModalOpen(true);
+    console.log("Opening modal for",  result.data);
+  }
+  
+  }
+>
+  Update
+</Button>
+
+           <Button
+    size="sm"
+    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-2"
+    onClick={(e) => {
+      e.stopPropagation();
+      handleDelete(result);
+    }}
+  >
+            Delete
+          </Button>
+        </>
+      )}
+
+      {result.type === 'user' && (
+         <Button
+    size="sm"
+    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-2"
+    onClick={(e) => {
+      e.stopPropagation();
+      handleDelete(result);
+    }}
+  >
+          Delete
+        </Button>
+      )}
+    </>
+  )}
+
                           <div className="text-gray-400 group-hover:text-purple-400 transition-colors">
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -340,6 +466,7 @@ function SearchContent() {
                           </div>
                         </div>
                       </div>
+                      
                     </CardContent>
                   </Card>
                 ))}
@@ -391,14 +518,43 @@ function SearchContent() {
           </div>
         )}
       </div>
+       <UpdateModal
+  type={modalType!}
+  data={modalData}
+  isOpen={updateModalOpen}
+  onClose={() => setUpdateModalOpen(false)}
+  onUpdate={handleUpdate}
+  onSuccess={(updated) => {
+    setResults((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? {
+              ...r,
+              data: updated,
+              title: updated.title,
+              subtitle:
+                r.type === "song"
+                  ? processArtists(updated.artists).join(", ")
+                  : r.type === "album"
+                  ? `Album • ${updated.artist?.name || "Unknown Artist"}`
+                  : updated.name || updated.title || "",
+            }
+          : r
+      )
+    );
+  }}
+/>
+
     </AppLayout>
   );
 }
 
 export default function SearchPage() {
   return (
+    
     <Suspense fallback={
       <AppLayout>
+        
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -406,8 +562,10 @@ export default function SearchPage() {
           </div>
         </div>
       </AppLayout>
+      
     }>
       <SearchContent />
+      
     </Suspense>
   );
 } 
