@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "@/components/AdminNavigation";
 import { adminApi, type User } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function UserPageUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -15,7 +19,7 @@ export default function UserPageUsers() {
   const [newPassword, setNewPassword] = useState("");
 
   const fetchUsers = async () => {
-        setLoading(true);
+    setLoading(true);
     const data = await adminApi.getAllUsers();
 
     // Get current user from localStorage
@@ -31,7 +35,6 @@ export default function UserPageUsers() {
     }
 
     const filteredUsers = data.filter((user) => user.id !== currentUserId);
-
     setUsers(filteredUsers);
     setLoading(false);
   };
@@ -42,38 +45,67 @@ export default function UserPageUsers() {
 
   // Create user
   const handleCreate = async () => {
-    if (!newUsername || !newEmail || !newPassword) return;
+    if (!newUsername || !newEmail || !newPassword) {
+      MySwal.fire({ icon: "warning", title: "Please fill all fields" });
+      return;
+    }
     const created = await adminApi.createUser({
       userName: newUsername,
       email: newEmail,
       password: newPassword,
     });
     if (created) {
-      fetchUsers();
+      await fetchUsers();
       setNewUsername("");
       setNewEmail("");
       setNewPassword("");
+      MySwal.fire({ icon: "success", title: "User created successfully" });
+    } else {
+      MySwal.fire({ icon: "error", title: "Failed to create user" });
     }
   };
 
   // Delete user
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this user?")) {
-      const success = await adminApi.deleteUser(id);
-      if (success) fetchUsers();
+    const result = await MySwal.fire({
+      title: "Are you sure?",
+      text: "This action cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
+    const success = await adminApi.deleteUser(id);
+    if (success) {
+      await fetchUsers();
+      MySwal.fire({ icon: "success", title: "User deleted successfully" });
+    } else {
+      MySwal.fire({ icon: "error", title: "Failed to delete user" });
     }
   };
 
   // Promote user to admin
   const handlePromoteToAdmin = async (id: string) => {
-    if (confirm("Are you sure you want to make this user an admin?")) {
-      const success = await adminApi.promoteUserToAdmin({id});
-      if (success) {
-        alert("User promoted to admin successfully");
-        fetchUsers();
-      } else {
-        alert("Failed to promote user");
-      }
+    const result = await MySwal.fire({
+      title: "Promote to Admin?",
+      text: "This user will gain admin privileges.",
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Yes, promote",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
+    const success = await adminApi.promoteUserToAdmin({ id });
+    if (success) {
+      await fetchUsers();
+      MySwal.fire({ icon: "success", title: "User promoted to admin" });
+    } else {
+      MySwal.fire({ icon: "error", title: "Failed to promote user" });
     }
   };
 
@@ -129,28 +161,27 @@ export default function UserPageUsers() {
               </tr>
             </thead>
             <tbody>
-  {users.map((user) => (
-    <tr key={user.id} className="hover:bg-gray-900">
-      <td className="border p-2">{user.userName}</td>
-      <td className="border p-2">{user.email}</td>
-      <td className="border p-2 flex gap-2">
-        <button
-          onClick={() => handleDelete(user.id)}
-          className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white"
-        >
-          Delete
-        </button>
-        <button
-          onClick={() => handlePromoteToAdmin(user.id)}
-          className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-white"
-        >
-          Make Admin
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
-
+              {users.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-900">
+                  <td className="border p-2">{user.userName}</td>
+                  <td className="border p-2">{user.email}</td>
+                  <td className="border p-2 flex gap-2">
+                    <button
+                      onClick={() => handleDelete(user.id)}
+                      className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => handlePromoteToAdmin(user.id)}
+                      className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-white"
+                    >
+                      Make Admin
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         )}
       </main>

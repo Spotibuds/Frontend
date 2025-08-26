@@ -5,6 +5,10 @@ import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function AdminPageForArtists() {
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -30,7 +34,6 @@ export default function AdminPageForArtists() {
 
   const [imagePreview, setImagePreview] = useState<string | undefined>();
 
-  // Fetch artists 
   const fetchArtists = async () => {
     try {
       setLoading(true);
@@ -66,18 +69,37 @@ export default function AdminPageForArtists() {
 
   // Delete artist
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure? This cannot be undone.")) return;
-    try {
-      const success = await adminApi.deleteArtist(id);
-      if (success) {
-        setArtists(artists.filter((a) => a.id !== id));
-        alert("Artist deleted successfully");
-      } else {
-        alert("Failed to delete artist");
+    const result = await MySwal.fire({
+      title: "Are you sure?",
+      text: "This action cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
+      try {
+        const success = await adminApi.deleteArtist(id);
+        if (success) {
+          setArtists(artists.filter((a) => a.id !== id));
+          MySwal.fire({
+            icon: "success",
+            title: "Artist deleted successfully",
+          });
+        } else {
+          MySwal.fire({
+            icon: "error",
+            title: "Failed to delete artist",
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        MySwal.fire({
+          icon: "error",
+          title: "Something went wrong",
+        });
       }
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong");
     }
   };
 
@@ -96,11 +118,10 @@ export default function AdminPageForArtists() {
       bio: artist.bio || "",
       createdAt: artist.createdAt || "",
     });
-    setImagePreview(artist.imageUrl); // show existing image
+    setImagePreview(artist.imageUrl);
     setIsUpdateModalOpen(true);
   };
 
-  // Handle modal input change
   const handleModalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, files } = e.target;
     if (name === "imageFile") {
@@ -115,7 +136,7 @@ export default function AdminPageForArtists() {
   // Submit create modal
   const handleCreateSubmit = async () => {
     if (!modalData.name) {
-      alert("Name is required");
+      MySwal.fire({ icon: "warning", title: "Name is required" });
       return;
     }
 
@@ -130,20 +151,20 @@ export default function AdminPageForArtists() {
       if (newArtist) {
         setArtists((prev) => [...prev, newArtist]);
         setIsCreateModalOpen(false);
-        alert("Artist created successfully");
+        MySwal.fire({ icon: "success", title: "Artist created successfully" });
       } else {
-        alert("Failed to create artist");
+        MySwal.fire({ icon: "error", title: "Failed to create artist" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
   // Submit update modal
   const handleUpdateSubmit = async () => {
     if (!modalData.name) {
-      alert("Name is required");
+      MySwal.fire({ icon: "warning", title: "Name is required" });
       return;
     }
 
@@ -152,7 +173,7 @@ export default function AdminPageForArtists() {
       formData.append("Name", modalData.name);
       if (modalData.bio) formData.append("Bio", modalData.bio);
       if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
-      if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile); // only append if user selected new file
+      if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const updatedArtist = await adminApi.updateArtist(modalData.id!, formData);
       if (updatedArtist) {
@@ -160,13 +181,13 @@ export default function AdminPageForArtists() {
           prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedArtist } : a))
         );
         setIsUpdateModalOpen(false);
-        alert("Artist updated successfully");
+        MySwal.fire({ icon: "success", title: "Artist updated successfully" });
       } else {
-        alert("Failed to update artist");
+        MySwal.fire({ icon: "error", title: "Failed to update artist" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
@@ -208,7 +229,7 @@ export default function AdminPageForArtists() {
                 <div className="flex-1">
                   <p className="text-white font-semibold">{artist.name}</p>
                   <p className="text-gray-400 text-sm">
-                     {albumsMap[artist.id]?.length ?? 0} albums
+                    {albumsMap[artist.id]?.length ?? 0} albums
                   </p>
                   <div className="mt-2 space-x-2">
                     <button
@@ -285,11 +306,10 @@ export default function AdminPageForArtists() {
                   Cancel
                 </button>
                 <button
-                  className={`${
-                    isCreateModalOpen
+                  className={`${isCreateModalOpen
                       ? "bg-purple-600 hover:bg-purple-700"
                       : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded`}
+                    } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

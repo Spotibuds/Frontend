@@ -10,6 +10,9 @@ import { musicApi, userApi, processArtists, safeString, type Song, type Album, t
 import MusicImage from '@/components/ui/MusicImage';
 import { useAudio } from '@/lib/audio';
 import UpdateModal from '@/components/UpdateModal';
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
 
 type SearchFilter = 'all' | 'users' | 'songs' | 'albums' | 'artists' | 'playlists';
 
@@ -197,8 +200,22 @@ useEffect(() => {
 }
 
 
+
+const MySwal = withReactContent(Swal);
+
 const handleDelete = async (result: SearchResult) => {
-  if (!confirm("Are you sure? This cannot be undone.")) return;
+  const confirmResult = await MySwal.fire({
+    title: `Are you sure you want to delete this ${result.type}?`,
+    text: "This action cannot be undone.",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#dc2626", // red
+    cancelButtonColor: "#6b7280",  // gray
+    confirmButtonText: "Yes, delete it!",
+    cancelButtonText: "Cancel",
+  });
+
+  if (!confirmResult.isConfirmed) return;
 
   try {
     let success = false;
@@ -206,33 +223,38 @@ const handleDelete = async (result: SearchResult) => {
     switch (result.type) {
       case 'song':
         success = await adminApi.deleteSong(result.id);
-        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
         break;
       case 'album':
         success = await adminApi.deleteAlbum(result.id);
-        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
         break;
       case 'artist':
         success = await adminApi.deleteArtist(result.id);
-        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
         break;
       case 'user':
         success = await adminApi.deleteUser(result.id);
-        if (success) setResults((prev) => prev.filter(r => r.id !== result.id));
         break;
       default:
         console.warn('Unknown type', result.type);
     }
 
     if (success) {
-      alert(`${result.type.charAt(0).toUpperCase() + result.type.slice(1)} deleted successfully`);
+      setResults((prev) => prev.filter(r => r.id !== result.id));
+      await MySwal.fire({
+        icon: "success",
+        title: `${result.type.charAt(0).toUpperCase() + result.type.slice(1)} deleted successfully!`,
+      });
     } else {
-      alert(`Failed to delete ${result.type}`);
+      await MySwal.fire({
+        icon: "error",
+        title: `Failed to delete ${result.type}`,
+      });
     }
-
   } catch (err) {
     console.error(err);
-    alert("Something went wrong");
+    await MySwal.fire({
+      icon: "error",
+      title: "Something went wrong",
+    });
   }
 };
 

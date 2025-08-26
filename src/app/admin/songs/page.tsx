@@ -5,6 +5,10 @@ import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Song, type Artist, type Album } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function AdminPageForSongs() {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -57,18 +61,28 @@ export default function AdminPageForSongs() {
 
   // Delete song
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure? This cannot be undone.")) return;
+    const result = await MySwal.fire({
+      title: "Are you sure?",
+      text: "This action cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
     try {
       const success = await adminApi.deleteSong(id);
       if (success) {
         setSongs(songs.filter((a) => a.id !== id));
-        alert("Song deleted successfully");
+        MySwal.fire({ icon: "success", title: "Song deleted successfully" });
       } else {
-        alert("Failed to delete song");
+        MySwal.fire({ icon: "error", title: "Failed to delete song" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
@@ -126,7 +140,6 @@ export default function AdminPageForSongs() {
       if (file) {
         setModalData(prev => ({ ...prev, audioFile: file }));
 
-        // Get audio duration
         const audio = document.createElement("audio");
         audio.src = URL.createObjectURL(file);
         audio.addEventListener("loadedmetadata", () => {
@@ -152,13 +165,13 @@ export default function AdminPageForSongs() {
   const fetchAlbumsForArtist = async (artistId: string) => {
     const artistAlbums = await musicApi.getArtistAlbums(artistId);
     setAlbums(artistAlbums);
-    setModalData(prev => ({ ...prev, album: undefined })); // reset album selection
+    setModalData(prev => ({ ...prev, album: undefined }));
   };
 
   // Submit create modal
   const handleCreateSubmit = async () => {
     if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id || !modalData.audioFile) {
-      alert("Please fill all required fields: Title, Artist, Album, Audio File");
+      MySwal.fire({ icon: "warning", title: "Please fill all required fields: Title, Artist, Album, Audio File" });
       return;
     }
 
@@ -177,20 +190,20 @@ export default function AdminPageForSongs() {
       if (newSong) {
         setSongs(prev => [...prev, newSong]);
         setIsCreateModalOpen(false);
-        alert("Song created successfully");
+        MySwal.fire({ icon: "success", title: "Song created successfully" });
       } else {
-        alert("Failed to create song");
+        MySwal.fire({ icon: "error", title: "Failed to create song" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
   // Submit update modal
   const handleUpdateSubmit = async () => {
     if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id) {
-      alert("Please fill all required fields: Title, Artist, Album");
+      MySwal.fire({ icon: "warning", title: "Please fill all required fields: Title, Artist, Album" });
       return;
     }
 
@@ -204,21 +217,20 @@ export default function AdminPageForSongs() {
       if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
 
-      formData.append("AudioFile", modalData.audioFile || new Blob()); 
-      
-      
+      formData.append("AudioFile", modalData.audioFile || new Blob());
+
       const updatedSong = await adminApi.updateSong(modalData.id, formData);
 
       if (updatedSong) {
         setSongs(prev => prev.map(a => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
         setIsUpdateModalOpen(false);
-        alert("Song updated successfully");
+        MySwal.fire({ icon: "success", title: "Song updated successfully" });
       } else {
-        alert("Failed to update song");
+        MySwal.fire({ icon: "error", title: "Failed to update song" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
@@ -283,7 +295,7 @@ export default function AdminPageForSongs() {
           </div>
         )}
 
-        {/* Modal component */}
+        {/* Modal component remains the same as before */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
             <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
@@ -379,9 +391,8 @@ export default function AdminPageForSongs() {
                   Cancel
                 </button>
                 <button
-                  className={`${
-                    isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded`}
+                  className={`${isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
+                    } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

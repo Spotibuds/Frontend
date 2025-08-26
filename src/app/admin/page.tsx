@@ -5,6 +5,10 @@ import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Album, type Song, type Artist } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function AdminPageForAlbums() {
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -76,7 +80,17 @@ export default function AdminPageForAlbums() {
 
   // Delete album
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure? This cannot be undone.")) return;
+    const result = await MySwal.fire({
+      title: "Are you sure?",
+      text: "This cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+    });
+
+    if (!result.isConfirmed) return;
+
     try {
       const success = await adminApi.deleteAlbum(id);
       if (success) {
@@ -84,13 +98,13 @@ export default function AdminPageForAlbums() {
         const newSongsMap = { ...songsMap };
         delete newSongsMap[id];
         setSongsMap(newSongsMap);
-        alert("Album deleted successfully");
+        MySwal.fire({ icon: "success", title: "Album deleted successfully" });
       } else {
-        alert("Failed to delete album");
+        MySwal.fire({ icon: "error", title: "Failed to delete album" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
@@ -105,9 +119,7 @@ export default function AdminPageForAlbums() {
       id: album.id,
       title: album.title,
       artistId: album.artist?.id || "",
-      releaseDate: album.releaseDate
-        ? album.releaseDate.split("T")[0]
-        : "",
+      releaseDate: album.releaseDate ? album.releaseDate.split("T")[0] : "",
       coverFile: null,
     });
     setIsUpdateModalOpen(true);
@@ -126,7 +138,7 @@ export default function AdminPageForAlbums() {
   // Create album
   const handleCreateSubmit = async () => {
     if (!modalData.title || !modalData.artistId) {
-      alert("Title and Artist are required");
+      MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
       return;
     }
 
@@ -142,19 +154,20 @@ export default function AdminPageForAlbums() {
       if (newAlbum) {
         setAlbums((prev) => [...prev, newAlbum]);
         setIsCreateModalOpen(false);
-        alert("Album created successfully");
+        MySwal.fire({ icon: "success", title: "Album created successfully" });
       } else {
-        alert("Failed to create album");
+        MySwal.fire({ icon: "error", title: "Failed to create album" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
+  // Update album
   const handleUpdateSubmit = async () => {
     if (!modalData.title || !modalData.artistId) {
-      alert("Title and Artist are required");
+      MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
       return;
     }
 
@@ -164,21 +177,19 @@ export default function AdminPageForAlbums() {
       formData.append("ArtistId", modalData.artistId);
       formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
-      
+
       const updatedAlbum = await adminApi.updateAlbum(modalData.id!, formData);
 
       if (updatedAlbum) {
-        setAlbums((prev) =>
-          prev.map((a) => (a.id === modalData.id ? updatedAlbum : a))
-        );
+        setAlbums((prev) => prev.map((a) => (a.id === modalData.id ? updatedAlbum : a)));
         setIsUpdateModalOpen(false);
-        alert("Album updated successfully");
+        MySwal.fire({ icon: "success", title: "Album updated successfully" });
       } else {
-        alert("Failed to update album");
+        MySwal.fire({ icon: "error", title: "Failed to update album" });
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 

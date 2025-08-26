@@ -3,12 +3,16 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Album, Artist, Song, musicApi } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 type UpdateType = "artist" | "album" | "song";
 
 interface UpdateModalProps {
   type: UpdateType;
-  data: any; 
+  data: any;
   isOpen: boolean;
   onClose: () => void;
   onUpdate: (type: UpdateType, id: string, formData: FormData) => Promise<Album | Song | Artist | undefined>;
@@ -76,14 +80,28 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
       if (formDataState.album?.id) form.append("AlbumId", formDataState.album.id);
     }
 
-    const updated = await onUpdate(type, data.id, form);
+    try {
+      const updated = await onUpdate(type, data.id, form);
 
-    if (updated) {
-      alert(`${type} updated successfully`);
-      onSuccess?.(updated); // update parent state
-      onClose();
-    } else {
-      alert(`Failed to update ${type}`);
+      if (updated) {
+        await MySwal.fire({
+          icon: "success",
+          title: `${type.charAt(0).toUpperCase() + type.slice(1)} updated successfully`,
+        });
+        onSuccess?.(updated); // update parent state
+        onClose();
+      } else {
+        await MySwal.fire({
+          icon: "error",
+          title: `Failed to update ${type}`,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      await MySwal.fire({
+        icon: "error",
+        title: "Something went wrong",
+      });
     }
   };
 
@@ -123,7 +141,6 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
               placeholder="Album Title"
               className="w-full px-3 py-2 rounded bg-gray-800 text-white"
             />
-
             <select
               name="artistId"
               value={formDataState.artist?.id || ""}
@@ -139,7 +156,6 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
                 <option key={artist.id} value={artist.id}>{artist.name}</option>
               ))}
             </select>
-
             <input type="file" name="coverFile" onChange={handleChange} className="text-white" />
           </>
         )}
@@ -153,8 +169,6 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
               placeholder="Song Title"
               className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2"
             />
-
-            {/* Artist dropdown */}
             <select
               name="artistId"
               value={formDataState.artists?.[0]?.id || ""}
@@ -174,17 +188,24 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
                 <option key={artist.id} value={artist.id}>{artist.name}</option>
               ))}
             </select>
-
-            {/* Album dropdown */}
-       <select name="albumId" value={formDataState.album?.id || ""} 
-       onChange={(e) => { const selectedId = e.target.value; const selectedAlbum = allAlbums.find((a: any) => a.id === selectedId); 
-        setFormDataState((prev: any) => ({ ...prev, album: selectedAlbum })); }} 
-        className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2" disabled={!formDataState.artists?.[0]?.id} > 
-        <option value="">Select Album</option> 
-        {allAlbums .filter((album: any) => album.artist.id === formDataState.artists?.[0]?.id).map((album: any) => 
-            ( <option key={album.id} value={album.id}> {album.title} </option> ))} 
+            <select
+              name="albumId"
+              value={formDataState.album?.id || ""}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                const selectedAlbum = allAlbums.find((a: any) => a.id === selectedId);
+                setFormDataState((prev: any) => ({ ...prev, album: selectedAlbum }));
+              }}
+              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2"
+              disabled={!formDataState.artists?.[0]?.id}
+            >
+              <option value="">Select Album</option>
+              {allAlbums
+                .filter((album: any) => album.artist.id === formDataState.artists?.[0]?.id)
+                .map((album: any) => (
+                  <option key={album.id} value={album.id}>{album.title}</option>
+                ))}
             </select>
-
             <input type="file" name="audioFile" onChange={handleChange} className="text-white mb-2" />
             <input type="file" name="coverFile" onChange={handleChange} className="text-white" />
           </>

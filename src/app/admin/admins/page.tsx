@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "@/components/AdminNavigation";
 import { adminApi, type User } from "@/lib/api";
+import Swal from "sweetalert2";
+import withReactContent from "sweetalert2-react-content";
+
+const MySwal = withReactContent(Swal);
 
 export default function AdminPageAdmins() {
   const [admins, setAdmins] = useState<User[]>([]);
@@ -43,25 +47,63 @@ export default function AdminPageAdmins() {
 
   // Create admin
   const handleCreate = async () => {
-    if (!newAdminUsername || !newAdminEmail || !newAdminPassword) return;
+    if (!newAdminUsername || !newAdminEmail || !newAdminPassword) {
+      MySwal.fire({
+        icon: "warning",
+        title: "All fields are required",
+      });
+      return;
+    }
+
     const created = await adminApi.createAdmin({
       userName: newAdminUsername,
       email: newAdminEmail,
       password: newAdminPassword,
     });
+
     if (created) {
-      fetchAdmins();
+      await fetchAdmins();
       setNewAdminUsername("");
       setNewAdminEmail("");
       setNewAdminPassword("");
+
+      MySwal.fire({
+        icon: "success",
+        title: "Admin created successfully",
+      });
+    } else {
+      MySwal.fire({
+        icon: "error",
+        title: "Failed to create admin",
+      });
     }
   };
 
   // Delete admin
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this admin?")) {
+    const result = await MySwal.fire({
+      title: "Are you sure?",
+      text: "This action cannot be undone!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
       const success = await adminApi.deleteUser(id);
-      if (success) fetchAdmins();
+      if (success) {
+        await fetchAdmins();
+        MySwal.fire({
+          icon: "success",
+          title: "Admin deleted successfully",
+        });
+      } else {
+        MySwal.fire({
+          icon: "error",
+          title: "Failed to delete admin",
+        });
+      }
     }
   };
 
