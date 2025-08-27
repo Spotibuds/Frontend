@@ -18,6 +18,18 @@ export default function AdminPageForAlbums() {
 
   const [artists, setArtists] = useState<Artist[]>([]);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const albumsPerPage = 6;
+  const totalPages = Math.ceil(albums.length / albumsPerPage);
+  const indexOfLast = currentPage * albumsPerPage;
+  const indexOfFirst = indexOfLast - albumsPerPage;
+  const currentAlbums = albums.slice(indexOfFirst, indexOfLast);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) setCurrentPage(page);
+  };
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [modalData, setModalData] = useState<{
@@ -38,7 +50,6 @@ export default function AdminPageForAlbums() {
     try {
       setLoading(true);
       setError(null);
-
       const data = await musicApi.getAlbums();
       setAlbums(data);
 
@@ -48,7 +59,6 @@ export default function AdminPageForAlbums() {
           .then((songs) => ({ id: album.id, songs }))
           .catch(() => ({ id: album.id, songs: [] }))
       );
-
       const songsResults = await Promise.all(songsPromises);
       const songsObj: Record<string, Song[]> = {};
       songsResults.forEach((res) => {
@@ -63,7 +73,6 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Fetch artists
   const fetchArtists = async () => {
     try {
       const data = await musicApi.getArtists();
@@ -125,7 +134,6 @@ export default function AdminPageForAlbums() {
     setIsUpdateModalOpen(true);
   };
 
-  // Modal input change
   const handleModalChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, files } = e.target as HTMLInputElement;
     if (name === "coverFile") {
@@ -135,7 +143,6 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Create album
   const handleCreateSubmit = async () => {
     if (!modalData.title || !modalData.artistId) {
       MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
@@ -164,7 +171,6 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  // Update album
   const handleUpdateSubmit = async () => {
     if (!modalData.title || !modalData.artistId) {
       MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
@@ -197,11 +203,11 @@ export default function AdminPageForAlbums() {
     <AppLayout>
       <SidebarNavigation />
       <main className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-purple-400">Album Dashboard</h1>
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
+          <h1 className="text-2xl font-bold text-purple-400">Albums Dashboard</h1>
           <button
             onClick={openCreateModal}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full sm:w-auto"
           >
             Create New Album
           </button>
@@ -214,108 +220,72 @@ export default function AdminPageForAlbums() {
         ) : albums.length === 0 ? (
           <p className="text-gray-400">No albums found</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {albums.map((album) => (
-              <div
-                key={album.id}
-                className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
-              >
-                <MusicImage
-                  src={album.coverUrl}
-                  alt={album.title}
-                  fallbackText={album.title}
-                  size="medium"
-                  type="square"
-                  className="rounded shadow-lg"
-                />
-                <div className="flex-1">
-                  <p className="text-white font-semibold">{album.title}</p>
-                  <p className="text-gray-400 text-sm">
-                    {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0} songs
-                  </p>
-                  <div className="mt-2 space-x-2">
-                    <button
-                      onClick={() => openUpdateModal(album)}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Update
-                    </button>
-                    <button
-                      onClick={() => handleDelete(album.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Delete
-                    </button>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {currentAlbums.map((album) => (
+                <div key={album.id} className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4">
+                  <MusicImage
+                    src={album.coverUrl}
+                    alt={album.title}
+                    fallbackText={album.title}
+                    size="medium"
+                    type="square"
+                    className="rounded shadow-lg"
+                  />
+                  <div className="flex-1">
+                    <p className="text-white font-semibold">{album.title}</p>
+                    <p className="text-gray-400 text-sm">
+                      {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0} songs
+                    </p>
+                    <div className="mt-2 space-x-2">
+                      <button
+                        onClick={() => openUpdateModal(album)}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Update
+                      </button>
+                      <button
+                        onClick={() => handleDelete(album.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Create Modal */}
-        {isCreateModalOpen && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Create New Album</h2>
-              <input
-                type="text"
-                name="title"
-                placeholder="Title"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.title}
-                onChange={handleModalChange}
-              />
-              <select
-                name="artistId"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.artistId}
-                onChange={handleModalChange}
-              >
-                <option value="">Select Artist</option>
-                {artists.map((artist) => (
-                  <option key={artist.id} value={artist.id}>
-                    {artist.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="date"
-                name="releaseDate"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.releaseDate}
-                onChange={handleModalChange}
-              />
-              <input
-                type="file"
-                name="coverFile"
-                accept="image/*"
-                className="w-full mb-4"
-                onChange={handleModalChange}
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsCreateModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-                  onClick={handleCreateSubmit}
-                >
-                  Create
-                </button>
-              </div>
+              ))}
             </div>
-          </div>
+
+            {/* Pagination */}
+            <div className="flex justify-center items-center mt-6 space-x-4 flex-wrap">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span className="text-white">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </>
         )}
 
-        {/* Update Modal */}
-        {isUpdateModalOpen && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
-              <h2 className="text-xl font-bold mb-4 text-white">Update Album</h2>
+        {/* Create & Update Modals */}
+        {(isCreateModalOpen || isUpdateModalOpen) && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50 p-4">
+            <div className="bg-gray-900 p-6 rounded shadow-lg w-full max-w-sm">
+              <h2 className="text-xl font-bold mb-4 text-white">
+                {isCreateModalOpen ? "Create New Album" : "Update Album"}
+              </h2>
               <input
                 type="text"
                 name="title"
@@ -354,15 +324,20 @@ export default function AdminPageForAlbums() {
               <div className="flex justify-end space-x-2">
                 <button
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                  onClick={() => setIsUpdateModalOpen(false)}
+                  onClick={() => {
+                    setIsCreateModalOpen(false);
+                    setIsUpdateModalOpen(false);
+                  }}
                 >
                   Cancel
                 </button>
                 <button
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded"
-                  onClick={handleUpdateSubmit}
+                  className={`${
+                    isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded`}
+                  onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
-                  Update
+                  {isCreateModalOpen ? "Create" : "Update"}
                 </button>
               </div>
             </div>

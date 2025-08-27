@@ -185,9 +185,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
     { name: "Friends", href: "/friends", icon: UserGroupIcon, current: pathname === "/friends" },
     { name: "Chat", href: "/chat", icon: ChatBubbleLeftRightIcon, current: pathname === "/chat" },
-    ...(isAdmin
-      ? [{ name: "Admin", href: "/admin", icon: BriefcaseIcon , current: pathname === "/admin" }]
-      : []),
+   ...(isAdmin
+    ? [{
+        name: "Admin",
+        href: "/admin",
+        icon: BriefcaseIcon,
+        current: pathname.startsWith("/admin") 
+      }]
+    : []),
   ];
 
   if (isLoading) {

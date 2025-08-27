@@ -15,6 +15,11 @@ export default function AdminPageForSongs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
+
+  // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [modalData, setModalData] = useState<{
@@ -58,6 +63,18 @@ export default function AdminPageForSongs() {
   useEffect(() => {
     fetchSongs();
   }, []);
+
+  // Pagination logic
+  const indexOfLast = currentPage * itemsPerPage;
+  const indexOfFirst = indexOfLast - itemsPerPage;
+  const currentSongs = songs.slice(indexOfFirst, indexOfLast);
+  const totalPages = Math.ceil(songs.length / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   // Delete song
   const handleDelete = async (id: string) => {
@@ -133,39 +150,38 @@ export default function AdminPageForSongs() {
 
     if (name === "coverFile") {
       const file = files?.[0];
-      setModalData(prev => ({ ...prev, coverFile: file }));
+      setModalData((prev) => ({ ...prev, coverFile: file }));
       if (file) setCoverPreview(URL.createObjectURL(file));
     } else if (name === "audioFile") {
       const file = files?.[0];
       if (file) {
-        setModalData(prev => ({ ...prev, audioFile: file }));
-
+        setModalData((prev) => ({ ...prev, audioFile: file }));
         const audio = document.createElement("audio");
         audio.src = URL.createObjectURL(file);
         audio.addEventListener("loadedmetadata", () => {
-          setModalData(prev => ({ ...prev, durationSec: Math.round(audio.duration) }));
+          setModalData((prev) => ({ ...prev, durationSec: Math.round(audio.duration) }));
         });
       }
     } else if (name === "artist") {
-      setModalData(prev => ({
+      setModalData((prev) => ({
         ...prev,
-        artists: [{ id: value, name: artists.find(a => a.id === value)?.name || "" }]
+        artists: [{ id: value, name: artists.find((a) => a.id === value)?.name || "" }],
       }));
       fetchAlbumsForArtist(value);
     } else if (name === "album") {
-      setModalData(prev => ({
+      setModalData((prev) => ({
         ...prev,
-        album: { id: value, title: albums.find(a => a.id === value)?.title || "" }
+        album: { id: value, title: albums.find((a) => a.id === value)?.title || "" },
       }));
     } else {
-      setModalData(prev => ({ ...prev, [name]: value }));
+      setModalData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
   const fetchAlbumsForArtist = async (artistId: string) => {
     const artistAlbums = await musicApi.getArtistAlbums(artistId);
     setAlbums(artistAlbums);
-    setModalData(prev => ({ ...prev, album: undefined }));
+    setModalData((prev) => ({ ...prev, album: undefined }));
   };
 
   // Submit create modal
@@ -188,7 +204,7 @@ export default function AdminPageForSongs() {
 
       const newSong = await adminApi.createSong(formData);
       if (newSong) {
-        setSongs(prev => [...prev, newSong]);
+        setSongs((prev) => [...prev, newSong]);
         setIsCreateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Song created successfully" });
       } else {
@@ -216,13 +232,11 @@ export default function AdminPageForSongs() {
       formData.append("Duration", modalData.durationSec.toString());
       if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
-
-      formData.append("AudioFile", modalData.audioFile || new Blob());
+      if (modalData.audioFile) formData.append("AudioFile", modalData.audioFile);
 
       const updatedSong = await adminApi.updateSong(modalData.id, formData);
-
       if (updatedSong) {
-        setSongs(prev => prev.map(a => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
+        setSongs((prev) => prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
         setIsUpdateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Song updated successfully" });
       } else {
@@ -238,11 +252,11 @@ export default function AdminPageForSongs() {
     <AppLayout>
       <SidebarNavigation />
       <main className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-purple-400">Song Dashboard</h1>
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
+          <h1 className="text-2xl font-bold text-purple-400">Songs Dashboard</h1>
           <button
             onClick={openCreateModal}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full sm:w-auto"
           >
             Create New Song
           </button>
@@ -255,47 +269,70 @@ export default function AdminPageForSongs() {
         ) : songs.length === 0 ? (
           <p className="text-gray-400">No songs found</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {songs.map((song) => (
-              <div
-                key={song.id}
-                className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
-              >
-                <MusicImage
-                  src={song.coverUrl}
-                  alt={song.title}
-                  fallbackText={song.title}
-                  size="medium"
-                  type="square"
-                  className="rounded shadow-lg"
-                />
-                <div className="flex-1">
-                  <p className="text-white font-semibold">{song.title}</p>
-                  <p className="text-gray-400 text-sm">
-                    {song.artists.map((a) => a.name).join(", ")} - {song.album?.title}
-                  </p>
-                  <p className="text-gray-400 text-sm">Duration: {song.durationSec}s</p>
-                  <div className="mt-2 space-x-2">
-                    <button
-                      onClick={() => openUpdateModal(song)}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Update
-                    </button>
-                    <button
-                      onClick={() => handleDelete(song.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Delete
-                    </button>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {currentSongs.map((song) => (
+                <div
+                  key={song.id}
+                  className="flex flex-col sm:flex-row items-center bg-gray-900 p-4 rounded shadow-md space-y-3 sm:space-y-0 sm:space-x-4"
+                >
+                  <MusicImage
+                    src={song.coverUrl}
+                    alt={song.title}
+                    fallbackText={song.title}
+                    size="medium"
+                    type="square"
+                    className="rounded shadow-lg"
+                  />
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-white font-semibold">{song.title}</p>
+                    <p className="text-gray-400 text-sm">
+                      {song.artists.map((a) => a.name).join(", ")} - {song.album?.title}
+                    </p>
+                    <p className="text-gray-400 text-sm">Duration: {song.durationSec}s</p>
+                    <div className="mt-2 flex flex-wrap justify-center sm:justify-start gap-2">
+                      <button
+                        onClick={() => openUpdateModal(song)}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Update
+                      </button>
+                      <button
+                        onClick={() => handleDelete(song.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            <div className="flex justify-center items-center mt-6 space-x-2">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                className="px-3 py-1 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span className="text-white">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                className="px-3 py-1 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </>
         )}
 
-        {/* Modal component remains the same as before */}
+        {/* Modal (same as your original, unchanged) */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
             <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
@@ -303,6 +340,7 @@ export default function AdminPageForSongs() {
                 {isCreateModalOpen ? "Create New Song" : "Update Song"}
               </h2>
 
+              {/* form inputs unchanged */}
               <input
                 type="text"
                 name="title"
@@ -391,8 +429,11 @@ export default function AdminPageForSongs() {
                   Cancel
                 </button>
                 <button
-                  className={`${isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded`}
+                  className={`${
+                    isCreateModalOpen
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

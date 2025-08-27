@@ -16,6 +16,10 @@ export default function AdminPageForArtists() {
   const [albumsMap, setAlbumsMap] = useState<Record<string, Album[]>>({});
   const [error, setError] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
+
   // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
@@ -67,6 +71,18 @@ export default function AdminPageForArtists() {
     fetchArtists();
   }, []);
 
+  // Pagination logic
+  const indexOfLast = currentPage * itemsPerPage;
+  const indexOfFirst = indexOfLast - itemsPerPage;
+  const currentArtists = artists.slice(indexOfFirst, indexOfLast);
+  const totalPages = Math.ceil(artists.length / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
   // Delete artist
   const handleDelete = async (id: string) => {
     const result = await MySwal.fire({
@@ -103,14 +119,13 @@ export default function AdminPageForArtists() {
     }
   };
 
-  // Open create modal
+  // Open modals
   const openCreateModal = () => {
     setModalData({ name: "", id: "", createdAt: "" });
     setImagePreview(undefined);
     setIsCreateModalOpen(true);
   };
 
-  // Open update modal
   const openUpdateModal = (artist: Artist) => {
     setModalData({
       id: artist.id,
@@ -133,7 +148,7 @@ export default function AdminPageForArtists() {
     }
   };
 
-  // Submit create modal
+  // Submit create
   const handleCreateSubmit = async () => {
     if (!modalData.name) {
       MySwal.fire({ icon: "warning", title: "Name is required" });
@@ -161,7 +176,7 @@ export default function AdminPageForArtists() {
     }
   };
 
-  // Submit update modal
+  // Submit update
   const handleUpdateSubmit = async () => {
     if (!modalData.name) {
       MySwal.fire({ icon: "warning", title: "Name is required" });
@@ -195,11 +210,11 @@ export default function AdminPageForArtists() {
     <AppLayout>
       <SidebarNavigation />
       <main className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-purple-400">Artist Dashboard</h1>
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
+          <h1 className="text-2xl font-bold text-purple-400">Artists Dashboard</h1>
           <button
             onClick={openCreateModal}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full sm:w-auto"
           >
             Create New Artist
           </button>
@@ -212,43 +227,68 @@ export default function AdminPageForArtists() {
         ) : artists.length === 0 ? (
           <p className="text-gray-400">No artists found</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {artists.map((artist) => (
-              <div
-                key={artist.id}
-                className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
-              >
-                <MusicImage
-                  src={artist.imageUrl}
-                  alt={artist.name}
-                  fallbackText={artist.name}
-                  size="medium"
-                  type="square"
-                  className="rounded shadow-lg"
-                />
-                <div className="flex-1">
-                  <p className="text-white font-semibold">{artist.name}</p>
-                  <p className="text-gray-400 text-sm">
-                    {albumsMap[artist.id]?.length ?? 0} albums
-                  </p>
-                  <div className="mt-2 space-x-2">
-                    <button
-                      onClick={() => openUpdateModal(artist)}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Update
-                    </button>
-                    <button
-                      onClick={() => handleDelete(artist.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
-                    >
-                      Delete
-                    </button>
+          <>
+            {/* Artist grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {currentArtists.map((artist) => (
+                <div
+                  key={artist.id}
+                  className="flex flex-col sm:flex-row items-center bg-gray-900 p-4 rounded shadow-md space-y-3 sm:space-y-0 sm:space-x-4"
+                >
+                  <MusicImage
+                    src={artist.imageUrl}
+                    alt={artist.name}
+                    fallbackText={artist.name}
+                    size="medium"
+                    type="square"
+                    className="rounded shadow-lg"
+                  />
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-white font-semibold">{artist.name}</p>
+                    <p className="text-gray-400 text-sm">
+                      {albumsMap[artist.id]?.length ?? 0} albums
+                    </p>
+                    <div className="mt-2 flex flex-wrap justify-center sm:justify-start gap-2">
+                      <button
+                        onClick={() => openUpdateModal(artist)}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Update
+                      </button>
+                      <button
+                        onClick={() => handleDelete(artist.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {/* Pagination controls */}
+            <div className="flex justify-center items-center mt-6 gap-4 flex-wrap">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => handlePageChange(currentPage - 1)}
+                className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <span className="text-white">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => handlePageChange(currentPage + 1)}
+                className="px-4 py-2 bg-gray-700 text-white rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+
+          </>
         )}
 
         {/* Modal */}
