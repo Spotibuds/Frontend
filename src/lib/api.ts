@@ -398,6 +398,7 @@ export interface Playlist {
   id: string;
   name: string;
   description?: string;
+  coverUrl?: string;
   songs: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -762,6 +763,35 @@ export const musicApi = {
         console.error('Fallback search also failed:', fallbackError);
         return { songs: [], albums: [], artists: [] };
       }
+    }
+  },
+
+  // Playlist cover image functions
+  async uploadPlaylistCover(playlistId: string, file: File): Promise<{ coverUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || 'Failed to upload playlist cover');
+    }
+
+    return response.json();
+  },
+
+  async deletePlaylistCover(playlistId: string): Promise<void> {
+    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Delete failed' }));
+      throw new Error(error.message || 'Failed to delete playlist cover');
     }
   },
 };

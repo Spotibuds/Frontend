@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MusicImage from '@/components/ui/MusicImage';
+import PlaylistCoverUploader from '@/components/PlaylistCoverUploader';
 import { PlaylistService, Playlist, PlaylistSong } from '@/lib/playlist';
 import { identityApi } from '@/lib/api';
 import { useAudio } from '@/lib/audio';
@@ -13,7 +14,8 @@ import {
   ClockIcon, 
   ArrowLeftIcon,
   TrashIcon,
-  QueueListIcon
+  QueueListIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline';
 
 export default function PlaylistDetailPage() {
@@ -25,6 +27,8 @@ export default function PlaylistDetailPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editFormData, setEditFormData] = useState({ name: '', description: '' });
   
   const { 
     togglePlayPause,
@@ -115,6 +119,56 @@ export default function PlaylistDetailPage() {
     addToQueue([song]);
   };
 
+  const handleUpdatePlaylist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!playlistData || !editFormData.name.trim()) return;
+
+    try {
+      await PlaylistService.updatePlaylist(playlistData.id, {
+        name: editFormData.name.trim(),
+        description: editFormData.description?.trim() || undefined
+      });
+      
+      // Update local state
+      setPlaylistData(prev => prev ? {
+        ...prev,
+        name: editFormData.name.trim(),
+        description: editFormData.description?.trim() || undefined
+      } : null);
+      
+      setShowEditModal(false);
+    } catch (error) {
+      console.error('Failed to update playlist:', error);
+    }
+  };
+
+  const handleCoverUpdated = async (newCoverUrl: string | null) => {
+    console.log('Cover updated:', newCoverUrl);
+    
+    // Add cache busting parameter to force image refresh
+    const cacheBustedUrl = newCoverUrl ? `${newCoverUrl}&t=${Date.now()}` : null;
+    
+    // Update local state immediately
+    setPlaylistData(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, coverUrl: cacheBustedUrl || undefined };
+      console.log('Updated playlist data with cache busting:', updated);
+      return updated;
+    });
+    
+    // Also reload the playlist from server to ensure consistency
+    try {
+      const refreshedPlaylist = await PlaylistService.getPlaylist(playlistId);
+      console.log('Refreshed playlist data from server:', refreshedPlaylist);
+      
+      // Add cache busting to the refreshed data too
+      const finalUrl = refreshedPlaylist.coverUrl ? `${refreshedPlaylist.coverUrl}&t=${Date.now()}` : undefined;
+      setPlaylistData({ ...refreshedPlaylist, coverUrl: finalUrl });
+    } catch (error) {
+      console.error('Failed to refresh playlist data:', error);
+    }
+  };
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '0:00';
     const minutes = Math.floor(seconds / 60);
@@ -182,19 +236,48 @@ export default function PlaylistDetailPage() {
           </button>
           
           <div className="flex items-start space-x-6">
-            <div className="w-48 h-48 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center flex-shrink-0">
-              <MusicalNoteIcon className="w-24 h-24 text-white" />
+            <div className="w-48 h-48 rounded-lg overflow-hidden bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
+              {playlistData.coverUrl ? (
+                <MusicImage 
+                  key={playlistData.coverUrl}
+                  src={playlistData.coverUrl} 
+                  alt={playlistData.name} 
+                  size="large"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <MusicalNoteIcon className="w-24 h-24 text-white" />
+              )}
             </div>
             
             <div className="flex-1">
-              <p className="text-sm text-gray-400 uppercase tracking-wide">Playlist</p>
-              <h1 className="text-4xl font-bold text-white mb-2">{playlistData.name}</h1>
-              {playlistData.description && (
-                <p className="text-gray-300 mb-4">{playlistData.description}</p>
-              )}
-              <div className="flex items-center text-sm text-gray-400 space-x-4">
-                <span>{playlistData.songs.length} songs</span>
-                <span>{formatDuration(getTotalDuration())}</span>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-400 uppercase tracking-wide">Playlist</p>
+                  <h1 className="text-4xl font-bold text-white mb-2">{playlistData.name}</h1>
+                  {playlistData.description && (
+                    <p className="text-gray-300 mb-4">{playlistData.description}</p>
+                  )}
+                  <div className="flex items-center text-sm text-gray-400 space-x-4">
+                    <span>{playlistData.songs.length} songs</span>
+                    <span>{formatDuration(getTotalDuration())}</span>
+                  </div>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => {
+                      setEditFormData({ 
+                        name: playlistData.name, 
+                        description: playlistData.description || '' 
+                      });
+                      setShowEditModal(true);
+                    }}
+                    className="p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                    title="Edit playlist"
+                  >
+                    <PencilIcon className="w-5 h-5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -335,6 +418,94 @@ export default function PlaylistDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && playlistData && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            // Only close if clicking directly on the backdrop, not if event bubbled from children
+            if (e.target === e.currentTarget) {
+              setShowEditModal(false);
+            }
+          }}
+        >
+          <div 
+            className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-600 rounded-2xl p-8 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                <MusicalNoteIcon className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-bold text-white">Edit Playlist</h3>
+                <p className="text-gray-400">Update your playlist details and cover image</p>
+              </div>
+            </div>
+            
+            <form onSubmit={handleUpdatePlaylist} className="space-y-6">
+              {/* Cover Image Section */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-3">
+                  Cover Image
+                </label>
+                <PlaylistCoverUploader 
+                  key={`${playlistData.id}-${playlistData.coverUrl || 'no-cover'}`}
+                  playlistId={playlistData.id}
+                  currentCoverUrl={playlistData.coverUrl}
+                  onCoverUpdated={handleCoverUpdated}
+                />
+              </div>
+
+              {/* Name Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Playlist Name *
+                </label>
+                <input
+                  type="text"
+                  placeholder="My Awesome Playlist"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors placeholder-gray-400"
+                  required
+                />
+              </div>
+
+              {/* Description Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Description (Optional)
+                </label>
+                <textarea
+                  placeholder="Describe your playlist..."
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors h-24 resize-none placeholder-gray-400"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                >
+                  Update Playlist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 sm:flex-none bg-gray-600 hover:bg-gray-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

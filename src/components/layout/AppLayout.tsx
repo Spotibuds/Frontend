@@ -400,6 +400,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         <div className="flex items-center justify-center h-16 px-6 border-b border-gray-800">
           <Link href="/dashboard" className="flex items-center space-x-3">
             <Image src="/logo.svg" alt="Spotibuds Logo" width={200} height={60} className="h-12 w-auto" priority />
+            <span className="text-2xl font-bold text-white">Spotibuds</span>
           </Link>
         </div>
 

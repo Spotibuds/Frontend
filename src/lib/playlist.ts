@@ -14,6 +14,7 @@ export interface Playlist {
   name: string;
   description?: string;
   createdBy?: string;
+  coverUrl?: string;
   songs: PlaylistSong[];
   createdAt: string;
   updatedAt: string;
