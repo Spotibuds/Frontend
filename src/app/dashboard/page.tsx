@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
 import SongCard from '@/components/SongCard';
@@ -100,19 +99,16 @@ export default function DashboardPage() {
 
   if (!user) {
     return (
-      <AppLayout>
-        <div className="flex items-center justify-center h-full">
-          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      </AppLayout>
+      <div className="flex items-center justify-center h-full">
+        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
     );
   }
 
   return (
-    <AppLayout>
-      <div className="min-h-screen">
-        {/* Hero Section */}
-        <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 px-6 pt-8 pb-12">
+    <div className="min-h-screen">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 px-6 pt-8 pb-12">
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between">
               {/* Welcome Message */}
@@ -312,6 +308,5 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
   );
 } 

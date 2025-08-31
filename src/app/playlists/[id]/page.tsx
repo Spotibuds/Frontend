@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
 import { PlaylistService, Playlist, PlaylistSong } from '@/lib/playlist';
 import { identityApi } from '@/lib/api';
@@ -143,17 +142,17 @@ export default function PlaylistDetailPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex justify-center items-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !playlistData) {
     return (
-      <AppLayout>
+      <>
         <div className="text-center py-12">
           <h1 className="text-2xl font-bold text-white mb-4">
             {error || 'Playlist not found'}
@@ -165,12 +164,12 @@ export default function PlaylistDetailPage() {
             Back to Playlists
           </button>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -336,6 +335,6 @@ export default function PlaylistDetailPage() {
           )}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

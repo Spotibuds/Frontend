@@ -2,8 +2,6 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
-
 import MusicImage from '@/components/ui/MusicImage';
 import SongCard from '@/components/SongCard';
 import { musicApi, identityApi, safeString, type Album, type Song, type User } from '@/lib/api';
@@ -175,20 +173,20 @@ export default function AlbumPage() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">Loading album...</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !album) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <p className="text-red-400 mb-4">{error || 'Album not found'}</p>
@@ -200,12 +198,12 @@ export default function AlbumPage() {
             </button>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-start space-x-6 mb-8">
@@ -401,6 +399,6 @@ export default function AlbumPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 } 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -130,19 +129,19 @@ export default function EditProfilePage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="flex items-center space-x-3">
             <div className="w-6 h-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent"></div>
             <span className="text-white">Loading profile...</span>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="p-6 max-w-2xl mx-auto space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-white mb-2">Edit Profile</h1>
@@ -284,6 +283,6 @@ export default function EditProfilePage() {
           </Button>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 } 

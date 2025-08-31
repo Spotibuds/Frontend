@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi, Chat, User } from '@/lib/api';
@@ -129,16 +128,16 @@ export default function ChatPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="text-white">Loading chats...</div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-white">Messages</h1>
@@ -243,6 +242,6 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 } 

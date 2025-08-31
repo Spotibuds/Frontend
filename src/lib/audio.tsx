@@ -25,6 +25,7 @@ interface AudioState {
   shuffleMode: boolean;
   repeatMode: 'off' | 'one' | 'all';
   queue: Song[];
+  playHistory: Song[]; // Track previously played songs for back navigation
 }
 
 type AudioAction =
@@ -44,7 +45,10 @@ type AudioAction =
   | { type: 'SET_REPEAT'; payload: 'off' | 'one' | 'all' }
   | { type: 'ADD_TO_QUEUE'; payload: Song | Song[] }
   | { type: 'REMOVE_FROM_QUEUE'; payload: number }
-  | { type: 'CLEAR_QUEUE' };
+  | { type: 'CLEAR_QUEUE' }
+  | { type: 'RESTORE_STATE'; payload: Partial<AudioState> }
+  | { type: 'ADD_TO_HISTORY'; payload: Song }
+  | { type: 'GO_BACK_IN_HISTORY' };
 
 const initialState: AudioState = {
   currentSong: null,
@@ -61,6 +65,7 @@ const initialState: AudioState = {
   shuffleMode: false,
   repeatMode: 'off',
   queue: [],
+  playHistory: [],
 };
 
 function audioReducer(state: AudioState, action: AudioAction): AudioState {
@@ -170,6 +175,43 @@ function audioReducer(state: AudioState, action: AudioAction): AudioState {
       };
     case 'CLEAR_QUEUE':
       return { ...state, queue: [] };
+    case 'RESTORE_STATE':
+      return { 
+        ...state, 
+        ...action.payload,
+        // Don't restore playback state to avoid auto-playing
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+        isLoading: false,
+        isSeeking: false
+      };
+    case 'ADD_TO_HISTORY':
+      // Add song to history, keep max 50 songs to prevent memory issues
+      const newHistory = [action.payload, ...state.playHistory.filter(song => song.id !== action.payload.id)];
+      return {
+        ...state,
+        playHistory: newHistory.slice(0, 50)
+      };
+    case 'GO_BACK_IN_HISTORY': {
+      if (state.playHistory.length === 0) return state;
+      
+      const previousSong = state.playHistory[0];
+      const newHistory = state.playHistory.slice(1);
+      
+      // Add current song to history if it exists
+      const updatedHistory = state.currentSong 
+        ? [state.currentSong, ...newHistory.filter(song => song.id !== state.currentSong!.id)]
+        : newHistory;
+      
+      return {
+        ...state,
+        currentSong: previousSong,
+        currentTime: 0,
+        playHistory: updatedHistory,
+        isSeeking: false
+      };
+    }
     default:
       return state;
   }
@@ -252,6 +294,7 @@ interface AudioContextType {
   queue: Song[];
   shuffleMode: boolean;
   repeatMode: 'off' | 'one' | 'all';
+  playHistory: Song[];
 }
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
@@ -261,6 +304,70 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const isSeekingRef = useRef(false);
   const nowPlayingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialized = useRef(false);
+
+  // Load audio state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isInitialized.current) {
+      try {
+        const savedState = localStorage.getItem('audioState');
+        if (savedState) {
+          const parsedState = JSON.parse(savedState);
+          // Restore essential state but not playback state (don't auto-play)
+          dispatch({
+            type: 'RESTORE_STATE',
+            payload: {
+              playlist: parsedState.playlist || [],
+              queue: parsedState.queue || [],
+              currentSong: parsedState.currentSong || null,
+              currentIndex: parsedState.currentIndex ?? 0,
+              shuffleMode: parsedState.shuffleMode || false,
+              repeatMode: parsedState.repeatMode || 'off',
+              volume: parsedState.volume ?? 1,
+              isMuted: parsedState.isMuted || false,
+              playHistory: parsedState.playHistory || [],
+            }
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to restore audio state from localStorage:', error);
+      } finally {
+        isInitialized.current = true;
+      }
+    }
+  }, []);
+
+  // Save audio state to localStorage whenever relevant state changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isInitialized.current) {
+      try {
+        const stateToSave = {
+          playlist: state.playlist,
+          queue: state.queue,
+          currentSong: state.currentSong,
+          currentIndex: state.currentIndex,
+          shuffleMode: state.shuffleMode,
+          repeatMode: state.repeatMode,
+          volume: state.volume,
+          isMuted: state.isMuted,
+          playHistory: state.playHistory,
+        };
+        localStorage.setItem('audioState', JSON.stringify(stateToSave));
+      } catch (error) {
+        console.warn('Failed to save audio state to localStorage:', error);
+      }
+    }
+  }, [
+    state.playlist,
+    state.queue,
+    state.currentSong,
+    state.currentIndex,
+    state.shuffleMode,
+    state.repeatMode,
+    state.volume,
+    state.isMuted,
+    state.playHistory
+  ]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -284,6 +391,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         audio.currentTime = 0;
         audio.play().catch(console.error);
       } else {
+        // Add current song to history before advancing
+        if (state.currentSong) {
+          dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
+        }
+        
         // For repeat all or off, use NEXT_SONG which handles the logic
         dispatch({ type: 'NEXT_SONG' });
         // Only start playing if we actually have a next song or repeat all is enabled
@@ -329,7 +441,34 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     };
 
     const handleStalled = () => {
-      console.warn('Audio stalled');
+      console.warn('Audio stalled - network issues or slow server response');
+      dispatch({ type: 'SET_LOADING', payload: true });
+      
+      // Try to recover by reloading the audio source after a brief delay
+      setTimeout(() => {
+        if (audio && audio.readyState < 2) { // Not enough data loaded
+          console.log('Attempting to recover from stalled audio...');
+          const currentTime = audio.currentTime;
+          const wasPlaying = state.isPlaying;
+          
+          // Reload the audio element
+          audio.load();
+          
+          // Restore position and playback state once ready
+          const handleCanPlayAfterStall = () => {
+            audio.currentTime = currentTime;
+            if (wasPlaying) {
+              audio.play().catch(console.error);
+            }
+            dispatch({ type: 'SET_LOADING', payload: false });
+            audio.removeEventListener('canplay', handleCanPlayAfterStall);
+          };
+          
+          audio.addEventListener('canplay', handleCanPlayAfterStall);
+        } else {
+          dispatch({ type: 'SET_LOADING', payload: false });
+        }
+      }, 1000); // Wait 1 second before attempting recovery
     };
 
     const handleWaiting = () => {
@@ -361,7 +500,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener('waiting', handleWaiting);
       audio.removeEventListener('playing', handlePlaying);
     };
-  }, [state.isSeeking, state.repeatMode, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode]); // Include all missing dependencies
+  }, [state.isSeeking, state.repeatMode, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode, state.currentSong]); // Include all missing dependencies
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -586,6 +725,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     // Check if this is the same song that's already loaded
     const isSameSong = state.currentSong?.id === song.id;
     
+    // Add current song to history if we're switching to a different song
+    if (state.currentSong && !isSameSong) {
+      dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
+    }
+    
     if (playlist && playlist.length > 0) {
       const songIndex = playlist.findIndex(s => s.id === song.id);
       
@@ -604,7 +748,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         } 
       });
     } else {
-      // If it's the same song, just resume playback
+      // If it's the same song, just resume playbook
       if (isSameSong) {
         dispatch({ type: 'PLAY' });
         return;
@@ -638,6 +782,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   };
 
   const nextSong = () => {
+    // Add current song to history before moving to next
+    if (state.currentSong) {
+      dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
+    }
+    
     // Allow advancing if there are songs in the queue OR if there's more than one song in the playlist OR repeat all is enabled
     if (state.queue.length > 0 || state.playlist.length > 1 || (state.playlist.length === 1 && state.repeatMode === 'all')) {
       dispatch({ type: 'NEXT_SONG' });
@@ -646,18 +795,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   };
 
   const previousSong = () => {
-    // Allow navigating if there are songs in the queue OR if there's more than one song in the playlist OR repeat all is enabled
-    if (state.queue.length > 0 || state.playlist.length > 1 || (state.playlist.length === 1 && state.repeatMode === 'all')) {
-      // If more than 3 seconds into the song, restart current song
-      if (state.currentTime > 3) {
-        seekTo(0);
-      } else {
-        dispatch({ type: 'PREVIOUS_SONG' });
-        dispatch({ type: 'PLAY' });
-      }
-    } else if (state.currentTime > 3) {
-      // If single song and more than 3 seconds in, restart
+    // Spotify-like behavior: 
+    // - If more than 3 seconds into song, restart current song
+    // - If less than 3 seconds, go to previous song from history
+    if (state.currentTime > 3) {
+      // Restart current song from beginning
       seekTo(0);
+    } else {
+      // Go to previous song from history if available
+      if (state.playHistory.length > 0) {
+        dispatch({ type: 'GO_BACK_IN_HISTORY' });
+        dispatch({ type: 'PLAY' });
+      } else {
+        // No history available, just restart current song
+        seekTo(0);
+      }
     }
   };
 
@@ -847,6 +999,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     queue: state.queue,
     shuffleMode: state.shuffleMode,
     repeatMode: state.repeatMode,
+    playHistory: state.playHistory,
   };
 
   return (

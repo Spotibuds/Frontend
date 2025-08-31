@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi } from '@/lib/api';
 import { ArrowLeftIcon, PlayIcon } from '@heroicons/react/24/outline';
@@ -192,7 +191,7 @@ export default function ListeningHistoryPage() {
 
   if (isLoading) {
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse">
@@ -211,13 +210,13 @@ export default function ListeningHistoryPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
   }
 
   if (error) {
     return (
-      <AppLayout>
+      <>
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
           <div className="max-w-6xl mx-auto">
             <button
@@ -238,12 +237,12 @@ export default function ListeningHistoryPage() {
             </div>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
@@ -366,6 +365,6 @@ export default function ListeningHistoryPage() {
           )}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

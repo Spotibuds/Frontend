@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import AppLayout from '@/components/layout/AppLayout';
 import PlaylistManager from '@/components/PlaylistManager';
 import { identityApi } from '@/lib/api';
 
@@ -19,26 +18,26 @@ export default function PlaylistsPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="flex justify-center items-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (!currentUser) {
     return (
-      <AppLayout>
+      <>
         <div className="text-center py-12">
           <h1 className="text-2xl font-bold text-white">Please log in to view your playlists</h1>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
         {/* Simple Header */}
         <div className="bg-gray-800">
@@ -62,6 +61,6 @@ export default function PlaylistsPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }

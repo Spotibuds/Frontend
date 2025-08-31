@@ -3,7 +3,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import AppLayout from "@/components/layout/AppLayout";
 import MusicImage from "@/components/ui/MusicImage";
 import { identityApi, musicApi, userApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
@@ -430,7 +429,7 @@ function FeedInner() {
 			// find in current slides
 			const matchIndex = (arr: Slide[]) => arr.findIndex((s) => {
 				// Prefer postId for any slide type
-				if (postId && (s as any).postId === postId) return true;
+				if (postId && 'postId' in s && s.postId === postId) return true;
 				if (!type || !to) return false;
 				if (s.identityUserId !== to) return false;
 				if (s.type !== (type as Slide["type"])) return false;
@@ -567,9 +566,9 @@ function FeedInner() {
 		root.addEventListener("touchstart", onTouchStart, { passive: true });
 		root.addEventListener("touchmove", onTouchMove, { passive: false });
 		return () => {
-			root.removeEventListener("wheel", onWheel as any);
-			root.removeEventListener("touchstart", onTouchStart as any);
-			root.removeEventListener("touchmove", onTouchMove as any);
+			root.removeEventListener("wheel", onWheel);
+			root.removeEventListener("touchstart", onTouchStart);
+			root.removeEventListener("touchmove", onTouchMove);
 		};
 	}, [currentIndex, scrollLocked, touchStartY, scrollToIndex]);
 
@@ -630,13 +629,13 @@ function FeedInner() {
 						artist: target.artist,
 					});
 				} else if (target.type === "top_artists_week") {
-					postId = (target as any).postId;
+					postId = 'postId' in target ? String(target.postId) : undefined;
 					await userApi.sendReaction({ ...base, contextType: "top_artists_week", postId });
 				} else if (target.type === "common_artists") {
-					postId = (target as any).postId;
+					postId = 'postId' in target ? String(target.postId) : undefined;
 					await userApi.sendReaction({ ...base, contextType: "common_artists", postId });
 				} else if (target.type === "top_songs_week") {
-					postId = (target as any).postId;
+					postId = 'postId' in target ? String(target.postId) : undefined;
 					await userApi.sendReaction({ ...base, contextType: "top_songs_week", postId });
 				}
 				
@@ -644,8 +643,8 @@ function FeedInner() {
 					setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
 					setTimeout(() => {
 						setReactionFlash(prev => {
-							const copy = { ...prev } as typeof prev;
-							delete (copy as any)[index!];
+							const copy = { ...prev };
+							delete copy[index!];
 							return copy;
 						});
 					}, 1200);
@@ -816,7 +815,7 @@ function FeedInner() {
 						<div className="mt-4 flex items-center gap-4">
 							<button
 								className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-								onClick={() => song && playSong(song as any)}
+								onClick={() => song && playSong(song)}
 								title="Play"
 							>
 								<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
@@ -825,9 +824,9 @@ function FeedInner() {
 								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
 								<div className="text-gray-300 truncate">
 									{song?.artists?.length
-										? (song!.artists as any[]).map((a: any, i: number) => (
+										? song.artists.map((a, i) => (
 											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{i < ((song as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+												{a.name}{i < (song?.artists?.length || 0) - 1 ? ', ' : ''}
 											</Link>
 										))
 										: slide.artist}
@@ -1040,16 +1039,16 @@ function FeedInner() {
 
 	if (!me) {
 		return (
-			<AppLayout>
+			<>
 				<div className="min-h-[60vh] flex items-center justify-center">
 					<div className="text-gray-300">Please log in to see your feed.</div>
 				</div>
-			</AppLayout>
+			</>
 		);
 	}
 
 	return (
-		<AppLayout>
+		<>
 			<div className="relative">
 				{isLoading && !slides.length ? (
 					<div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
@@ -1143,7 +1142,7 @@ function FeedInner() {
 					</>
 				)}
 			</div>
-		</AppLayout>
+		</>
 	);
 }
 
@@ -1151,13 +1150,13 @@ export default function FeedPage() {
 	return (
 		<Suspense
 			fallback={
-				<AppLayout>
+				<>
 					<div className="px-4 pt-8 max-w-2xl mx-auto">
 						<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300">
 							Loading feed...
 						</div>
 					</div>
-				</AppLayout>
+				</>
 			}
 		>
 			<FeedInner />

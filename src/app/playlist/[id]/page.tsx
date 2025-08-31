@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import SongCard from '@/components/SongCard';
 import { PlaylistService, Playlist } from '@/lib/playlist';
 import { musicApi, Song, safeString } from '@/lib/api';
@@ -84,20 +83,20 @@ export default function PlaylistPage() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">Loading playlist...</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !playlist) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <p className="text-red-400 mb-4">{error || 'Playlist not found'}</p>
@@ -109,12 +108,12 @@ export default function PlaylistPage() {
             </button>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="p-6">
         {/* Header */}
         <div className="flex items-start space-x-6 mb-8">
@@ -174,6 +173,6 @@ export default function PlaylistPage() {
           </div>
         )}
       </div>
-    </AppLayout>
+    </>
   );
 }

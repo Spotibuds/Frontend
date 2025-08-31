@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import AppLayout from "@/components/layout/AppLayout";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, musicApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
@@ -230,30 +229,30 @@ export default function SinglePostPage() {
 
 	if (!me) {
 		return (
-			<AppLayout>
+			<>
 				<div className="min-h-[60vh] flex items-center justify-center">
 					<div className="text-gray-300">Please log in to view posts.</div>
 				</div>
-			</AppLayout>
+			</>
 		);
 	}
 
 	if (isLoading) {
 		return (
-			<AppLayout>
+			<>
 				<div className="px-4 pt-8 max-w-2xl mx-auto">
 					<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 animate-pulse">
 						<div className="h-4 bg-gray-800 rounded w-1/3 mb-4"></div>
 						<div className="h-28 bg-gray-800 rounded"></div>
 					</div>
 				</div>
-			</AppLayout>
+			</>
 		);
 	}
 
 	if (error || !post) {
 		return (
-			<AppLayout>
+			<>
 				<div className="px-4 pt-8 max-w-2xl mx-auto text-center">
 					<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6">
 						<div className="text-red-400 mb-4">{error || "Post not found"}</div>
@@ -262,12 +261,12 @@ export default function SinglePostPage() {
 						</button>
 					</div>
 				</div>
-			</AppLayout>
+			</>
 		);
 	}
 
 	return (
-		<AppLayout>
+		<>
 			<div className="px-4 pt-8 max-w-4xl mx-auto">
 				{/* Back button */}
 				<div className="mb-6">
@@ -547,6 +546,6 @@ export default function SinglePostPage() {
 					</div>
 				)}
 			</div>
-		</AppLayout>
+		</>
 	);
 }

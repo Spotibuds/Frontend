@@ -1066,7 +1066,7 @@ export const userApi = {
     ),
 
   getPostById: (postId: string, currentUserId?: string) =>
-    apiRequest<any>(`${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`),
+    apiRequest<{ type: string; identityUserId: string; [key: string]: unknown }>(`${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`),
 
   // Now Playing
   setNowPlaying: (payload: { identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec?: number; isPlaying?: boolean }, ttlSec = 90) =>

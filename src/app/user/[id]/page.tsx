@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
@@ -590,20 +589,20 @@ export default function UserProfilePage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="flex items-center space-x-3">
             <div className="w-6 h-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent"></div>
             <span className="text-white">Loading profile...</span>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !profileUser) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 text-center space-y-4">
           <h1 className="text-2xl font-bold text-white">User Not Found</h1>
           <p className="text-gray-400">{error || 'This user does not exist.'}</p>
@@ -616,12 +615,12 @@ export default function UserProfilePage() {
             </Button>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
         {/* Hero Section with Background */}
         <div className="relative h-64 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600">
@@ -971,6 +970,6 @@ export default function UserProfilePage() {
       
       {/* Toast notifications */}
       
-    </AppLayout>
+    </>
   );
 } 

@@ -25,6 +25,7 @@ import {
   ArrowLeftOnRectangleIcon,
   BellIcon,
   ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
   ArrowPathIcon,
   Squares2X2Icon as ShuffleIcon,
   ListBulletIcon,
@@ -40,13 +41,30 @@ interface AppLayoutProps {
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Default open on desktop
   const [queueOpen, setQueueOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; username: string; displayName?: string; avatarUrl?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // Load sidebar state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSidebarState = localStorage.getItem('sidebarOpen');
+      if (savedSidebarState !== null) {
+        setSidebarOpen(JSON.parse(savedSidebarState));
+      }
+    }
+  }, []);
+
+  // Save sidebar state to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
+    }
+  }, [sidebarOpen]);
   const [friendRequests, setFriendRequests] = useState<{ requestId: string; requesterId: string; requesterUsername: string; requesterAvatar?: string; requestedAt: string }[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
@@ -215,8 +233,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       await userApi.acceptFriendRequest(requestId, user.id);
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      // No need to refresh - state is already updated
     } catch (error) {
       console.error('Failed to accept friend request:', error);
     }
@@ -232,8 +249,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       await userApi.declineFriendRequest(requestId, user.id);
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      // No need to refresh - state is already updated
     } catch (error) {
       console.error('Failed to decline friend request:', error);
     }
@@ -321,9 +337,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
     setVolume(Math.max(0, Math.min(1, percent)));
   };
 
+  // Close sidebar on mobile when navigating
+  const handleNavClick = () => {
+    // Only close sidebar on mobile (screen width < 1024px)
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
   const navigation = [
     { name: "Home", href: "/dashboard", icon: HomeIcon, current: pathname === "/dashboard" },
-  { name: "Feed", href: "/feed", icon: NewspaperIcon, current: pathname === "/feed" },
+    { name: "Feed", href: "/feed", icon: NewspaperIcon, current: pathname === "/feed" },
     { name: "Browse", href: "/music", icon: MusicalNoteIcon, current: pathname === "/music" },
     { name: "Search", href: "/search", icon: MagnifyingGlassIcon, current: pathname === "/search" },
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
@@ -371,18 +395,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col`}>
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
         {/* Sidebar header */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
+        <div className="flex items-center justify-center h-16 px-6 border-b border-gray-800">
           <Link href="/dashboard" className="flex items-center space-x-3">
             <Image src="/logo.svg" alt="Spotibuds Logo" width={200} height={60} className="h-12 w-auto" priority />
           </Link>
-          <button
-            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
         </div>
 
         {/* Navigation */}
@@ -396,7 +414,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   ? "bg-purple-900 text-purple-100"
                   : "text-gray-300 hover:bg-gray-800 hover:text-white"
               }`}
-              onClick={() => setSidebarOpen(false)}
+              onClick={handleNavClick}
             >
               <item.icon className="mr-3 h-5 w-5" />
               {item.name}
@@ -417,18 +435,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Main content area */}
-      <div className="lg:pl-64">
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'pl-64' : 'pl-0'}`}>
         {/* Top Navigation Bar */}
         <header className="sticky top-0 z-30 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               
-              {/* Mobile menu button */}
+              {/* Sidebar toggle button (all screen sizes) */}
               <button
-                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
-                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
               >
-                <Bars3Icon className="h-6 w-6" />
+                {sidebarOpen ? (
+                  <XMarkIcon className="h-6 w-6" />
+                ) : (
+                  <Bars3Icon className="h-6 w-6" />
+                )}
               </button>
 
               {/* Search Bar */}
@@ -724,6 +747,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     onClick={previousSong}
                     className="p-2 rounded-full hover:bg-gray-700 transition-colors"
                     disabled={!state.currentSong}
+                    title="Previous song (or restart if >3s)"
                   >
                     <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   </button>
@@ -754,7 +778,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     disabled={!state.currentSong}
                     title="Skip forward 10s"
                   >
-                    <ArrowUturnLeftIcon className="w-4 h-4 text-gray-400 hover:text-white transform scale-x-[-1]" />
+                    <ArrowUturnRightIcon className="w-4 h-4 text-gray-400 hover:text-white" />
                   </button>
                 </div>
                 

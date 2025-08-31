@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import AppLayout from "@/components/layout/AppLayout";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -361,16 +360,16 @@ export default function FriendsPage() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="min-h-screen bg-gray-900 flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gray-900 p-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
@@ -572,6 +571,6 @@ export default function FriendsPage() {
           ))}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 } 

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import AppLayout from "@/components/layout/AppLayout";
 import MusicImage from "@/components/ui/MusicImage";
 import { identityApi, userApi, musicApi } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
@@ -188,7 +187,7 @@ export default function PostDetailPage() {
   }, [postData, reactions]);
 
   return (
-    <AppLayout>
+    <>
       <div className="px-4 pt-8 max-w-2xl mx-auto">
         {/* Enhanced Navigation */}
         <div className="mb-6 flex items-center justify-between">
@@ -394,7 +393,7 @@ export default function PostDetailPage() {
           )}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 }
 

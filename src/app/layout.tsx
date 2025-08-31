@@ -3,6 +3,7 @@ import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { AudioProvider } from "@/lib/audio";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import ConditionalAppLayout from "@/components/layout/ConditionalAppLayout";
 
 const geistSans = Inter({
   variable: "--font-geist-sans",
@@ -66,7 +67,9 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ErrorBoundary>
           <AudioProvider>
-            {children}
+            <ConditionalAppLayout>
+              {children}
+            </ConditionalAppLayout>
           </AudioProvider>
         </ErrorBoundary>
       </body>
