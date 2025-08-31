@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, musicApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
@@ -33,9 +34,11 @@ export default function SinglePostPage() {
 			<div className="flex items-center gap-3 mb-4">
 				<div className="relative">
 					{avatarUrl ? (
-						<img 
+						<Image 
 							src={avatarUrl} 
 							alt={displayName}
+							width={48}
+							height={48}
 							className="w-12 h-12 rounded-full object-cover"
 						/>
 					) : (
@@ -128,7 +131,7 @@ export default function SinglePostPage() {
 				}
 
 				// If it's a recent_song, try to get the full song data
-				if (postData.type === "recent_song" && postData.songId) {
+				if (postData.type === "recent_song" && postData.songId && typeof postData.songId === 'string') {
 					try {
 						const songData = await musicApi.getSong(postData.songId);
 						setSong(songData);
@@ -154,16 +157,20 @@ export default function SinglePostPage() {
 				}
 
 				// Load song details for top_songs_week posts
-				if (postData.type === "top_songs_week" && postData.topSongs) {
+				if (postData.type === "top_songs_week" && postData.topSongs && Array.isArray(postData.topSongs)) {
 					try {
 						const songPromises = postData.topSongs
-							.filter((ts: any) => ts.songId)
-							.map((ts: any) => musicApi.getSong(ts.songId).catch(() => null));
+							.filter((ts: unknown): ts is { songId: string } => 
+								typeof ts === 'object' && ts !== null && 'songId' in ts && typeof (ts as { songId: unknown }).songId === 'string'
+							)
+							.map((ts) => musicApi.getSong(ts.songId).catch(() => null));
 						const songResults = await Promise.all(songPromises);
 						const songMap: Record<string, Song> = {};
-						songResults.forEach((songData, index) => {
+						songResults.forEach((songData: Song | null, index: number) => {
 							if (songData) {
-								const originalSong = postData.topSongs.filter((ts: any) => ts.songId)[index];
+								const validTopSongs = postData.topSongs as { songId: string }[];
+								const filteredSongs = validTopSongs.filter(ts => ts.songId);
+								const originalSong = filteredSongs[index];
 								if (originalSong) {
 									songMap[originalSong.songId] = songData;
 								}
@@ -181,28 +188,6 @@ export default function SinglePostPage() {
 					setArtists(allArtists);
 				} catch (e) {
 					console.warn("Failed to load artists:", e);
-				}
-
-				// Load song details for top_songs_week posts
-				if (postData.type === "top_songs_week" && postData.topSongs) {
-					try {
-						const songPromises = postData.topSongs
-							.filter((ts: any) => ts.songId)
-							.map((ts: any) => musicApi.getSong(ts.songId).catch(() => null));
-						const songResults = await Promise.all(songPromises);
-						const songMap: Record<string, Song> = {};
-						songResults.forEach((songData, index) => {
-							if (songData) {
-								const originalSong = postData.topSongs.filter((ts: any) => ts.songId)[index];
-								if (originalSong) {
-									songMap[originalSong.songId] = songData;
-								}
-							}
-						});
-						setTopSongs(songMap);
-					} catch (e) {
-						console.warn("Failed to load top songs details:", e);
-					}
 				}
 			} catch (e) {
 				console.error("Failed to load post:", e);
