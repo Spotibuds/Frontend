@@ -15,6 +15,18 @@ export default function AdminPageForSongs() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [artistSearch, setArtistSearch] = useState("");
+  const [filteredArtists, setFilteredArtists] = useState<Artist[]>([]);
+  const [showArtistDropdown, setShowArtistDropdown] = useState(false);
+
+  const [albumSearch, setAlbumSearch] = useState("");
+  const [filteredAlbums, setFilteredAlbums] = useState<Album[]>([]);
+  const [showAlbumDropdown, setShowAlbumDropdown] = useState(false);
+
+  const [genres, setGenres] = useState<string[]>([]);
+  const [genreSearch, setGenreSearch] = useState("");
+  const [filteredGenres, setFilteredGenres] = useState<string[]>([]);
+  const [showGenreDropdown, setShowGenreDropdown] = useState(false);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -60,9 +72,60 @@ export default function AdminPageForSongs() {
     }
   };
 
+  const isModalValid =
+    modalData.title &&
+    modalData.artists[0]?.id &&
+    modalData.album?.id &&
+    (isCreateModalOpen ? modalData.audioFile : true);
+
   useEffect(() => {
     fetchSongs();
   }, []);
+
+  useEffect(() => {
+    if (artistSearch.trim() === "") {
+      setFilteredArtists([]);
+      return;
+    }
+    setFilteredArtists(
+      artists.filter(a => a.name.toLowerCase().includes(artistSearch.toLowerCase()))
+    );
+  }, [artistSearch, artists]);
+
+  useEffect(() => {
+    if (albumSearch.trim() === "") {
+      setFilteredAlbums([]);
+      return;
+    }
+    setFilteredAlbums(
+      albums.filter(a => a.title.toLowerCase().includes(albumSearch.toLowerCase()))
+    );
+  }, [albumSearch, albums]);
+
+  useEffect(() => {
+    const fetchGenres = async () => {
+      try {
+        const res = await fetch(
+          "https://raw.githubusercontent.com/voltraco/genres/master/genres.json"
+        );
+        const data = await res.json();
+        setGenres(data);
+      } catch (err) {
+        console.error("Failed to load genres", err);
+      }
+    };
+    fetchGenres();
+  }, []);
+
+  useEffect(() => {
+    if (genreSearch.trim() === "") {
+      setFilteredGenres([]);
+      return;
+    }
+    setFilteredGenres(
+      genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase()))
+    );
+  }, [genreSearch, genres]);
 
   // Pagination logic
   const indexOfLast = currentPage * itemsPerPage;
@@ -118,6 +181,8 @@ export default function AdminPageForSongs() {
     const fetchedArtists = await musicApi.getArtists();
     setArtists(fetchedArtists);
     setAlbums([]);
+    setArtistSearch("");
+    setAlbumSearch("");
     setIsCreateModalOpen(true);
   };
 
@@ -190,6 +255,11 @@ export default function AdminPageForSongs() {
       MySwal.fire({ icon: "warning", title: "Please fill all required fields: Title, Artist, Album, Audio File" });
       return;
     }
+    if (!modalData.artists[0]?.id || !modalData.album?.id) {
+      MySwal.fire({ icon: "warning", title: "Please select an artist and album" });
+      return;
+    }
+
 
     try {
       const formData = new FormData();
@@ -348,41 +418,107 @@ export default function AdminPageForSongs() {
                 value={modalData.title}
                 onChange={handleModalChange}
               />
-              <input
-                type="text"
-                name="genre"
-                placeholder="Genre"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.genre || ""}
-                onChange={handleModalChange}
-              />
+              {/* Genre Search */}
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Search Genre"
+                  value={modalData.genre || genreSearch}
+                  onChange={(e) => {
+                    setModalData({ ...modalData, genre: e.target.value });
+                    setGenreSearch(e.target.value);
+                    setShowGenreDropdown(true);
+                  }}
+                  onFocus={() => setShowGenreDropdown(true)}
+                  className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                />
+                {showGenreDropdown && filteredGenres.length > 0 && (
+                  <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
+                    {filteredGenres.map((g, idx) => (
+                      <li
+                        key={idx}
+                        className="p-2 hover:bg-gray-700 cursor-pointer text-white"
+                        onClick={() => {
+                          setModalData({ ...modalData, genre: g });
+                          setGenreSearch("");
+                          setShowGenreDropdown(false);
+                        }}
+                      >
+                        {g}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-              <select
-                name="artist"
-                value={modalData.artists[0]?.id || ""}
-                onChange={handleModalChange}
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-              >
-                <option value="">Select Artist</option>
-                {artists.map((artist) => (
-                  <option key={artist.id} value={artist.id}>
-                    {artist.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                name="album"
-                value={modalData.album?.id || ""}
-                onChange={handleModalChange}
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-              >
-                <option value="">Select Album</option>
-                {albums.map((album) => (
-                  <option key={album.id} value={album.id}>
-                    {album.title}
-                  </option>
-                ))}
-              </select>
+              {/* Artist Search */}
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Search Artist"
+                  value={modalData.artists[0]?.name || artistSearch}
+                  onChange={(e) => {
+                    setModalData({ ...modalData, artists: [{ id: "", name: e.target.value }] });
+                    setArtistSearch(e.target.value);
+                    setShowArtistDropdown(true);
+                  }}
+                  onFocus={() => setShowArtistDropdown(true)}
+                  className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                />
+                {showArtistDropdown && filteredArtists.length > 0 && (
+                  <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
+                    {filteredArtists.map(a => (
+                      <li
+                        key={a.id}
+                        className="p-2 hover:bg-gray-700 cursor-pointer text-white"
+                        onClick={() => {
+                          setModalData({ ...modalData, artists: [{ id: a.id, name: a.name }] });
+                          setArtistSearch("");
+                          setShowArtistDropdown(false);
+                          fetchAlbumsForArtist(a.id); // load albums for this artist
+                          setAlbumSearch("");
+                        }}
+                      >
+                        {a.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Album Search */}
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Search Album"
+                  value={modalData.album?.title || albumSearch}
+                  onChange={(e) => {
+                    setModalData({ ...modalData, album: { id: "", title: e.target.value } });
+                    setAlbumSearch(e.target.value);
+                    setShowAlbumDropdown(true);
+                  }}
+                  onFocus={() => setShowAlbumDropdown(true)}
+                  className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
+                />
+                {showAlbumDropdown && filteredAlbums.length > 0 && (
+                  <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
+                    {filteredAlbums.map(alb => (
+                      <li
+                        key={alb.id}
+                        className="p-2 hover:bg-gray-700 cursor-pointer text-white"
+                        onClick={() => {
+                          setModalData({ ...modalData, album: { id: alb.id, title: alb.title } });
+                          setAlbumSearch("");
+                          setShowAlbumDropdown(false);
+                        }}
+                      >
+                        {alb.title}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               <label className="text-gray-400 text-sm mb-1">Cover Image:</label>
               <label
                 className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
@@ -402,7 +538,7 @@ export default function AdminPageForSongs() {
                   className="hidden"
                   onChange={handleModalChange}
                 />
-                
+
               </label>
 
               {coverPreview && (
@@ -452,11 +588,14 @@ export default function AdminPageForSongs() {
                   className={`${isCreateModalOpen
                     ? "bg-purple-600 hover:bg-purple-700"
                     : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded`}
+                    } text-white px-4 py-2 rounded 
+       disabled:bg-gray-500 disabled:cursor-not-allowed`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
+                  disabled={!isModalValid} // disables the button when modal is not valid
                 >
                   {isCreateModalOpen ? "Create" : "Update"}
                 </button>
+
               </div>
             </div>
           </div>

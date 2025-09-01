@@ -19,6 +19,11 @@ export default function AdminPageForAlbums() {
 
   const [artists, setArtists] = useState<Artist[]>([]);
 
+  // Search dropdown states
+  const [artistSearch, setArtistSearch] = useState("");
+  const [filteredArtists, setFilteredArtists] = useState<Artist[]>([]);
+  const [showArtistDropdown, setShowArtistDropdown] = useState(false);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const albumsPerPage = 6;
@@ -88,6 +93,20 @@ export default function AdminPageForAlbums() {
     fetchArtists();
   }, []);
 
+  
+
+  // Filter artists dynamically
+  useEffect(() => {
+    if (artistSearch.trim() === "") {
+      setFilteredArtists([]);
+      return;
+    }
+    const results = artists.filter((a) =>
+      a.name.toLowerCase().includes(artistSearch.toLowerCase())
+    );
+    setFilteredArtists(results);
+  }, [artistSearch, artists]);
+
   // Delete album
   const handleDelete = async (id: string) => {
     const result = await MySwal.fire({
@@ -121,6 +140,8 @@ export default function AdminPageForAlbums() {
   // Open modals
   const openCreateModal = () => {
     setModalData({ title: "", artistId: "", releaseDate: "", coverFile: null });
+    setCoverPreview(null);
+    setArtistSearch("");
     setIsCreateModalOpen(true);
   };
 
@@ -132,7 +153,8 @@ export default function AdminPageForAlbums() {
       releaseDate: album.releaseDate ? album.releaseDate.split("T")[0] : "",
       coverFile: null,
     });
-    setCoverPreview(album.coverUrl || null); // show existing cover
+    setCoverPreview(album.coverUrl || null);
+    setArtistSearch("");
     setIsUpdateModalOpen(true);
   };
 
@@ -142,7 +164,7 @@ export default function AdminPageForAlbums() {
       const file = files?.[0] || null;
       setModalData((prev) => ({ ...prev, coverFile: file }));
       if (file) {
-        setCoverPreview(URL.createObjectURL(file)); // preview new image
+        setCoverPreview(URL.createObjectURL(file));
       }
     } else {
       setModalData((prev) => ({ ...prev, [name]: value }));
@@ -292,6 +314,7 @@ export default function AdminPageForAlbums() {
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Album" : "Update Album"}
               </h2>
+
               <input
                 type="text"
                 name="title"
@@ -300,19 +323,50 @@ export default function AdminPageForAlbums() {
                 value={modalData.title}
                 onChange={handleModalChange}
               />
-              <select
-                name="artistId"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.artistId}
-                onChange={handleModalChange}
-              >
-                <option value="">Select Artist</option>
-                {artists.map((artist) => (
-                  <option key={artist.id} value={artist.id}>
-                    {artist.name}
-                  </option>
-                ))}
-              </select>
+
+              {/* Searchable Artist Dropdown */}
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  name="artistSearch"
+                  placeholder="Search Artist"
+                  className="w-full p-2 rounded bg-gray-800 text-white"
+                  value={
+                    modalData.artistId
+                      ? artists.find((a) => a.id === modalData.artistId)?.name || ""
+                      : artistSearch
+                  }
+                  onChange={(e) => {
+                    setModalData((prev) => ({ ...prev, artistId: "" }));
+                    setArtistSearch(e.target.value);
+                    setShowArtistDropdown(true);
+                  }}
+                  onFocus={() => setShowArtistDropdown(true)}
+                />
+
+                {showArtistDropdown && filteredArtists.length > 0 && (
+                  <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
+                    {filteredArtists.map((artist) => (
+                      <li
+                        key={artist.id}
+                        className="p-2 hover:bg-gray-700 cursor-pointer text-white"
+                        onClick={() => {
+                          setModalData((prev) => ({ ...prev, artistId: artist.id }));
+                          setArtistSearch("");
+                          setShowArtistDropdown(false);
+                        }}
+                      >
+                        {artist.name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {modalData.artistId === "" && (
+                  <p className="text-red-400 text-xs mt-1">You must select an artist</p>
+                )}
+              </div>
+
               <label className="text-gray-400 text-sm mb-1">Release Date:</label>
               <input
                 type="date"
@@ -323,15 +377,8 @@ export default function AdminPageForAlbums() {
               />
 
               <label
-                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
-                  <path
-                    d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
-                    data-original="#000000" />
-                  <path
-                    d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
-                    data-original="#000000" />
-                </svg>
+                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto"
+              >
                 Upload Cover
                 <input
                   type="file"
@@ -341,6 +388,8 @@ export default function AdminPageForAlbums() {
                   onChange={handleModalChange}
                 />
               </label>
+
+              {/* Cover Preview */}
               {coverPreview && (
                 <div className="mt-3">
                   <p className="text-gray-400 text-sm mb-1">Cover Preview:</p>
@@ -358,13 +407,15 @@ export default function AdminPageForAlbums() {
                   onClick={() => {
                     setIsCreateModalOpen(false);
                     setIsUpdateModalOpen(false);
+                    setCoverPreview(null);
                   }}
                 >
                   Cancel
                 </button>
                 <button
                   className={`${isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded`}
+                    } text-white px-4 py-2 rounded disabled:opacity-50`}
+                  disabled={!modalData.artistId}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}
