@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "@/components/AdminNavigation";
 import { adminApi, type UserAdmin } from "@/lib/api";
 import Swal from "sweetalert2";
@@ -117,7 +116,7 @@ export default function UserPageUsers() {
   };
 
   return (
-    <AppLayout>
+    <>
       <SidebarNavigation />
       <main className="p-6 bg-black min-h-screen text-white">
         <h1 className="text-3xl font-bold text-purple-400 mb-6">Users Dashboard</h1>
@@ -204,6 +203,6 @@ export default function UserPageUsers() {
           </>
         )}
       </main>
-    </AppLayout>
+    </>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
@@ -203,7 +202,7 @@ export default function AdminPageForArtists() {
   };
 
   return (
-    <AppLayout>
+    <>
       <SidebarNavigation />
       <main className="p-6">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
@@ -362,6 +361,6 @@ export default function AdminPageForArtists() {
           </div>
         )}
       </main>
-    </AppLayout>
+    </>
   );
 }
