@@ -15,40 +15,108 @@ interface UpdateModalProps {
   data: any;
   isOpen: boolean;
   onClose: () => void;
-  onUpdate: (type: UpdateType, id: string, formData: FormData) => Promise<Album | Song | Artist | undefined>;
+  onUpdate: (
+    type: UpdateType,
+    id: string,
+    formData: FormData
+  ) => Promise<Album | Song | Artist | undefined>;
   onSuccess?: (updated: Album | Song | Artist) => void;
 }
 
-export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onSuccess }: UpdateModalProps) {
+export default function UpdateModal({
+  type,
+  data,
+  isOpen,
+  onClose,
+  onUpdate,
+  onSuccess,
+}: UpdateModalProps) {
   const [formDataState, setFormDataState] = useState<any>({});
   const [allArtists, setAllArtists] = useState<Artist[]>([]);
   const [allAlbums, setAllAlbums] = useState<Album[]>([]);
+  const [artistQuery, setArtistQuery] = useState("");
+  const [albumQuery, setAlbumQuery] = useState("");
+  const [artistSuggestions, setArtistSuggestions] = useState<Artist[]>([]);
+  const [albumSuggestions, setAlbumSuggestions] = useState<Album[]>([]);
+  const [coverPreview, setCoverPreview] = useState<string>("");
 
-  // Load artists for album/song
+  const [hasTypedArtist, setHasTypedArtist] = useState(false);
+  const [hasTypedAlbum, setHasTypedAlbum] = useState(false);
+
+  useEffect(() => {
+    setHasTypedArtist(false);
+    setHasTypedAlbum(false);
+  }, [data]);
+
+  // Load artists and albums
   useEffect(() => {
     if (type === "album" || type === "song") {
       musicApi.getArtists().then(setAllArtists).catch(console.error);
     }
-  }, [type]);
-
-  // Load albums for song
-  useEffect(() => {
     if (type === "song") {
       musicApi.getAlbums().then(setAllAlbums).catch(console.error);
     }
   }, [type]);
 
-  // Initialize form data when modal opens
+  // Initialize form state
   useEffect(() => {
-    if (data) setFormDataState(data);
+    if (data) {
+      const artist = data.artist || data.artists?.[0];
+      const album = data.album;
+      setFormDataState({
+        ...data,
+        artist: artist || null,
+        artists: artist ? [artist] : [],
+        album: album || null,
+      });
+      setArtistQuery(artist?.name || "");
+      setAlbumQuery(album?.title || "");
+      setCoverPreview(data.coverUrl || data.imageUrl || "");
+    } else {
+      setFormDataState({});
+      setArtistQuery("");
+      setAlbumQuery("");
+      setCoverPreview("");
+    }
   }, [data]);
+
+  // Artist suggestions
+  useEffect(() => {
+    if (artistQuery.trim() === "") {
+      setArtistSuggestions([]);
+    } else {
+      const filtered = allArtists.filter((a) =>
+        a.name.toLowerCase().includes(artistQuery.toLowerCase())
+      );
+      setArtistSuggestions(filtered);
+    }
+  }, [artistQuery, allArtists]);
+
+  // Album suggestions
+  useEffect(() => {
+    if (!albumQuery.trim()) {
+      setAlbumSuggestions([]);
+    } else {
+      const filtered = allAlbums
+        .filter((a) =>
+          a.title.toLowerCase().includes(albumQuery.toLowerCase())
+        )
+        .filter((a) => type !== "song" || a.artist); // all albums for songs must have artist
+      setAlbumSuggestions(filtered);
+    }
+  }, [albumQuery, allAlbums, type]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
 
     if (e.target instanceof HTMLInputElement && e.target.type === "file") {
       const file = e.target.files?.[0];
-      if (file) setFormDataState((prev: any) => ({ ...prev, [name]: file }));
+      if (file) {
+        setFormDataState((prev: any) => ({ ...prev, [name]: file }));
+        if (name === "coverFile" || name === "imageFile") {
+          setCoverPreview(URL.createObjectURL(file));
+        }
+      }
     } else {
       setFormDataState((prev: any) => ({ ...prev, [name]: value }));
     }
@@ -57,6 +125,16 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
   const handleSave = async () => {
     if (!type || !data?.id) return;
 
+    // Validation
+    if ((type === "album" || type === "song") && !formDataState.artist?.id) {
+      await MySwal.fire({ icon: "error", title: "Please select a valid artist" });
+      return;
+    }
+    if (type === "song" && !formDataState.album?.id) {
+      await MySwal.fire({ icon: "error", title: "Please select a valid album" });
+      return;
+    }
+
     const form = new FormData();
 
     if (type === "artist") {
@@ -64,13 +142,11 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
       if (formDataState.bio) form.append("Bio", formDataState.bio);
       if (formDataState.imageFile) form.append("ImageFile", formDataState.imageFile);
     }
-
     if (type === "album") {
       form.append("Title", formDataState.title || "");
       if (formDataState.coverFile) form.append("CoverFile", formDataState.coverFile);
       if (formDataState.artist?.id) form.append("ArtistId", formDataState.artist.id);
     }
-
     if (type === "song") {
       form.append("Title", formDataState.title || "");
       if (formDataState.audioFile) form.append("AudioFile", formDataState.audioFile);
@@ -88,20 +164,14 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
           icon: "success",
           title: `${type.charAt(0).toUpperCase() + type.slice(1)} updated successfully`,
         });
-        onSuccess?.(updated); // update parent state
+        onSuccess?.(updated);
         onClose();
       } else {
-        await MySwal.fire({
-          icon: "error",
-          title: `Failed to update ${type}`,
-        });
+        await MySwal.fire({ icon: "error", title: `Failed to update ${type}` });
       }
     } catch (err) {
       console.error(err);
-      await MySwal.fire({
-        icon: "error",
-        title: "Something went wrong",
-      });
+      await MySwal.fire({ icon: "error", title: "Something went wrong" });
     }
   };
 
@@ -112,6 +182,15 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
       <div className="bg-gray-900 p-6 rounded-lg w-96 space-y-4">
         <h3 className="text-white text-lg font-semibold">Update {type}</h3>
 
+        {/* Cover Preview */}
+        {coverPreview && (
+          <img
+            src={coverPreview}
+            alt="Cover Preview"
+            className="w-32 h-32 object-cover rounded shadow-md mx-auto mb-2"
+          />
+        )}
+
         {type === "artist" && (
           <>
             <input
@@ -119,101 +198,196 @@ export default function UpdateModal({ type, data, isOpen, onClose, onUpdate, onS
               value={formDataState.name || formDataState.title || ""}
               onChange={handleChange}
               placeholder="Artist Name"
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white"
+              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
             />
             <textarea
               name="bio"
               value={formDataState.bio || ""}
               onChange={handleChange}
               placeholder="Artist Bio"
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white"
+              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
             />
-            <input type="file" name="imageFile" onChange={handleChange} className="text-white" />
+            <label className="w-full block mb-2 text-white">
+              Profile Image
+              <input
+                type="file"
+                name="imageFile"
+                onChange={handleChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                className="ml-3"
+                onClick={() =>
+                  document.querySelector<HTMLInputElement>('input[name="imageFile"]')?.click()
+                }
+              >
+                Choose Cover
+              </Button>
+            </label>
           </>
         )}
 
-        {type === "album" && (
+        {(type === "album" || type === "song") && (
           <>
+            {/* Artist Input */}
             <input
-              name="title"
-              value={formDataState.title || ""}
-              onChange={handleChange}
-              placeholder="Album Title"
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white"
+              name="artistQuery"
+              value={artistQuery}
+              onChange={(e) => {
+                setArtistQuery(e.target.value);
+                setHasTypedArtist(true);
+              }}
+              placeholder="Type artist name"
+              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
             />
-            <select
-              name="artistId"
-              value={formDataState.artist?.id || ""}
-              onChange={(e) => {
-                const selectedId = e.target.value;
-                const selectedArtist = allArtists.find(a => a.id === selectedId);
-                setFormDataState((prev: any) => ({ ...prev, artist: selectedArtist }));
-              }}
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white"
-            >
-              <option value="">Select Artist</option>
-              {allArtists.map(artist => (
-                <option key={artist.id} value={artist.id}>{artist.name}</option>
-              ))}
-            </select>
-            <input type="file" name="coverFile" onChange={handleChange} className="text-white" />
-          </>
-        )}
-
-        {type === "song" && (
-          <>
-            <input
-              name="title"
-              value={formDataState.title || ""}
-              onChange={handleChange}
-              placeholder="Song Title"
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2"
-            />
-            <select
-              name="artistId"
-              value={formDataState.artists?.[0]?.id || ""}
-              onChange={(e) => {
-                const selectedId = e.target.value;
-                const selectedArtist = allArtists.find(a => a.id === selectedId);
-                setFormDataState((prev: any) => ({
-                  ...prev,
-                  artists: [selectedArtist],
-                  album: undefined, // reset album
-                }));
-              }}
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2"
-            >
-              <option value="">Select Artist</option>
-              {allArtists.map(artist => (
-                <option key={artist.id} value={artist.id}>{artist.name}</option>
-              ))}
-            </select>
-            <select
-              name="albumId"
-              value={formDataState.album?.id || ""}
-              onChange={(e) => {
-                const selectedId = e.target.value;
-                const selectedAlbum = allAlbums.find((a: any) => a.id === selectedId);
-                setFormDataState((prev: any) => ({ ...prev, album: selectedAlbum }));
-              }}
-              className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-2"
-              disabled={!formDataState.artists?.[0]?.id}
-            >
-              <option value="">Select Album</option>
-              {allAlbums
-                .filter((album: any) => album.artist.id === formDataState.artists?.[0]?.id)
-                .map((album: any) => (
-                  <option key={album.id} value={album.id}>{album.title}</option>
+            {hasTypedArtist && artistSuggestions.length > 0 && (
+              <ul className="bg-gray-700 rounded max-h-32 overflow-y-auto text-white mb-2">
+                {artistSuggestions.map((a) => (
+                  <li
+                    key={a.id}
+                    className="px-2 py-1 cursor-pointer hover:bg-gray-600"
+                    onClick={() => {
+                      setFormDataState((prev: any) => ({ ...prev, artist: a, artists: [a] }));
+                      setArtistQuery(a.name);
+                      setArtistSuggestions([]);
+                      setAlbumQuery("");
+                    }}
+                  >
+                    {a.name}
+                  </li>
                 ))}
-            </select>
-            <input type="file" name="audioFile" onChange={handleChange} className="text-white mb-2" />
-            <input type="file" name="coverFile" onChange={handleChange} className="text-white" />
+              </ul>
+            )}
+
+            {/* Album Input */}
+            {type === "album" && (
+              <>
+                <input
+                  name="title"
+                  value={formDataState.title || ""}
+                  onChange={handleChange}
+                  placeholder="Album Title"
+                  className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
+                />
+                <label className="w-full block mb-2 text-white">
+                  Cover Image
+                  <input
+                    type="file"
+                    name="coverFile"
+                    onChange={handleChange}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    className="ml-3"
+                    onClick={() =>
+                      document.querySelector<HTMLInputElement>('input[name="coverFile"]')?.click()
+                    }
+                  >
+                    Choose Cover
+                  </Button>
+                </label>
+              </>
+            )}
+
+            {type === "song" && (
+              <>
+                <input
+                  name="title"
+                  value={formDataState.title || ""}
+                  onChange={handleChange}
+                  placeholder="Song Title"
+                  className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
+                />
+                <input
+                  name="albumQuery"
+                  value={albumQuery}
+                  onChange={(e) => {
+                    setAlbumQuery(e.target.value);
+                    setHasTypedAlbum(true);
+                  }}
+                  placeholder="Type album name"
+                  className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
+                  disabled={!artistQuery && !formDataState.artist?.id}
+                />
+                {hasTypedAlbum && albumSuggestions.length > 0 && (
+                  <ul className="bg-gray-700 rounded max-h-32 overflow-y-auto text-white mb-2">
+                    {albumSuggestions.map((a) => (
+                      <li
+                        key={a.id}
+                        className="px-2 py-1 cursor-pointer hover:bg-gray-600"
+                        onClick={() => {
+
+                          setFormDataState((prev: any) => ({
+                            ...prev,
+                            album: a,
+                            artists: [a.artist],
+                            artist: a.artist,
+                          }));
+                          setAlbumQuery(a.title);
+                          setArtistQuery(a.artist?.name || "");
+                          setAlbumSuggestions([]);
+                        }}
+                      >
+                        {a.title}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <label className="w-full block mb-2 text-white">
+                  Audio File
+                  <input
+                    type="file"
+                    name="audioFile"
+                    onChange={handleChange}
+                    className="hidden"
+                  />
+                  <Button className="ml-3"
+                    type="button"
+                    onClick={() =>
+                      document.querySelector<HTMLInputElement>('input[name="audioFile"]')?.click()
+                    }
+                  >
+                    Choose Audio
+                  </Button>
+                </label>
+                <label className="w-full block mb-2 text-white">
+                  Cover Image
+                  <input
+                    type="file"
+                    name="coverFile"
+                    onChange={handleChange}
+                    className="hidden"
+                  />
+                  <Button className="ml-3"
+                    type="button"
+                    onClick={() =>
+                      document.querySelector<HTMLInputElement>('input[name="coverFile"]')?.click()
+                    }
+                  >
+                    Choose Cover
+                  </Button>
+                </label>
+              </>
+            )}
           </>
         )}
 
         <div className="flex justify-end space-x-2">
-          <Button className="bg-gray-700 hover:bg-gray-600" onClick={onClose}>Cancel</Button>
-          <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSave}>Save</Button>
+          <Button className="bg-gray-700 hover:bg-gray-600" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className={`bg-blue-600 hover:bg-blue-700 ${type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)
+              ? "opacity-50 cursor-not-allowed"
+              : ""
+              }`}
+            onClick={handleSave}
+            disabled={type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)}
+          >
+            Save
+          </Button>
         </div>
       </div>
     </div>
