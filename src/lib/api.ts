@@ -1402,6 +1402,28 @@ promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
   }
 },
 
+
+demoteToUser: async (data: { id: string }): Promise<boolean> => {
+  try {
+    const response = await fetch(`/api/auth/users/${data.id}/demote-to-user`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Failed to demote admin:", errorData);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error demoting admin:", error);
+    return false;
+  }
+},
     createUser: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
     try {
       const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {

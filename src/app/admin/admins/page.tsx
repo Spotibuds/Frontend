@@ -120,6 +120,34 @@ export default function AdminPageAdmins() {
     }
   };
 
+  // Demote admin to user
+  const handleDemote = async (id: string) => {
+    const result = await MySwal.fire({
+      title: "Demote Admin?",
+      text: "This admin will become a regular user.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, demote",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
+      const success = await adminApi.demoteToUser({id}); 
+      if (success) {
+        await fetchAdmins();
+        MySwal.fire({
+          icon: "success",
+          title: "Admin demoted to user successfully",
+        });
+      } else {
+        MySwal.fire({
+          icon: "error",
+          title: "Failed to demote admin",
+        });
+      }
+    }
+  };
+
   return (
     <AppLayout>
       <SidebarNavigation />
@@ -172,12 +200,20 @@ export default function AdminPageAdmins() {
                 >
                   <p className="font-semibold">{admin.userName}</p>
                   <p className="text-gray-400">{admin.email}</p>
-                  <button
-                    onClick={() => handleDelete(admin.id)}
-                    className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white mt-2"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handleDemote(admin.id)}
+                      className="bg-yellow-600 hover:bg-yellow-700 px-2 py-1 rounded text-white"
+                    >
+                      Demote to User
+                    </button>
+                    <button
+                      onClick={() => handleDelete(admin.id)}
+                      className="bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
