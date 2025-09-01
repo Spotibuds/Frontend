@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Album, Artist, Song, musicApi } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
+import Image from "next/image";
 
 const MySwal = withReactContent(Swal);
 
@@ -182,12 +183,13 @@ export default function UpdateModal({
       <div className="bg-gray-900 p-6 rounded-lg w-96 space-y-4">
         <h3 className="text-white text-lg font-semibold">Update {type}</h3>
 
-        {/* Cover Preview */}
         {coverPreview && (
-          <img
+          <Image
             src={coverPreview}
-            alt="Cover Preview"
-            className="w-32 h-32 object-cover rounded shadow-md mx-auto mb-2"
+            alt="cover preview"
+            width={96}
+            height={96}
+            className="object-cover mb-2 rounded"
           />
         )}
 
