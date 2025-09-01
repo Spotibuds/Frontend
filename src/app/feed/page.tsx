@@ -1,17 +1,18 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, memo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import AppLayout from "@/components/layout/AppLayout";
 import MusicImage from "@/components/ui/MusicImage";
 import { identityApi, musicApi, userApi, type Song, type Artist } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
+import { reactionCache, getCacheKey, type CachedReaction } from "@/lib/reactionCache";
 
 type Slide =
 	| {
 		type: "recent_song";
 		identityUserId: string;
+		postId?: string;
 		username?: string;
 		displayName?: string;
 		songId: string;
@@ -19,6 +20,16 @@ type Slide =
 		artist?: string;
 		coverUrl?: string;
 		playedAt?: string;
+	}
+	| {
+		type: "now_playing";
+		identityUserId: string;
+		songId: string;
+		songTitle?: string;
+		artist?: string;
+		coverUrl?: string;
+		positionSec?: number;
+		updatedAt?: string;
 	}
 	| {
 		type: "top_artists_week";
@@ -66,7 +77,7 @@ function FeedInner() {
 	const SEEN_KEY = 'feed_seen_v1';
 	const SEEN_TTL_MS = 72 * 60 * 60 * 1000; // 72h
 	const seenMapRef = useRef<Record<string, number>>({});
-	const loadSeen = () => {
+	const loadSeen = useCallback(() => {
 		try {
 			const raw = typeof window !== 'undefined' ? localStorage.getItem(SEEN_KEY) : null;
 			if (!raw) return {} as Record<string, number>;
@@ -80,7 +91,7 @@ function FeedInner() {
 		} catch {
 			return {} as Record<string, number>;
 		}
-	};
+	}, [SEEN_TTL_MS]);
 	const saveSeen = () => {
 		try {
 			if (typeof window !== 'undefined') localStorage.setItem(SEEN_KEY, JSON.stringify(seenMapRef.current));
@@ -91,18 +102,25 @@ function FeedInner() {
 	const authorOf = (s: Slide) => s.identityUserId;
 	const keyOf = (s: Slide) => {
 		const base = `${s.type}:${s.identityUserId}`;
-		if (s.type === 'recent_song') return `${base}:song:${(s as any).songId}`;
+		if (s.type === 'recent_song') {
+			const rs = s as Extract<Slide, { type: 'recent_song' }>;
+			if (rs.postId) return `${base}:post:${rs.postId}`;
+			return `${base}:song:${rs.songId}`;
+		}
 		if (s.type === 'top_songs_week') {
-			const names = (s as any).topSongs?.map((x: any) => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
+			const topSongsSlide = s as Extract<Slide, { type: 'top_songs_week' }>;
+			const names = topSongsSlide.topSongs?.map(x => (x.songId || x.songTitle || '') + ':' + (x.artist || '')).join('|') || '';
 			return `${base}:top_songs:${names}`;
 		}
 		if (s.type === 'top_artists_week') {
-			const names = (s as any).topArtists?.map((x: any) => (x.name || '').toLowerCase()).join('|') || '';
+			const topArtistsSlide = s as Extract<Slide, { type: 'top_artists_week' }>;
+			const names = topArtistsSlide.topArtists?.map(x => (x.name || '').toLowerCase()).join('|') || '';
 			return `${base}:top_artists:${names}`;
 		}
 		if (s.type === 'common_artists') {
-			const withId = (s as any).withIdentityUserId || '';
-			const names = (s as any).commonArtists?.slice(0, 8).map((x: any) => (x || '').toLowerCase()).join('|') || '';
+			const commonArtistsSlide = s as Extract<Slide, { type: 'common_artists' }>;
+			const withId = commonArtistsSlide.withIdentityUserId || '';
+			const names = commonArtistsSlide.commonArtists?.slice(0, 8).map(x => (x || '').toLowerCase()).join('|') || '';
 			return `${base}:common:${withId}:${names}`;
 		}
 		return base;
@@ -123,7 +141,7 @@ function FeedInner() {
 		}
 		return h >>> 0;
 	};
-	const chunkedShuffle = (arr: Slide[], seedStr: string, chunkSize = 4) => {
+	const chunkedShuffle = useCallback((arr: Slide[], seedStr: string, chunkSize = 4) => {
 		if (arr.length <= 1) return arr.slice();
 		const out: Slide[] = [];
 		for (let i = 0; i < arr.length; i += chunkSize) {
@@ -137,10 +155,10 @@ function FeedInner() {
 			out.push(...chunk);
 		}
 		return out;
-	};
+	}, []);
 
 	// De-clump by author within a batch and at the boundary with previous author
-	const declumpAuthors = (batch: Slide[]) => {
+	const declumpAuthors = useCallback((batch: Slide[]) => {
 		if (batch.length <= 1) return batch;
 		const res = batch.slice();
 		// boundary check
@@ -166,11 +184,12 @@ function FeedInner() {
 		// update boundary author
 		lastAuthorRef.current = authorOf(res[res.length - 1]);
 		return res;
-	};
+	}, []);
 
 	const [songsById, setSongsById] = useState<Record<string, Song | null>>({});
 	const [artists, setArtists] = useState<Artist[]>([]);
-	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string }>>({});
+	const [userMetaById, setUserMetaById] = useState<Record<string, { avatarUrl?: string; displayName?: string; username?: string }>>({});
+	const [reactionsBySlide, setReactionsBySlide] = useState<Record<string, CachedReaction[]>>({});
 
 	// Snap container + sections for one-by-one navigation
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -184,9 +203,6 @@ function FeedInner() {
 
 	// Stabilize current user so hooks don't re-create on every render
 	const [me] = useState(() => identityApi.getCurrentUser());
-
-	// Audio controls for play actions from feed
-	const { playSong } = useAudio();
 
 	const preloadSongs = useCallback(async (newSlides: Slide[]) => {
 		const recentSongIds = newSlides
@@ -222,13 +238,93 @@ function FeedInner() {
 		if (!missing.length) return;
 
 		const profiles = await Promise.allSettled(missing.map((id) => userApi.getUserProfileByIdentityId(id)));
-		const meta: Record<string, { avatarUrl?: string }> = {};
+		const meta: Record<string, { avatarUrl?: string; displayName?: string; username?: string }> = {};
 		profiles.forEach((res, idx) => {
 			const id = missing[idx];
-			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl };
+			if (res.status === "fulfilled") meta[id] = { avatarUrl: res.value.avatarUrl, displayName: res.value.displayName, username: res.value.username };
 		});
 		setUserMetaById((prev) => ({ ...prev, ...meta }));
 	}, [userMetaById]);
+
+	const preloadReactions = useCallback(async (newSlides: Slide[]) => {
+		if (!newSlides.length) return;
+
+		const reactionPromises = newSlides.map(async (slide) => {
+			try {
+				const slideKey = keyOf(slide);
+				const cacheKey = getCacheKey.slide(slideKey);
+				
+				// Check cache first
+				const cached = reactionCache.get(cacheKey);
+				if (cached) {
+					return { slideKey, reactions: cached };
+				}
+
+				// Generate postId for this slide to fetch reactions
+				const postIds: string[] = [];
+				
+				if (slide.type === 'recent_song') {
+					const recentSongSlide = slide as Extract<Slide, { type: 'recent_song' }>;
+					if (recentSongSlide.postId) {
+						postIds.push(recentSongSlide.postId);
+					} else {
+						postIds.push(slideKey);
+						postIds.push(`recent_song:${slide.identityUserId}:${slide.songId}`);
+					}
+				} else if (slide.type === 'now_playing') {
+					postIds.push(slideKey);
+					postIds.push(`now_playing:${slide.identityUserId}:${slide.songId}`);
+				} else if (slide.type === 'top_artists_week') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`weekly:artists:${slide.identityUserId}:${weekKey}`);
+				} else if (slide.type === 'top_songs_week') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`weekly:songs:${slide.identityUserId}:${weekKey}`);
+				} else if (slide.type === 'common_artists') {
+					const weekStart = new Date();
+					weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+					const weekKey = weekStart.toISOString().slice(0, 10).replace(/-/g, '');
+					postIds.push(`common:${me?.id}:${slide.identityUserId}:${weekKey}`);
+				}
+
+				// Try each postId format until we find reactions
+				let allReactions: CachedReaction[] = [];
+				for (const postId of postIds) {
+					try {
+						const reactions = await userApi.getReactionsByPost(postId, me?.id);
+						if (reactions && reactions.length > 0) {
+							allReactions = [...allReactions, ...reactions];
+						}
+					} catch {
+						// Silently continue to next postId format
+					}
+				}
+
+				// Store in cache
+				reactionCache.set(cacheKey, allReactions);
+
+				return { slideKey, reactions: allReactions };
+			} catch (error) {
+				console.warn('Failed to load reactions for slide:', error);
+				return { slideKey: keyOf(slide), reactions: [] };
+			}
+		});
+
+		const results = await Promise.allSettled(reactionPromises);
+		const newReactions: Record<string, CachedReaction[]> = {};
+
+		results.forEach(result => {
+			if (result.status === 'fulfilled' && result.value) {
+				newReactions[result.value.slideKey] = result.value.reactions;
+			}
+		});
+
+		setReactionsBySlide(prev => ({ ...prev, ...newReactions }));
+	}, [me?.id]);
 
 	const loadSlides = useCallback(
 		async (reset = false) => {
@@ -279,7 +375,7 @@ function FeedInner() {
 				setSkip(currentSkip + newSlides.length);
 
 				// parallel preloads (for processed batch)
-				await Promise.allSettled([preloadSongs(reordered), preloadUserMeta(reordered)]);
+				await Promise.allSettled([preloadSongs(reordered), preloadUserMeta(reordered), preloadReactions(reordered)]);
 			} catch (e) {
 				console.error("Failed to load slides:", e);
 				setError("Failed to load feed");
@@ -288,29 +384,53 @@ function FeedInner() {
 				setIsLoadingMore(false);
 			}
 		},
-		[me, skip, preloadSongs, preloadUserMeta]
+		[me, skip, preloadSongs, preloadUserMeta, preloadReactions, chunkedShuffle, declumpAuthors, loadSeen]
 	);
 
 	// keep a live ref of slides for deep-link fallback logic
 	useEffect(() => { slidesRef.current = slides; }, [slides]);
 
-	// initial load once
+	// initial load once with safety checks
 	useEffect(() => {
-		loadSlides(true);
+		if (!me?.id) {
+			console.log("Feed: User not authenticated yet, skipping load");
+			return;
+		}
+		
+		// Small delay to ensure user context is fully loaded
+		const timeoutId = setTimeout(() => {
+			loadSlides(true);
+		}, 100);
+
+		return () => clearTimeout(timeoutId);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [me]);
+	}, [me?.id]);
+
+	// Retry mechanism if feed is empty but user is authenticated
+	useEffect(() => {
+		if (me?.id && !isLoading && !isLoadingMore && slides.length === 0 && !error) {
+			console.log("Feed: Retrying load due to empty feed");
+			const retryTimeout = setTimeout(() => {
+				loadSlides(true);
+			}, 1000);
+			return () => clearTimeout(retryTimeout);
+		}
+	}, [me?.id, isLoading, isLoadingMore, slides.length, error, loadSlides]);
 
 	// deep-link: focus a slide based on query params (with fallback)
 	useEffect(() => {
 		let cancelled = false;
 		const run = async () => {
 			if (!slides.length) return;
+			const postId = searchParams?.get("postId");
 			const type = searchParams?.get("focusType");
 			const to = searchParams?.get("to");
 			const songId = searchParams?.get("songId");
-			if (!type || !to) return;
 			// find in current slides
 			const matchIndex = (arr: Slide[]) => arr.findIndex((s) => {
+				// Prefer postId for any slide type
+				if (postId && 'postId' in s && s.postId === postId) return true;
+				if (!type || !to) return false;
 				if (s.identityUserId !== to) return false;
 				if (s.type !== (type as Slide["type"])) return false;
 				if (type === "recent_song" && songId) {
@@ -446,15 +566,50 @@ function FeedInner() {
 		root.addEventListener("touchstart", onTouchStart, { passive: true });
 		root.addEventListener("touchmove", onTouchMove, { passive: false });
 		return () => {
-			root.removeEventListener("wheel", onWheel as any);
-			root.removeEventListener("touchstart", onTouchStart as any);
-			root.removeEventListener("touchmove", onTouchMove as any);
+			root.removeEventListener("wheel", onWheel);
+			root.removeEventListener("touchstart", onTouchStart);
+			root.removeEventListener("touchmove", onTouchMove);
 		};
 	}, [currentIndex, scrollLocked, touchStartY, scrollToIndex]);
 
 	const handleReact = useCallback(
 		async (target: Slide, emoji: string, index?: number) => {
 			if (!me) return;
+			
+			const slideKey = keyOf(target);
+			const cacheKey = getCacheKey.slide(slideKey);
+			const existingReactions = reactionsBySlide[slideKey] || [];
+			
+			// Check if user already reacted with this emoji
+			const hasReacted = existingReactions.some(r => r.emoji === emoji && r.fromIdentityUserId === me.id);
+			const action = hasReacted ? 'remove' : 'add';
+			
+			// Optimistic update
+			const optimisticReactions = reactionCache.optimisticUpdate(
+				cacheKey,
+				me.id,
+				emoji,
+				action,
+				{
+					emoji,
+					fromIdentityUserId: me.id,
+					fromUserName: me.username,
+					toIdentityUserId: target.identityUserId,
+					createdAt: new Date().toISOString(),
+					contextType: target.type,
+					songId: target.type === 'recent_song' || target.type === 'now_playing' ? target.songId : undefined,
+					songTitle: target.type === 'recent_song' || target.type === 'now_playing' ? target.songTitle : undefined,
+					artist: target.type === 'recent_song' || target.type === 'now_playing' ? target.artist : undefined
+				}
+			);
+
+			if (optimisticReactions) {
+				setReactionsBySlide(prev => ({
+					...prev,
+					[slideKey]: optimisticReactions
+				}));
+			}
+
 			try {
 				const base = {
 					toIdentityUserId: target.identityUserId,
@@ -462,50 +617,93 @@ function FeedInner() {
 					fromUserName: me.username,
 					emoji,
 				};
+				let postId: string | undefined;
 				if (target.type === "recent_song") {
+					postId = (target as Extract<Slide, { type: 'recent_song' }>).postId;
 					await userApi.sendReaction({
 						...base,
 						contextType: "recent_song",
+						postId,
 						songId: target.songId,
 						songTitle: target.songTitle,
 						artist: target.artist,
 					});
 				} else if (target.type === "top_artists_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_artists_week" });
+					postId = 'postId' in target ? String(target.postId) : undefined;
+					await userApi.sendReaction({ ...base, contextType: "top_artists_week", postId });
 				} else if (target.type === "common_artists") {
-					await userApi.sendReaction({ ...base, contextType: "common_artists" });
+					postId = 'postId' in target ? String(target.postId) : undefined;
+					await userApi.sendReaction({ ...base, contextType: "common_artists", postId });
 				} else if (target.type === "top_songs_week") {
-					await userApi.sendReaction({ ...base, contextType: "top_songs_week" });
+					postId = 'postId' in target ? String(target.postId) : undefined;
+					await userApi.sendReaction({ ...base, contextType: "top_songs_week", postId });
 				}
+				
 				if (typeof index === 'number') {
 					setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
 					setTimeout(() => {
 						setReactionFlash(prev => {
-							const copy = { ...prev } as typeof prev;
-							delete (copy as any)[index!];
+							const copy = { ...prev };
+							delete copy[index!];
 							return copy;
 						});
 					}, 1200);
 				}
+				
+				if (postId) {
+					window.dispatchEvent(new CustomEvent('reaction:refresh', { detail: { postId } }));
+				}
 			} catch (e) {
 				console.error("Failed to send reaction:", e);
+				
+				// Revert optimistic update on error
+				reactionCache.invalidate(cacheKey);
+				setReactionsBySlide(prev => ({
+					...prev,
+					[slideKey]: existingReactions
+				}));
 			}
 		},
-		[me]
+		[me, reactionsBySlide]
 	);
 
-	const UserHeader = ({ slide }: { slide: Slide }) => {
-		const meta = userMetaById[slide.identityUserId];
-		const name = slide.displayName || slide.username || "User";
+	const UserHeader = memo(({ slide, userMeta }: { 
+		slide: Slide;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const getSlideDisplayName = (slide: Slide): string | undefined => {
+			switch (slide.type) {
+				case 'top_artists_week':
+				case 'top_songs_week':
+				case 'common_artists':
+					return slide.displayName;
+				default:
+					return undefined;
+			}
+		};
+		
+		const getSlideUsername = (slide: Slide): string | undefined => {
+			switch (slide.type) {
+				case 'top_artists_week':
+				case 'top_songs_week':
+				case 'common_artists':
+					return slide.username;
+				default:
+					return undefined;
+			}
+		};
+		
+		const name = userMeta?.displayName || userMeta?.username || getSlideDisplayName(slide) || getSlideUsername(slide) || "User";
 		return (
 			<div className="flex items-center gap-3">
-				<MusicImage src={meta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
+				<MusicImage src={userMeta?.avatarUrl} alt={name} type="circle" size="medium" className="w-10 h-10" />
 				<Link href={`/user/${slide.identityUserId}`} className="text-white font-medium hover:underline">
 					{name}
 				</Link>
 			</div>
 		);
-	};
+	});
+	UserHeader.displayName = 'UserHeader';
 
 		const Card = ({ children }: { children: React.ReactNode }) => (
 		<div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-md w-full max-w-2xl">
@@ -514,164 +712,343 @@ function FeedInner() {
 	);
 
 	const ReactionBar = ({ slide, index }: { slide: Slide; index: number }) => {
-			const flash = reactionFlash[index];
-			return (
-		<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
-					{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => (
+		const flash = reactionFlash[index];
+		const slideKey = keyOf(slide);
+		const existingReactions = reactionsBySlide[slideKey] || [];
+		
+		return (
+			<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
+				{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => {
+					const hasReacted = existingReactions.some(r => r.emoji === em && r.fromIdentityUserId === me?.id);
+					return (
 						<button
 							key={em}
 							onClick={(e) => { e.stopPropagation(); handleReact(slide, em, index); }}
-							className={`pointer-events-auto w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${flash?.emoji === em ? 'ring-2 ring-purple-400 animate-pulse' : ''}`}
+							className={`pointer-events-auto w-10 h-10 rounded-full text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${
+								flash?.emoji === em ? 'ring-2 ring-purple-400 animate-pulse' : ''
+							} ${
+								hasReacted 
+									? 'bg-purple-600/50 hover:bg-purple-600/70 text-white' 
+									: 'bg-white/10 hover:bg-white/20 text-white/80'
+							}`}
 							style={{ willChange: 'transform' }}
-							title={`React ${em}`}
+							title={`${hasReacted ? 'Remove' : 'Add'} ${em} reaction`}
 						>
 							{em}
 						</button>
-					))}
-					{/* Sent chip removed per request */}
+					);
+				})}
+				{flash && (
+					<div className="pointer-events-none mt-2 text-xs px-2 py-1 rounded bg-purple-600/80 text-white">Sent</div>
+				)}
+			</div>
+		);
+	};
+
+	const ReactionCluster = ({ slide }: { slide: Slide }) => {
+		const slideKey = keyOf(slide);
+		const reactions = reactionsBySlide[slideKey] || [];
+		const [open, setOpen] = useState(false);
+		
+		if (!reactions.length) {
+			return (
+				<div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-30">
+					<span className="text-xs text-white/40">💬</span>
 				</div>
 			);
-		};
+		}
+		
+		const counts = reactions.reduce<Record<string, number>>((acc, r) => { acc[r.emoji] = (acc[r.emoji] || 0) + 1; return acc; }, {});
+		const items = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,6);
+		return (
+			<div>
+				<button className="flex -space-x-2" onClick={() => setOpen(true)} aria-label="View reactions">
+					{items.map(([em, count]) => (
+						<span key={em} className="relative inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-base">
+							{em}
+							<span className="absolute -bottom-1 -right-1 text-[10px] bg-purple-600 text-white rounded px-1">{count}</span>
+						</span>
+					))}
+				</button>
+				{open && (
+					<div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setOpen(false)}>
+						<div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+							<div className="flex items-center justify-between mb-2">
+								<div className="text-white font-semibold">Reactions</div>
+								<button className="text-gray-400 hover:text-white" onClick={() => setOpen(false)}>✕</button>
+							</div>
+							<div className="max-h-80 overflow-y-auto space-y-2">
+								{reactions.map((r, i) => (
+									<div key={i} className="flex items-center justify-between bg-white/5 rounded-lg p-2">
+										<div className="flex items-center gap-2">
+											<span className="text-xl">{r.emoji}</span>
+											<Link href={`/user/${r.fromIdentityUserId}`} className="text-purple-300 hover:underline">{r.fromUserName || 'User'}</Link>
+										</div>
+										<span className="text-gray-500 text-xs">{new Date(r.createdAt).toLocaleString()}</span>
+									</div>
+								))}
+							</div>
+						</div>
+					</div>
+				)}
+			</div>
+		);
+	};
 
-	const RecentSongCard = ({ slide }: { slide: Extract<Slide, { type: "recent_song" }> }) => (
+	const RecentSongCard = memo(({ slide, song, userMeta }: { 
+		slide: Extract<Slide, { type: "recent_song" }>;
+		song: Song | null;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
+		<Card>
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-start gap-4">
+					<div className="flex-1">
+						<UserHeader slide={slide} userMeta={userMeta} />
+						<div className="mt-4 flex items-center gap-4">
+							<button
+								className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
+								onClick={() => song && playSong(song)}
+								title="Play"
+							>
+								<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+							</button>
+							<div className="min-w-0">
+								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
+								<div className="text-gray-300 truncate">
+									{song?.artists?.length
+										? song.artists.map((a, i) => (
+											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+												{a.name}{i < (song?.artists?.length || 0) - 1 ? ', ' : ''}
+											</Link>
+										))
+										: slide.artist}
+								</div>
+								{(song as any)?.album?.id && (
+									<Link href={`/album/${(song as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+								)}
+								{slide.playedAt && (
+									<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleDateString()}</div>
+								)}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</Card>
+		);
+	});
+	RecentSongCard.displayName = 'RecentSongCard';
+
+	const TopArtistsCard = memo(({ slide, userMeta }: { 
+		slide: Extract<Slide, { type: "top_artists_week" }>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => (
+		<Card>
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} userMeta={userMeta} />
+					<div className="text-white/60 text-xs">Top artists this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topArtists.slice(0, 5).map((a, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								<div className="w-12 h-12 rounded-lg overflow-hidden">
+									<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
+								</div>
+								<div className="text-left flex-1 min-w-0">
+										{artistDetails?.id ? (
+											<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
+										) : (
+											<div className="text-white font-semibold truncate">{a.name}</div>
+										)}
+									<div className="text-gray-300 text-xs">{a.count} plays</div>
+								</div>
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		</Card>
+	));
+	TopArtistsCard.displayName = 'TopArtistsCard';
+
+	const TopSongsCard = memo(({ slide, songsById, userMeta }: { 
+		slide: Extract<Slide, { type: "top_songs_week" }>;
+		songsById: Record<string, Song | null>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
+		<Card>
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} userMeta={userMeta} />
+					<div className="text-white/60 text-xs">Top songs this week</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.topSongs.slice(0, 5).map((ts, i) => {
+						const song = ts.songId ? songsById[ts.songId] : null;
+						const title = song?.title || ts.songTitle || "Unknown Song";
+						const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+								{(song as any)?.album?.id ? (
+									<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</Link>
+								) : (
+									<div className="w-12 h-12 rounded-lg overflow-hidden">
+										<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									</div>
+								)}
+								<div className="text-left flex-1 min-w-0">
+									<div className="text-white font-semibold truncate">{title}</div>
+									<div className="text-gray-300 text-xs truncate">
+										{(song as any)?.artists?.length
+											? ((song as any).artists as any[]).map((a: any, j: number) => (
+												<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
+													{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
+												</Link>
+											))
+											: artistName}
+										<span className="text-gray-500"> • {ts.count} plays</span>
+									</div>
+								</div>
+								<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
+									Play
+								</button>
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		</Card>
+		);
+	});
+	TopSongsCard.displayName = 'TopSongsCard';
+
+	const NowPlayingCard = memo(({ slide, song, userMeta }: { 
+		slide: Extract<Slide, { type: "now_playing" }>;
+		song: Song | null;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => {
+		const { playSong } = useAudio();
+		
+		return (
 		<Card>
 			<div className="flex items-start gap-4">
 				<div className="flex-1">
-					<UserHeader slide={slide} />
+					<div className="flex items-center justify-between">
+						<UserHeader slide={slide} userMeta={userMeta} />
+						<span className="text-green-300 text-xs bg-green-500/10 border border-green-400/30 px-2 py-0.5 rounded">Now Playing</span>
+					</div>
 					<div className="mt-4 flex items-center gap-4">
 						<button
-							className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-							onClick={() => songsById[slide.songId] && playSong(songsById[slide.songId] as any)}
+							className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
+							onClick={() => song && playSong(song as any)}
 							title="Play"
 						>
-							<MusicImage src={songsById[slide.songId]?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
+							<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
 						</button>
 						<div className="min-w-0">
-							<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
-							<div className="text-gray-300 truncate">
-								{songsById[slide.songId]?.artists?.length
-									? (songsById[slide.songId]!.artists as any[]).map((a: any, i: number) => (
+							<div className="text-white text-xl font-semibold truncate">{slide.songTitle || 'Listening now'}</div>
+							<div className="text-gray-200 truncate">
+								{song?.artists?.length
+									? (song!.artists as any[]).map((a: any, i: number) => (
 										<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-											{a.name}{i < ((songsById[slide.songId] as any)?.artists?.length || 0) - 1 ? ', ' : ''}
+											{a.name}{i < ((song as any)?.artists?.length || 0) - 1 ? ', ' : ''}
 										</Link>
 									))
 									: slide.artist}
 							</div>
-							{(songsById[slide.songId] as any)?.album?.id && (
-								<Link href={`/album/${(songsById[slide.songId] as any).album.id}`} className="text-purple-300 text-sm hover:underline">View album</Link>
+							{(song as any)?.album?.id && (
+								<Link href={`/album/${(song as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
 							)}
-							{slide.playedAt && (
-								<div className="text-gray-400 text-xs mt-1">{new Date(slide.playedAt).toLocaleString()}</div>
+							{typeof slide.positionSec === 'number' && (
+								<div className="text-emerald-300/90 text-xs mt-1">{Math.floor((slide.positionSec || 0) / 60)}:{String((slide.positionSec || 0) % 60).padStart(2,'0')} elapsed</div>
+							)}
+							{slide.updatedAt && (
+								<div className="text-gray-400 text-xs mt-1">Updated {new Date(slide.updatedAt).toLocaleTimeString()}</div>
 							)}
 						</div>
 					</div>
 				</div>
 			</div>
 		</Card>
-	);
+		);
+	});
+	NowPlayingCard.displayName = 'NowPlayingCard';
 
-	const TopArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "top_artists_week" }> }) => (
+	const CommonArtistsCard = memo(({ slide, userMeta }: { 
+		slide: Extract<Slide, { type: "common_artists" }>;
+		userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
+	}) => (
 		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top artists this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topArtists.slice(0, 5).map((a, i) => {
-					const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							<div className="w-12 h-12 rounded-lg overflow-hidden">
-								<MusicImage src={artistDetails?.imageUrl} alt={a.name} size="medium" className="w-12 h-12" />
-							</div>
-							<div className="text-left flex-1 min-w-0">
-									{artistDetails?.id ? (
-										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{a.name}</Link>
-									) : (
-										<div className="text-white font-semibold truncate">{a.name}</div>
-									)}
-								<div className="text-gray-300 text-xs">{a.count} plays</div>
-							</div>
-						</div>
-					);
-				})}
-			</div>
-		</Card>
-	);
-
-	const TopSongsCard = ({ slide }: { slide: Extract<Slide, { type: "top_songs_week" }> }) => (
-		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">Top songs this week</div>
-			</div>
-			<div className="mt-4 grid grid-cols-1 gap-3">
-				{slide.topSongs.slice(0, 5).map((ts, i) => {
-					const song = ts.songId ? songsById[ts.songId] : null;
-					const title = song?.title || ts.songTitle || "Unknown Song";
-					const artistName = song?.artists?.map((a) => a.name).join(", ") || ts.artist || "Unknown Artist";
-					return (
-						<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-							{(song as any)?.album?.id ? (
-								<Link href={`/album/${(song as any).album.id}`} className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
-								</Link>
-							) : (
+			<div className="relative">
+				{/* Reaction cluster - always visible at top right */}
+				<div className="absolute right-3 top-3 z-10">
+					<ReactionCluster slide={slide} />
+				</div>
+				<div className="flex items-center justify-between">
+					<UserHeader slide={slide} userMeta={userMeta} />
+					<div className="text-white/60 text-xs">Artists in common</div>
+				</div>
+				<div className="mt-4 grid grid-cols-1 gap-3">
+					{slide.commonArtists.slice(0, 5).map((artist, i) => {
+						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === artist.toLowerCase());
+						return (
+							<div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
 								<div className="w-12 h-12 rounded-lg overflow-hidden">
-									<MusicImage src={song?.coverUrl} alt={title} size="medium" className="w-12 h-12" />
+									<MusicImage src={artistDetails?.imageUrl} alt={artist} size="medium" className="w-12 h-12" />
 								</div>
-							)}
-							<div className="text-left flex-1 min-w-0">
-								<div className="text-white font-semibold truncate">{title}</div>
-								<div className="text-gray-300 text-xs truncate">
-									{(song as any)?.artists?.length
-										? ((song as any).artists as any[]).map((a: any, j: number) => (
-											<Link key={a.id || `${a.name}-${j}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
-												{a.name}{j < (((song as any)?.artists?.length) || 0) - 1 ? ', ' : ''}
-											</Link>
-										))
-										: artistName}
-									<span className="text-gray-500"> • {ts.count} plays</span>
+								<div className="text-left flex-1 min-w-0">
+									{artistDetails?.id ? (
+										<Link href={`/artist/${artistDetails.id}`} className="text-white font-semibold truncate hover:underline">{artist}</Link>
+									) : (
+										<div className="text-white font-semibold truncate">{artist}</div>
+									)}
+									<div className="text-gray-300 text-xs">Shared artist</div>
 								</div>
 							</div>
-							<button onClick={(e) => { e.stopPropagation(); if (song) playSong(song as any); }} className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20">
-								Play
-							</button>
-						</div>
-					);
-				})}
+						);
+					})}
+				</div>
 			</div>
 		</Card>
-	);
-
-	const CommonArtistsCard = ({ slide }: { slide: Extract<Slide, { type: "common_artists" }> }) => (
-		<Card>
-			<div className="flex items-center justify-between">
-				<UserHeader slide={slide} />
-				<div className="text-white/60 text-xs">You both listen to</div>
-			</div>
-			<div className="mt-4 grid grid-cols-2 gap-2">
-				{slide.commonArtists.slice(0, 8).map((name, i) => (
-					<div key={i} className="bg-white/5 rounded-xl p-3 text-white text-sm truncate">
-						{name}
-					</div>
-				))}
-			</div>
-		</Card>
-	);
+	));
+	CommonArtistsCard.displayName = 'CommonArtistsCard';
 
 	if (!me) {
 		return (
-			<AppLayout>
+			<>
 				<div className="min-h-[60vh] flex items-center justify-center">
 					<div className="text-gray-300">Please log in to see your feed.</div>
 				</div>
-			</AppLayout>
+			</>
 		);
 	}
 
 	return (
-		<AppLayout>
+		<>
 			<div className="relative">
 				{isLoading && !slides.length ? (
 					<div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
@@ -705,13 +1082,14 @@ function FeedInner() {
 									ref={(el) => { sectionsRef.current[idx] = el; }}
 									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-24"
 								>
-									{slide.type === "recent_song" && <RecentSongCard slide={slide} />}
-									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} />}
-									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} />}
-									{slide.type === "common_artists" && <CommonArtistsCard slide={slide} />}
+									{slide.type === "recent_song" && <RecentSongCard slide={slide} song={songsById[slide.songId] || null} userMeta={userMetaById[slide.identityUserId]} />}
+									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} song={songsById[(slide as any).songId] || null} userMeta={userMetaById[(slide as any).identityUserId]} />}
+									{slide.type === "top_artists_week" && <TopArtistsCard slide={slide} userMeta={userMetaById[slide.identityUserId]} />}
+									{slide.type === "top_songs_week" && <TopSongsCard slide={slide} songsById={songsById} userMeta={userMetaById[slide.identityUserId]} />}
+									{slide.type === "common_artists" && <CommonArtistsCard slide={slide as any} userMeta={userMetaById[(slide as any).identityUserId]} />}
 
-									{/* Right-side reactions anchored to page edge for this section */}
-									<ReactionBar slide={slide} index={idx} />
+									{/* Right-side reactions shown only for the active slide to avoid duplicates */}
+									{idx === currentIndex && <ReactionBar slide={slide} index={idx} />}
 								</section>
 							))}
 
@@ -729,7 +1107,7 @@ function FeedInner() {
 							{!hasMore && (
 								<section className="snap-start min-h-full flex items-center justify-center px-4">
 									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300 w-full max-w-2xl">
-										You’re all caught up. No more posts for now.
+										You&apos;re all caught up. No more posts for now.
 									</div>
 								</section>
 							)}
@@ -764,7 +1142,7 @@ function FeedInner() {
 					</>
 				)}
 			</div>
-		</AppLayout>
+		</>
 	);
 }
 
@@ -772,18 +1150,17 @@ export default function FeedPage() {
 	return (
 		<Suspense
 			fallback={
-				<AppLayout>
+				<>
 					<div className="px-4 pt-8 max-w-2xl mx-auto">
 						<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300">
 							Loading feed...
 						</div>
 					</div>
-				</AppLayout>
+				</>
 			}
 		>
 			<FeedInner />
 		</Suspense>
 	);
 }
-
 

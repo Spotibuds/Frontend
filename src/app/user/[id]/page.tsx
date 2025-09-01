@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
@@ -21,6 +21,7 @@ interface UserProfile {
   displayName?: string;
   bio?: string;
   email?: string;
+  avatarUrl?: string;
   isPrivate?: boolean;
   followerCount?: number;
   followingCount?: number;
@@ -55,7 +56,7 @@ export default function UserProfilePage() {
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string }>>([]);
+  const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; postId?: string }>>([]);
   const [isLoadingReactions, setIsLoadingReactions] = useState(false);
 
 
@@ -112,6 +113,7 @@ export default function UserProfilePage() {
           displayName: userResult.displayName,
           bio: userResult.bio,
           email: userResult.email,
+          avatarUrl: userResult.avatarUrl,
           isPrivate: userResult.isPrivate,
           followers: userResult.followers,
           following: userResult.following,
@@ -132,6 +134,7 @@ export default function UserProfilePage() {
               displayName: userResult.displayName,
               bio: userResult.bio,
               email: userResult.email,
+              avatarUrl: userResult.avatarUrl,
               isPrivate: userResult.isPrivate,
               followers: userResult.followers,
               following: userResult.following,
@@ -215,6 +218,7 @@ export default function UserProfilePage() {
         username: userData.username,
         displayName: userData.displayName,
         bio: userData.bio,
+        avatarUrl: userData.avatarUrl,
         followerCount: userData.followers || 0,
         followingCount: userData.following || 0,
         playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
@@ -244,7 +248,7 @@ export default function UserProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []); // Remove currentUser from dependencies since we pass the user as parameter
+  }, [loadReactions]); // Remove currentUser from dependencies since we pass the user as parameter
 
   const loadFriendshipStatus = useCallback(async (currentUserId: string, targetUserId: string) => {
     try {
@@ -585,20 +589,20 @@ export default function UserProfilePage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="flex items-center space-x-3">
             <div className="w-6 h-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent"></div>
             <span className="text-white">Loading profile...</span>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !profileUser) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 text-center space-y-4">
           <h1 className="text-2xl font-bold text-white">User Not Found</h1>
           <p className="text-gray-400">{error || 'This user does not exist.'}</p>
@@ -611,12 +615,12 @@ export default function UserProfilePage() {
             </Button>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
         {/* Hero Section with Background */}
         <div className="relative h-64 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600">
@@ -631,15 +635,39 @@ export default function UserProfilePage() {
             <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
               {/* Avatar */}
               <div className="relative">
-                <div className="w-32 h-32 lg:w-40 lg:h-40 bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 rounded-full flex items-center justify-center shadow-2xl border-4 border-gray-800">
-                  <span className="text-white font-bold text-4xl lg:text-5xl">
-                    {(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}
-                  </span>
+                <div className="w-32 h-32 lg:w-40 lg:h-40 rounded-full overflow-hidden shadow-2xl border-4 border-gray-800">
+                  {profileUser.avatarUrl ? (
+                    <Image 
+                      src={profileUser.avatarUrl} 
+                      alt={`${profileUser.displayName || profileUser.username}'s profile picture`}
+                      className="w-full h-full object-cover"
+                      width={160}
+                      height={160}
+                      onError={(e) => {
+                        // Fallback to gradient with initials if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.className = "w-32 h-32 lg:w-40 lg:h-40 bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 rounded-full flex items-center justify-center shadow-2xl border-4 border-gray-800";
+                          parent.innerHTML = `<span class="text-white font-bold text-4xl lg:text-5xl">${(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}</span>`;
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 flex items-center justify-center">
+                      <span className="text-white font-bold text-4xl lg:text-5xl">
+                        {(profileUser.displayName && profileUser.displayName.trim() !== '' ? profileUser.displayName : profileUser.username).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {isOwnProfile && (
-                  <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors">
-                    <PencilIcon className="w-5 h-5 text-white" />
-                  </button>
+                  <Link href="/user/edit">
+                    <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors">
+                      <PencilIcon className="w-5 h-5 text-white" />
+                    </button>
+                  </Link>
                 )}
               </div>
               
@@ -842,24 +870,47 @@ export default function UserProfilePage() {
                       if ((reaction.contextType === 'recent_song' || !reaction.contextType) && reaction.songId) {
                         search.set('songId', reaction.songId);
                       }
-                      const href = `/feed?${search.toString()}`;
+                      
+                      // If we have a concrete postId, prefer linking to a post detail route
+                      const href = reaction.postId ? `/feed/post/${encodeURIComponent(reaction.postId)}` : `/feed?${search.toString()}`;
+                      
                       return (
-                        <div key={index} role="button" onClick={() => router.push(href)} className="bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-colors cursor-pointer">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-3">
+                        <div 
+                          key={index} 
+                          className="group bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-all duration-200 cursor-pointer border border-transparent hover:border-purple-500/30"
+                        >
+                          <div 
+                            onClick={() => router.push(href)}
+                            className="flex items-center justify-between h-full"
+                          >
+                            <div className="flex items-center space-x-3 flex-1 min-w-0">
                               <span className="text-2xl select-none">{reaction.emoji}</span>
-                              <div>
-                                <Link href={`/user/${reaction.fromIdentityUserId}`} onClick={(e) => e.stopPropagation()} className="text-purple-300 font-medium hover:underline">
-                                  {reaction.fromUserName || "Unknown User"}
-                                </Link>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <Link 
+                                    href={`/user/${reaction.fromIdentityUserId}`} 
+                                    onClick={(e) => e.stopPropagation()} 
+                                    className="text-purple-300 font-medium hover:text-purple-200 transition-colors"
+                                  >
+                                    {reaction.fromUserName || "Unknown User"}
+                                  </Link>
+                                  {reaction.postId && (
+                                    <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
+                                      Post
+                                    </span>
+                                  )}
+                                </div>
                                 {reaction.songTitle && (
-                                  <p className="text-gray-400 text-sm">on {reaction.songTitle}</p>
+                                  <p className="text-gray-400 text-sm truncate">on {reaction.songTitle}</p>
                                 )}
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {new Date(reaction.createdAt).toLocaleDateString()} • Click to view
+                                </div>
                               </div>
                             </div>
-                            <span className="text-gray-500 text-xs">
-                              {new Date(reaction.createdAt).toLocaleDateString()}
-                            </span>
+                            <div className="text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                              →
+                            </div>
                           </div>
                         </div>
                       );
@@ -919,6 +970,6 @@ export default function UserProfilePage() {
       
       {/* Toast notifications */}
       
-    </AppLayout>
+    </>
   );
 } 

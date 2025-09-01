@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getProxiedImageUrl, getImageFallback } from '@/lib/api';
 
 interface MusicImageProps {
@@ -14,7 +14,7 @@ interface MusicImageProps {
   lazy?: boolean;
 }
 
-export default function MusicImage({ 
+const MusicImage = React.memo(function MusicImage({ 
   src, 
   alt, 
   fallbackText, 
@@ -28,22 +28,34 @@ export default function MusicImage({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageSrc, setImageSrc] = useState<string>('');
   const [debugAttempts, setDebugAttempts] = useState<string[]>([]);
+  const lastProcessedSrc = useRef<string>('');
+
+  // Memoize the proxied URL to avoid recomputation
+  const proxiedUrl = useMemo(() => {
+    if (!src) return '';
+    return getProxiedImageUrl(src) || '';
+  }, [src]);
 
   useEffect(() => {
+    // Only process if src has actually changed
+    if (lastProcessedSrc.current === src) {
+      return;
+    }
+    
+    lastProcessedSrc.current = src || '';
     setImageError(false);
     setImageLoaded(false);
     setDebugAttempts([]);
     
     if (src) {
-      console.log('MusicImage: Processing image URL:', src);
-      const proxiedSrc = getProxiedImageUrl(src);
-      console.log('MusicImage: Proxied URL:', proxiedSrc);
-      setImageSrc(proxiedSrc || '');
-      setDebugAttempts(prev => [...prev, `Original: ${src}`, `Proxied: ${proxiedSrc}`]);
+      console.log('MusicImage: Processing new image URL:', src);
+      console.log('MusicImage: Proxied URL:', proxiedUrl);
+      setImageSrc(proxiedUrl);
+      setDebugAttempts(prev => [...prev, `Original: ${src}`, `Proxied: ${proxiedUrl}`]);
     } else {
       setImageSrc('');
     }
-  }, [src]);
+  }, [src, proxiedUrl]);
 
   const handleImageLoad = () => {
     setImageLoaded(true);
@@ -137,4 +149,6 @@ export default function MusicImage({
       )}
     </div>
   );
-} 
+});
+
+export default MusicImage; 

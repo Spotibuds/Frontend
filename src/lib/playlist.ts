@@ -1,7 +1,8 @@
-import { Song } from './api';
+import { Song, API_CONFIG } from './api';
 
-const MUSIC_API_URL = process.env.NEXT_PUBLIC_MUSIC_API_URL || 'http://localhost:5001/api';
-const USER_API_URL = process.env.NEXT_PUBLIC_USER_API_URL || 'http://localhost:5002/api';
+// Use centralized API configuration instead of hardcoded URLs
+const MUSIC_API_URL = API_CONFIG.MUSIC_API;
+const USER_API_URL = API_CONFIG.USER_API;
 
 export interface PlaylistSong extends Song {
   position: number;
@@ -13,6 +14,7 @@ export interface Playlist {
   name: string;
   description?: string;
   createdBy?: string;
+  coverUrl?: string;
   songs: PlaylistSong[];
   createdAt: string;
   updatedAt: string;
@@ -34,7 +36,7 @@ export interface ListeningHistoryItem {
 
 export class PlaylistService {
   static async getUserPlaylists(userId: string): Promise<Playlist[]> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/user/${userId}`);
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/user/${userId}`);
     if (!response.ok) {
       throw new Error('Failed to fetch user playlists');
     }
@@ -42,7 +44,7 @@ export class PlaylistService {
   }
 
   static async getPlaylist(playlistId: string): Promise<Playlist> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/${playlistId}`);
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`);
     if (!response.ok) {
       throw new Error('Failed to fetch playlist');
     }
@@ -50,7 +52,7 @@ export class PlaylistService {
   }
 
   static async createPlaylist(userId: string, dto: CreatePlaylistDto): Promise<Playlist> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/user/${userId}`, {
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/user/${userId}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -64,7 +66,7 @@ export class PlaylistService {
   }
 
   static async updatePlaylist(playlistId: string, dto: Partial<CreatePlaylistDto>): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/${playlistId}`, {
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -77,7 +79,7 @@ export class PlaylistService {
   }
 
   static async deletePlaylist(playlistId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/${playlistId}`, {
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -86,7 +88,7 @@ export class PlaylistService {
   }
 
   static async addSongToPlaylist(playlistId: string, songId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/${playlistId}/songs/${songId}`, {
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}/songs/${songId}`, {
       method: 'POST',
     });
     if (!response.ok) {
@@ -95,7 +97,7 @@ export class PlaylistService {
   }
 
   static async removeSongFromPlaylist(playlistId: string, songId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/playlists/${playlistId}/songs/${songId}`, {
+    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}/songs/${songId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -105,7 +107,7 @@ export class PlaylistService {
 
   static async addToListeningHistory(userId: string, songId: string, duration: number): Promise<void> {
     try {
-      const response = await fetch(`${USER_API_URL}/users/${userId}/listening-history`, {
+      const response = await fetch(`${USER_API_URL}/api/users/${userId}/listening-history`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,7 +133,7 @@ export class PlaylistService {
       headers['Authorization'] = `Bearer ${token}`;
     }
     
-    const response = await fetch(`${USER_API_URL}/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`, {
+    const response = await fetch(`${USER_API_URL}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`, {
       method: 'GET',
       headers,
     });

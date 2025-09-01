@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { PlusIcon, TrashIcon, PencilIcon, MusicalNoteIcon } from '@heroicons/react/24/outline';
 import { PlaylistService, Playlist, CreatePlaylistDto } from '@/lib/playlist';
 import { useAudio } from '@/lib/audio';
+import MusicImage from '@/components/ui/MusicImage';
 
 interface PlaylistManagerProps {
   userId: string;
@@ -211,8 +212,19 @@ export default function PlaylistManager({ userId, onPlayPlaylist }: PlaylistMana
           >
             {/* Playlist Cover */}
             <div className="relative mb-4">
-              <div className="w-full aspect-square bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                <MusicalNoteIcon className="w-16 h-16 text-white" />
+              <div className="w-full aspect-square rounded-xl overflow-hidden shadow-lg">
+                {playlist.coverUrl ? (
+                  <MusicImage 
+                    src={playlist.coverUrl} 
+                    alt={playlist.name} 
+                    size="large"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center">
+                    <MusicalNoteIcon className="w-16 h-16 text-white" />
+                  </div>
+                )}
               </div>
               
               {/* Action Buttons Overlay */}

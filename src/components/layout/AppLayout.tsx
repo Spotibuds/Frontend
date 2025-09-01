@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -26,6 +26,7 @@ import {
   ArrowLeftOnRectangleIcon,
   BellIcon,
   ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
   ArrowPathIcon,
   Squares2X2Icon as ShuffleIcon,
   ListBulletIcon,
@@ -34,25 +35,47 @@ import {
 import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
 import { ToastContainer } from "@/components/ui/Toast";
+import { notificationService } from "@/lib/notificationService";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export default function AppLayout({ children }: AppLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Default open on desktop
   const [queueOpen, setQueueOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; username: string; displayName?: string; avatarUrl?: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  // Load sidebar state from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSidebarState = localStorage.getItem('sidebarOpen');
+      if (savedSidebarState !== null) {
+        setSidebarOpen(JSON.parse(savedSidebarState));
+      }
+    }
+  }, []);
+
+  // Save sidebar state to localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
+    }
+  }, [sidebarOpen]);
   const [friendRequests, setFriendRequests] = useState<{ requestId: string; requesterId: string; requesterUsername: string; requesterAvatar?: string; requestedAt: string }[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likedSongsPlaylistId, setLikedSongsPlaylistId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
-  const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
+  const loadedFriendRequestsRef = useRef(false);
+  const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, toggleMute, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
 
   
@@ -61,26 +84,103 @@ export default function AppLayout({ children }: AppLayoutProps) {
     id: string;
     message: string;
     type: 'success' | 'error' | 'info';
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
   }>>([]);
 
 
 
-  const removeToast = (id: string) => {
+  const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
-  };
+  }, []);
+
+  const addToast = useCallback((
+    message: string, 
+    type: 'success' | 'error' | 'info' = 'info',
+    action?: { label: string; onClick: () => void }
+  ) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type, action }]);
+    setTimeout(() => removeToast(id), action ? 8000 : 5000); // Longer duration for actionable toasts
+  }, [removeToast]);
 
   
   useEffect(() => {
-    const currentUser = identityApi.getCurrentUser();
-    if (currentUser) {
-      setIsLoggedIn(true);
-      setUser(currentUser);
-      loadFriendRequests(currentUser.id);
-      setIsAdmin(currentUser.roles?.includes("Admin") || false);
-    }
-    
-    setIsLoading(false);
-  }, []);
+    const initializeUser = async () => {
+      const currentUser = identityApi.getCurrentUser();
+      if (currentUser) {
+        setIsLoggedIn(true);
+        setIsAdmin(currentUser.roles?.includes("Admin") || false);
+        
+        // Load full user profile to get avatar and other details
+        try {
+          const fullProfile = await userApi.getCurrentUserProfile();
+          if (fullProfile) {
+            setUser(fullProfile);
+          } else {
+            // Fallback to basic user data
+            setUser(currentUser);
+          }
+        } catch (error) {
+          console.error('Failed to load user profile, using basic data:', error);
+          setUser(currentUser);
+        }
+        
+        // Only load friend requests once on mount
+        if (!loadedFriendRequestsRef.current) {
+          loadFriendRequests(currentUser.id);
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initializeUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount, loadFriendRequests is stable
+
+  useEffect(() => {
+    // Set up chat notification handler
+    const removeNotificationHandler = notificationService.addNotificationHandler(async (message) => {
+      // Get sender information for better notification
+      let senderName = message.senderName || 'Unknown';
+      try {
+        if (message.senderId) {
+          const senderProfile = await userApi.getUserProfile(message.senderId);
+          senderName = senderProfile.displayName || senderProfile.username || 'Unknown';
+        }
+      } catch (error) {
+        console.warn('Could not fetch sender profile:', error);
+      }
+
+      // Show enhanced toast notification with click action
+      const notificationMessage = `💬 ${senderName}: ${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}`;
+      
+      addToast(notificationMessage, 'info', {
+        label: 'Open Chat',
+        onClick: () => {
+          router.push(`/chat/${message.chatId}`);
+        }
+      });
+      
+      // Also show browser notification if permission granted
+      notificationService.showBrowserNotification(message, senderName);
+    });
+
+    // Request notification permission on first load
+    notificationService.requestPermission().then(granted => {
+      if (granted) {
+        console.log('✅ Browser notifications enabled for chat messages');
+      } else {
+        console.log('💡 Tip: Enable browser notifications to get alerts for new messages when the app is not active');
+      }
+    }).catch(console.warn);
+
+    return () => {
+      removeNotificationHandler();
+    };
+  }, [addToast, router]);
 
   // Close notifications dropdown when clicking outside
   useEffect(() => {
@@ -100,17 +200,30 @@ export default function AppLayout({ children }: AppLayoutProps) {
     };
   }, [notificationsOpen]);
 
-  const loadFriendRequests = async (userId: string) => {
+  const loadFriendRequests = useCallback(async (userId: string) => {
+    // Prevent multiple simultaneous requests
+    if (isLoadingNotifications || loadedFriendRequestsRef.current) {
+      console.log('Friend requests already loading/loaded, skipping...');
+      return;
+    }
+
+    loadedFriendRequestsRef.current = true;
+
     try {
       setIsLoadingNotifications(true);
       const requests = await userApi.getPendingFriendRequests(userId);
       setFriendRequests(requests);
     } catch (error) {
       console.error('Failed to load friend requests:', error);
+      // On service unavailable, set empty array to prevent retries
+      if (error instanceof Error && error.message.includes('service unavailable')) {
+        console.warn('🚫 User service unavailable - setting empty friend requests');
+        setFriendRequests([]);
+      }
     } finally {
       setIsLoadingNotifications(false);
     }
-  };
+  }, [isLoadingNotifications]);
 
   const handleAcceptRequest = async (requestId: string) => {
     if (!user || !requestId) {
@@ -122,8 +235,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       await userApi.acceptFriendRequest(requestId, user.id);
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      // No need to refresh - state is already updated
     } catch (error) {
       console.error('Failed to accept friend request:', error);
     }
@@ -139,8 +251,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       await userApi.declineFriendRequest(requestId, user.id);
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      // No need to refresh - state is already updated
     } catch (error) {
       console.error('Failed to decline friend request:', error);
     }
@@ -148,6 +259,57 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Real-time friend request updates - handled by useFriendHub hook in individual pages
   // Removed duplicate event handler setup to prevent infinite loop
+
+  const handleLikeSong = async () => {
+    if (!state.currentSong || !user || isLiking) return;
+
+    try {
+      setIsLiking(true);
+      
+      // Import playlist service
+      const { PlaylistService } = await import('@/lib/playlist');
+      
+      let playlistId = likedSongsPlaylistId;
+      
+      // Create "Liked Songs" playlist if it doesn't exist
+      if (!playlistId) {
+        try {
+          // First, check if a "Liked Songs" playlist already exists
+          const userPlaylists = await PlaylistService.getUserPlaylists(user.id);
+          const existingLikedSongs = userPlaylists.find(p => p.name === 'Liked Songs');
+          
+          if (existingLikedSongs) {
+            playlistId = existingLikedSongs.id;
+          } else {
+            // Create new "Liked Songs" playlist
+            const newPlaylist = await PlaylistService.createPlaylist(user.id, {
+              name: 'Liked Songs',
+              description: 'Your favorite songs'
+            });
+            playlistId = newPlaylist.id;
+          }
+          
+          setLikedSongsPlaylistId(playlistId);
+        } catch (error) {
+          console.error('Failed to create/find Liked Songs playlist:', error);
+          return;
+        }
+      }
+      
+      // Add song to "Liked Songs" playlist
+      if (playlistId) {
+        await PlaylistService.addSongToPlaylist(playlistId, state.currentSong.id);
+        setIsLiked(true);
+        
+        // Show success feedback
+        setTimeout(() => setIsLiked(false), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to like song:', error);
+    } finally {
+      setIsLiking(false);
+    }
+  };
 
   const handleLogout = () => {
     identityApi.logout();
@@ -177,9 +339,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
     setVolume(Math.max(0, Math.min(1, percent)));
   };
 
+  // Close sidebar on mobile when navigating
+  const handleNavClick = () => {
+    // Only close sidebar on mobile (screen width < 1024px)
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
   const navigation = [
     { name: "Home", href: "/dashboard", icon: HomeIcon, current: pathname === "/dashboard" },
-  { name: "Feed", href: "/feed", icon: NewspaperIcon, current: pathname === "/feed" },
+    { name: "Feed", href: "/feed", icon: NewspaperIcon, current: pathname === "/feed" },
     { name: "Browse", href: "/music", icon: MusicalNoteIcon, current: pathname === "/music" },
     { name: "Search", href: "/search", icon: MagnifyingGlassIcon, current: pathname === "/search" },
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
@@ -235,18 +405,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition-transform duration-300 ease-in-out flex flex-col`}>
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
         {/* Sidebar header */}
-        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
+        <div className="flex items-center justify-center h-16 px-6 border-b border-gray-800">
           <Link href="/dashboard" className="flex items-center space-x-3">
             <Image src="/logo.svg" alt="Spotibuds Logo" width={200} height={60} className="h-12 w-auto" priority />
+            <span className="text-2xl font-bold text-white">Spotibuds</span>
           </Link>
-          <button
-            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
         </div>
 
         {/* Navigation */}
@@ -260,7 +425,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   ? "bg-purple-900 text-purple-100"
                   : "text-gray-300 hover:bg-gray-800 hover:text-white"
               }`}
-              onClick={() => setSidebarOpen(false)}
+              onClick={handleNavClick}
             >
               <item.icon className="mr-3 h-5 w-5" />
               {item.name}
@@ -281,18 +446,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Main content area */}
-      <div className="lg:pl-64">
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'pl-64' : 'pl-0'}`}>
         {/* Top Navigation Bar */}
         <header className="sticky top-0 z-30 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               
-              {/* Mobile menu button */}
+              {/* Sidebar toggle button (all screen sizes) */}
               <button
-                className="lg:hidden p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
-                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
               >
-                <Bars3Icon className="h-6 w-6" />
+                {sidebarOpen ? (
+                  <XMarkIcon className="h-6 w-6" />
+                ) : (
+                  <Bars3Icon className="h-6 w-6" />
+                )}
               </button>
 
               {/* Search Bar */}
@@ -397,13 +567,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors"
                   >
                     {user?.avatarUrl ? (
-                      <MusicImage
-                        src={user.avatarUrl}
-                        alt={user.username}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
+                        <MusicImage
+                          src={user.avatarUrl}
+                          alt={user.username || 'User'}
+                          className="w-full h-full object-cover"
+                          size="small"
+                        />
+                      </div>
                     ) : (
-                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                      <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-white font-bold text-sm">
                           {safeString(user?.username).charAt(0).toUpperCase()}
                         </span>
@@ -527,8 +700,17 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       'Select a song'}
                   </p>
                 </div>
-                <button className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0">
-                  <HeartIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                <button 
+                  onClick={handleLikeSong}
+                  className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                  title="Add to Liked Songs"
+                  disabled={!state.currentSong || isLiking}
+                >
+                  {isLiking ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
+                  ) : (
+                    <HeartIcon className={`w-5 h-5 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-white'}`} />
+                  )}
                 </button>
               </div>
 
@@ -576,6 +758,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     onClick={previousSong}
                     className="p-2 rounded-full hover:bg-gray-700 transition-colors"
                     disabled={!state.currentSong}
+                    title="Previous song (or restart if >3s)"
                   >
                     <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   </button>
@@ -606,7 +789,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     disabled={!state.currentSong}
                     title="Skip forward 10s"
                   >
-                    <ArrowUturnLeftIcon className="w-4 h-4 text-gray-400 hover:text-white transform scale-x-[-1]" />
+                    <ArrowUturnRightIcon className="w-4 h-4 text-gray-400 hover:text-white" />
                   </button>
                 </div>
                 
@@ -644,11 +827,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </span>
                   )}
                 </button>
-                <button className="p-2 rounded-full hover:bg-gray-700 transition-colors">
-                  {state.volume > 0 ? (
-                    <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
-                  ) : (
+                <button 
+                  onClick={toggleMute}
+                  className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                  title={state.isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {state.isMuted || state.volume === 0 ? (
                     <SpeakerXMarkIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  ) : (
+                    <SpeakerWaveIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   )}
                 </button>
                 <div 

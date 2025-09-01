@@ -152,22 +152,38 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   //   });
   // }
 
-  // Add timeout to prevent hanging - longer timeout for registration
+  // Add timeout to prevent hanging - longer timeout for registration and chat endpoints
   const controller = new AbortController();
   const isRegistration = url.includes('/api/auth/register');
   const isFeedEndpoint = url.includes('/api/feed/');
-  const timeoutDuration = isRegistration ? 30000 : isFeedEndpoint ? 15000 : 10000; // Longer timeout for feed endpoints
+  const isChatEndpoint = url.includes('/api/chats/');
+  const timeoutDuration = isRegistration ? 30000 : 
+                         isChatEndpoint ? 20000 : 
+                         isFeedEndpoint ? 15000 : 10000; // Longer timeout for chat endpoints
   const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
   try {
-    const response = await fetch(url, {
+    // Only include credentials for User service and Identity service
+    // Music service uses wildcard CORS which doesn't support credentials
+    const isMusicService = url.includes('music-spotibuds');
+    const needsCredentials = token && !isMusicService;
+    
+    const fetchOptions: RequestInit = {
       ...options,
       signal: controller.signal,
+      mode: 'cors', // Explicitly handle CORS
       headers: {
         ...defaultHeaders,
         ...options?.headers,
       },
-    });
+    };
+    
+    // Add credentials only for non-Music services
+    if (needsCredentials) {
+      fetchOptions.credentials = 'include';
+    }
+    
+    const response = await fetch(url, fetchOptions);
 
     clearTimeout(timeoutId);
 
@@ -268,6 +284,34 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
         : 'Request timeout - service unavailable';
       throw new Error(timeoutMessage);
     }
+    // Handle CORS and network errors in production
+    if (error instanceof TypeError && (
+      error.message.includes('NetworkError') || 
+      error.message.includes('Failed to fetch') ||
+      error.message.includes('CORS')
+    )) {
+      const isMusicService = url.includes('music-spotibuds');
+      const isUserService = url.includes('user-spotibuds');
+      const isIdentityService = url.includes('identity-spotibuds');
+      
+      console.warn('Network/CORS error detected:', {
+        message: error.message,
+        url: url,
+        service: isMusicService ? 'Music' : isUserService ? 'User' : isIdentityService ? 'Identity' : 'Unknown',
+        isProduction: typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
+      });
+      
+      let errorMessage = 'Service unavailable - please try again later';
+      if (isMusicService) {
+        errorMessage = 'Music service temporarily unavailable';
+      } else if (isUserService) {
+        errorMessage = 'User service temporarily unavailable';
+      } else if (isIdentityService) {
+        errorMessage = 'Authentication service temporarily unavailable';
+      }
+      
+      throw new Error(errorMessage);
+    }
     throw error;
   }
 }
@@ -365,6 +409,7 @@ export interface Playlist {
   id: string;
   name: string;
   description?: string;
+  coverUrl?: string;
   songs: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -770,6 +815,35 @@ export const musicApi = {
       }
     }
   },
+
+  // Playlist cover image functions
+  async uploadPlaylistCover(playlistId: string, file: File): Promise<{ coverUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+      throw new Error(error.message || 'Failed to upload playlist cover');
+    }
+
+    return response.json();
+  },
+
+  async deletePlaylistCover(playlistId: string): Promise<void> {
+    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Delete failed' }));
+      throw new Error(error.message || 'Failed to delete playlist cover');
+    }
+  },
 };
 
 export const userApi = {
@@ -826,6 +900,30 @@ export const userApi = {
         isPrivate: userData.isPrivate,
         createdAt: userData.createdAt
       };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  getUserProfilesBatch: async (userIds: string[]): Promise<User[]> => {
+    try {
+      const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/batch`, {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      });
+      
+      return userDtos.map(userData => ({
+        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
+        username: userData.userName,
+        displayName: userData.displayName,
+        bio: userData.bio,
+        avatarUrl: userData.avatarUrl,
+        followers: userData.followers.length,
+        following: userData.followedUsers.length,
+        playlists: userData.playlists.length, // Convert to count
+        isPrivate: userData.isPrivate,
+        createdAt: userData.createdAt
+      }));
     } catch (error) {
       throw error;
     }
@@ -1028,19 +1126,91 @@ export const userApi = {
 
   // Feed slides
   getFeedSlides: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<any>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
+    apiRequest<Array<Record<string, unknown>>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
 
   // Reactions
-  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }) =>
-    apiRequest<{ success: boolean; message: string }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
+  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }) =>
+    apiRequest<{ success: boolean; message: string; action: "added" | "removed" }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
 
   getLatestReactions: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string }>>(
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }>>(
       `${API_CONFIG.USER_API}/api/feed/reactions/latest?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
     ),
+
+  getReactionsByPost: (postId: string, currentUserId?: string) =>
+    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/by-post?postId=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`
+    ),
+
+  getPostById: (postId: string, currentUserId?: string) =>
+    apiRequest<{ type: string; identityUserId: string; [key: string]: unknown }>(`${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`),
+
+  // Now Playing
+  setNowPlaying: (payload: { identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec?: number; isPlaying?: boolean }, ttlSec = 90) =>
+    apiRequest<{ success: boolean }>(`${API_CONFIG.USER_API}/api/feed/nowplaying?ttlSec=${ttlSec}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  
+  getNowPlayingBatch: (userIds: string[]) =>
+    apiRequest<Array<{ identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec?: number; isPlaying?: boolean; updatedAt: string }>>(
+      `${API_CONFIG.USER_API}/api/feed/nowplaying/batch`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      }
+    ),
+
+  clearNowPlaying: (identityUserId: string) =>
+    apiRequest<{ success: boolean }>(`${API_CONFIG.USER_API}/api/feed/nowplaying/${encodeURIComponent(identityUserId)}`, {
+      method: 'DELETE',
+    }),
+
+  // Profile picture upload
+  uploadProfilePicture: async (userId: string, file: File): Promise<{ avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch(`${API_CONFIG.USER_API}/api/users/${userId}/profile-picture`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type for FormData, let the browser set it with boundary
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  },
+
+  uploadProfilePictureByIdentityId: async (identityUserId: string, file: File): Promise<{ avatarUrl: string }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/profile-picture`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        // Don't set Content-Type for FormData, let the browser set it with boundary
+        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    return response.json();
+  },
 }; 
 
 export interface FollowStats {

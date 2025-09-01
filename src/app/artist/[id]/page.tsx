@@ -2,8 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
-
 import MusicImage from '@/components/ui/MusicImage';
 import SongCard from '@/components/SongCard';
 import AlbumPlayButton from '@/components/ui/AlbumPlayButton';
@@ -81,20 +79,20 @@ export default function ArtistPage() {
 
   if (loading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">Loading artist...</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (error || !artist) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <p className="text-red-400 mb-4">{error || 'Artist not found'}</p>
@@ -106,12 +104,12 @@ export default function ArtistPage() {
             </button>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
       <div className="min-h-screen">
         {/* Artist Hero Section */}
         <div className="relative bg-gradient-to-b from-purple-900/20 via-gray-900/50 to-gray-900">
@@ -237,6 +235,6 @@ export default function ArtistPage() {
           )}
         </div>
       </div>
-    </AppLayout>
+    </>
   );
 } 

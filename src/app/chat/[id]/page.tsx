@@ -4,13 +4,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
 import { userApi, identityApi } from '../../../lib/api';
+import { notificationService } from '../../../lib/notificationService';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Toast } from '../../../components/ui/Toast';
 import MusicImage from '../../../components/ui/MusicImage';
-import AppLayout from '@/components/layout/AppLayout';
-
 interface User {
   id: string;
   username: string;
@@ -209,6 +208,17 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  // Set current chat ID for notification service
+  useEffect(() => {
+    if (chatId) {
+      notificationService.setCurrentChatId(chatId);
+    }
+    
+    return () => {
+      notificationService.setCurrentChatId(null);
+    };
+  }, [chatId]);
+
   useEffect(() => {
     scrollToBottom();
   }, [chatMessages, scrollToBottom]);
@@ -283,33 +293,33 @@ export default function ChatPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-4 text-gray-400">Loading chat...</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (!currentUser) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="text-center">
             <h2 className="text-xl font-semibold text-white mb-2">Authentication Required</h2>
             <p className="text-gray-400">Please log in to access this chat.</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   if (!chat) {
     return (
-      <AppLayout>
+      <>
         <div className="p-6 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -321,12 +331,12 @@ export default function ChatPage() {
             <p className="text-gray-400">This chat doesn&apos;t exist or you don&apos;t have access to it.</p>
           </div>
         </div>
-      </AppLayout>
+      </>
     );
   }
 
   return (
-    <AppLayout>
+    <>
   <div className="fixed inset-x-0 top-16 bottom-28 lg:left-64">
         <div className="flex flex-col h-full">
           {/* Chat Header */}
@@ -465,6 +475,6 @@ export default function ChatPage() {
           />
         ))}
       </div>
-    </AppLayout>
+    </>
   );
 }

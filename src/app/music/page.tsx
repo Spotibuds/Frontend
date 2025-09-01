@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AppLayout from '@/components/layout/AppLayout';
 import Slider from '@/components/ui/Slider';
 import MusicImage from '@/components/ui/MusicImage';
 import SongCard from '@/components/SongCard';
@@ -68,38 +67,33 @@ export default function MusicPage() {
 
   if (loading) {
     return (
-      <AppLayout>
-        <div className="p-6 space-y-8">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading music...</p>
-          </div>
+      <div className="p-6 space-y-8">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading music...</p>
         </div>
-      </AppLayout>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <AppLayout>
-        <div className="p-6 space-y-8">
-          <div className="text-center">
-            <p className="text-red-400 mb-4">{error}</p>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-            >
-              Retry
-            </button>
-          </div>
+      <div className="p-6 space-y-8">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+          >
+            Retry
+          </button>
         </div>
-      </AppLayout>
+      </div>
     );
   }
 
   return (
-    <AppLayout>
-      <div className="p-6 space-y-8">
+    <div className="p-6 space-y-8">
 
         {/* Albums Section */}
         {albums.length > 0 && (
@@ -219,6 +213,5 @@ export default function MusicPage() {
           </div>
         )}
       </div>
-    </AppLayout>
   );
 }
