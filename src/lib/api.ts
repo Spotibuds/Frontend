@@ -384,6 +384,20 @@ export interface User {
   roles?: string[];
 }
 
+export interface UserAdmin {
+  id: string;
+  email?: string;
+  userName: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  isPrivate?: boolean;
+  followers?: number;
+  following?: number;
+  playlists?: number;
+  roles?: string[];
+}
+
 export interface UserDto {
   id: string;
   identityUserId: string;
@@ -1233,19 +1247,6 @@ export const adminApi = {
     }
   },
 
-  async addSongToPlaylist(playlistId: string, songId: string): Promise<boolean> {
-    try {
-       const res = await fetch(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`, {
-        method: "POST",
-        body: JSON.stringify({ songId }),
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to add song to playlist:", error);
-      return false;
-    }
-  },
-
   async deletePlaylist(id: string): Promise<boolean> {
     try {
       await apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${id}`, {
@@ -1314,9 +1315,9 @@ export const adminApi = {
   }
 },
 
-async getAllUsers(): Promise<User[]> {
+async getAllUsers(): Promise<UserAdmin[]> {
     try {
-      const response = await apiRequest<User[]>(`${API_CONFIG.IDENTITY_API}/api/auth/users`);
+      const response = await apiRequest<UserAdmin[]>(`${API_CONFIG.IDENTITY_API}/api/auth/users`);
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.error("Failed to fetch all users:", error);
@@ -1324,9 +1325,9 @@ async getAllUsers(): Promise<User[]> {
     }
   },
 
-  async getAllAdmins(): Promise<User[]> {
+  async getAllAdmins(): Promise<UserAdmin[]> {
     try {
-      const response = await apiRequest<User[]>(`${API_CONFIG.IDENTITY_API}/api/auth/admins`);
+      const response = await apiRequest<UserAdmin[]>(`${API_CONFIG.IDENTITY_API}/api/auth/admins`);
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.error("Failed to fetch all admins:", error);

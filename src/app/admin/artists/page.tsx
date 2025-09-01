@@ -7,6 +7,7 @@ import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
+import Image from "next/image";
 
 const MySwal = withReactContent(Swal);
 
@@ -329,10 +330,12 @@ export default function AdminPageForArtists() {
                 />
               </label>
               {imagePreview && (
-                <img
+                <Image
                   src={imagePreview}
                   alt="preview"
-                  className="w-24 h-24 object-cover mb-2 rounded"
+                  width={96} 
+                  height={96} 
+                  className="object-cover mb-2 rounded"
                 />
               )}
               <div className="flex justify-end space-x-2 mt-4">

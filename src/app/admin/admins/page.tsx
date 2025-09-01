@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import SidebarNavigation from "@/components/AdminNavigation";
-import { adminApi, type User } from "@/lib/api";
+import { adminApi, type UserAdmin } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 
 const MySwal = withReactContent(Swal);
 
 export default function AdminPageAdmins() {
-  const [admins, setAdmins] = useState<User[]>([]);
+  const [admins, setAdmins] = useState<UserAdmin[]>([]);
   const [loading, setLoading] = useState(true);
 
   // For creating new admin

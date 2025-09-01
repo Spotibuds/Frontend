@@ -7,6 +7,7 @@ import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Album, type Song, type Artist } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
+import Image from "next/image";
 
 const MySwal = withReactContent(Swal);
 
@@ -93,7 +94,7 @@ export default function AdminPageForAlbums() {
     fetchArtists();
   }, []);
 
-  
+
 
   // Filter artists dynamically
   useEffect(() => {
@@ -393,10 +394,12 @@ export default function AdminPageForAlbums() {
               {coverPreview && (
                 <div className="mt-3">
                   <p className="text-gray-400 text-sm mb-1">Cover Preview:</p>
-                  <img
+                  <Image
                     src={coverPreview}
                     alt="Cover Preview"
-                    className="w-32 h-32 object-cover rounded shadow-md mx-auto"
+                    width={128} 
+                    height={128} 
+                    className="object-cover rounded shadow-md mx-auto"
                   />
                 </div>
               )}
