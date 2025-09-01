@@ -21,10 +21,16 @@ export default function LoginPage() {
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
 
-  // Prevent hydration mismatches
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("currentUser");
+    if (storedUser) {
+      router.push("/dashboard");
+    }
+  }, [router]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -43,7 +49,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     setLoading(true);
@@ -53,7 +59,8 @@ export default function LoginPage() {
       await identityApi.login(formData);
       router.push("/dashboard");
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Login failed";
+      const errorMessage =
+        error instanceof Error ? error.message : "Login failed";
       setErrors({ general: errorMessage });
     } finally {
       setLoading(false);
@@ -63,11 +70,12 @@ export default function LoginPage() {
   const handleInputChange = (field: keyof LoginRequest) => (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const value =
+      e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setFormData((prev) => ({ ...prev, [field]: value }));
     // Clear field error when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: "" }));
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
   };
 
@@ -75,10 +83,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <Image 
-          src="/logo.svg" 
-          alt="Spotibuds Logo" 
-          width={200} 
+        <Image
+          src="/logo.svg"
+          alt="Spotibuds Logo"
+          width={200}
           height={60}
           priority
           className="h-12 w-auto"
@@ -88,10 +96,14 @@ export default function LoginPage() {
       {/* Login Form */}
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl gradient-text">Welcome Back</CardTitle>
-          <p className="text-gray-400 mt-2">Sign in to your account to continue</p>
+          <CardTitle className="text-3xl gradient-text">
+            Welcome Back
+          </CardTitle>
+          <p className="text-gray-400 mt-2">
+            Sign in to your account to continue
+          </p>
         </CardHeader>
-        
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.general && (
@@ -126,7 +138,6 @@ export default function LoginPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {/* Use a stable single container to avoid DOM insertion issues */}
                 <span className="block h-5 w-5">
                   {isMounted && showPassword ? (
                     <EyeSlashIcon className="h-5 w-5" />
@@ -138,7 +149,6 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center justify-end">
-              
               <Link
                 href="/forgot-password"
                 className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
@@ -172,4 +182,4 @@ export default function LoginPage() {
       </Card>
     </div>
   );
-} 
+}

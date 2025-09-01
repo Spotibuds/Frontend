@@ -12,6 +12,7 @@ import {
   MusicalNoteIcon,
   MagnifyingGlassIcon,
   UserGroupIcon,
+  BriefcaseIcon,
 
   ChatBubbleLeftRightIcon,
   NewspaperIcon,
@@ -72,6 +73,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [likedSongsPlaylistId, setLikedSongsPlaylistId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
   const loadedFriendRequestsRef = useRef(false);
   const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, toggleMute, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
@@ -104,13 +106,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
     setTimeout(() => removeToast(id), action ? 8000 : 5000); // Longer duration for actionable toasts
   }, [removeToast]);
 
-
-
+  
   useEffect(() => {
     const initializeUser = async () => {
       const currentUser = identityApi.getCurrentUser();
       if (currentUser) {
         setIsLoggedIn(true);
+        setIsAdmin(currentUser.roles?.includes("Admin") || false);
         
         // Load full user profile to get avatar and other details
         try {
@@ -353,6 +355,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
     { name: "Playlists", href: "/playlists", icon: ListBulletIcon, current: pathname === "/playlists" },
     { name: "Friends", href: "/friends", icon: UserGroupIcon, current: pathname === "/friends" },
     { name: "Chat", href: "/chat", icon: ChatBubbleLeftRightIcon, current: pathname === "/chat" },
+   ...(isAdmin
+    ? [{
+        name: "Admin",
+        href: "/admin",
+        icon: BriefcaseIcon,
+        current: pathname.startsWith("/admin") 
+      }]
+    : []),
   ];
 
   if (isLoading) {
