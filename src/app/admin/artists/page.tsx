@@ -29,11 +29,9 @@ export default function AdminPageForArtists() {
     bio?: string;
     imageFile?: File;
     albums?: string[];
-    createdAt?: string;
   }>({
     name: "",
     id: "",
-    createdAt: "",
   });
 
   const [imagePreview, setImagePreview] = useState<string | undefined>();
@@ -121,7 +119,7 @@ export default function AdminPageForArtists() {
 
   // Open modals
   const openCreateModal = () => {
-    setModalData({ name: "", id: "", createdAt: "" });
+    setModalData({ name: "", id: "" });
     setImagePreview(undefined);
     setIsCreateModalOpen(true);
   };
@@ -131,7 +129,6 @@ export default function AdminPageForArtists() {
       id: artist.id,
       name: artist.name,
       bio: artist.bio || "",
-      createdAt: artist.createdAt || "",
     });
     setImagePreview(artist.imageUrl);
     setIsUpdateModalOpen(true);
@@ -159,7 +156,6 @@ export default function AdminPageForArtists() {
       const formData = new FormData();
       formData.append("Name", modalData.name);
       if (modalData.bio) formData.append("Bio", modalData.bio);
-      if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
       if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const newArtist = await adminApi.createArtist(formData);
@@ -187,7 +183,6 @@ export default function AdminPageForArtists() {
       const formData = new FormData();
       formData.append("Name", modalData.name);
       if (modalData.bio) formData.append("Bio", modalData.bio);
-      if (modalData.createdAt) formData.append("CreatedAt", modalData.createdAt);
       if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const updatedArtist = await adminApi.updateArtist(modalData.id!, formData);
@@ -314,20 +309,25 @@ export default function AdminPageForArtists() {
                 value={modalData.bio}
                 onChange={handleModalChange}
               />
-              <input
-                type="date"
-                name="createdAt"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.createdAt}
-                onChange={handleModalChange}
-              />
-              <input
-                type="file"
-                name="imageFile"
-                accept="image/*"
-                className="w-full mb-2"
-                onChange={handleModalChange}
-              />
+              <label
+                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+                  <path
+                    d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
+                    data-original="#000000" />
+                  <path
+                    d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
+                    data-original="#000000" />
+                </svg>
+                Upload Image
+                <input
+                  type="file"
+                  name="imageFile"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleModalChange}
+                />
+              </label>
               {imagePreview && (
                 <img
                   src={imagePreview}
@@ -335,7 +335,7 @@ export default function AdminPageForArtists() {
                   className="w-24 h-24 object-cover mb-2 rounded"
                 />
               )}
-              <div className="flex justify-end space-x-2">
+              <div className="flex justify-end space-x-2 mt-4">
                 <button
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
                   onClick={() => {
@@ -347,8 +347,8 @@ export default function AdminPageForArtists() {
                 </button>
                 <button
                   className={`${isCreateModalOpen
-                      ? "bg-purple-600 hover:bg-purple-700"
-                      : "bg-yellow-500 hover:bg-yellow-600"
+                    ? "bg-purple-600 hover:bg-purple-700"
+                    : "bg-yellow-500 hover:bg-yellow-600"
                     } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >

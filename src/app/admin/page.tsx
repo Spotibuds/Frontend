@@ -15,6 +15,7 @@ export default function AdminPageForAlbums() {
   const [songsMap, setSongsMap] = useState<Record<string, Song[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   const [artists, setArtists] = useState<Artist[]>([]);
 
@@ -131,13 +132,18 @@ export default function AdminPageForAlbums() {
       releaseDate: album.releaseDate ? album.releaseDate.split("T")[0] : "",
       coverFile: null,
     });
+    setCoverPreview(album.coverUrl || null); // show existing cover
     setIsUpdateModalOpen(true);
   };
 
   const handleModalChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, files } = e.target as HTMLInputElement;
     if (name === "coverFile") {
-      setModalData((prev) => ({ ...prev, coverFile: files?.[0] || null }));
+      const file = files?.[0] || null;
+      setModalData((prev) => ({ ...prev, coverFile: file }));
+      if (file) {
+        setCoverPreview(URL.createObjectURL(file)); // preview new image
+      }
     } else {
       setModalData((prev) => ({ ...prev, [name]: value }));
     }
@@ -307,6 +313,7 @@ export default function AdminPageForAlbums() {
                   </option>
                 ))}
               </select>
+              <label className="text-gray-400 text-sm mb-1">Release Date:</label>
               <input
                 type="date"
                 name="releaseDate"
@@ -314,14 +321,38 @@ export default function AdminPageForAlbums() {
                 value={modalData.releaseDate}
                 onChange={handleModalChange}
               />
-              <input
-                type="file"
-                name="coverFile"
-                accept="image/*"
-                className="w-full mb-4"
-                onChange={handleModalChange}
-              />
-              <div className="flex justify-end space-x-2">
+
+              <label
+                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+                  <path
+                    d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
+                    data-original="#000000" />
+                  <path
+                    d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
+                    data-original="#000000" />
+                </svg>
+                Upload Cover
+                <input
+                  type="file"
+                  name="coverFile"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleModalChange}
+                />
+              </label>
+              {coverPreview && (
+                <div className="mt-3">
+                  <p className="text-gray-400 text-sm mb-1">Cover Preview:</p>
+                  <img
+                    src={coverPreview}
+                    alt="Cover Preview"
+                    className="w-32 h-32 object-cover rounded shadow-md mx-auto"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 mt-4">
                 <button
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
                   onClick={() => {
@@ -332,9 +363,8 @@ export default function AdminPageForAlbums() {
                   Cancel
                 </button>
                 <button
-                  className={`${
-                    isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded`}
+                  className={`${isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
+                    } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

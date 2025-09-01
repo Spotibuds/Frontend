@@ -7,6 +7,7 @@ import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Song, type Artist, type Album } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
+import { blob } from "stream/consumers";
 
 const MySwal = withReactContent(Swal);
 
@@ -32,7 +33,6 @@ export default function AdminPageForSongs() {
     coverFile?: File | null;
     audioFile?: File | null;
     createdAt?: string;
-    releaseDate?: string;
   }>({
     title: "",
     id: "",
@@ -127,11 +127,11 @@ export default function AdminPageForSongs() {
       id: song.id,
       title: song.title || "",
       genre: song.genre,
-      releaseDate: song.releaseDate,
       artists: song.artists || [],
       album: song.album,
       durationSec: song.durationSec || 0,
     });
+    console.log(song.coverUrl);
     setCoverPreview(song.coverUrl);
     const fetchedArtists = await musicApi.getArtists();
     setArtists(fetchedArtists);
@@ -198,7 +198,6 @@ export default function AdminPageForSongs() {
       formData.append("AlbumId", modalData.album.id);
       formData.append("Genre", modalData.genre || "");
       formData.append("Duration", modalData.durationSec.toString());
-      if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
       formData.append("AudioFile", modalData.audioFile!);
 
@@ -230,9 +229,9 @@ export default function AdminPageForSongs() {
       formData.append("AlbumId", modalData.album.id);
       formData.append("Genre", modalData.genre || "");
       formData.append("Duration", modalData.durationSec.toString());
-      if (modalData.releaseDate) formData.append("ReleaseDate", modalData.releaseDate);
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
       if (modalData.audioFile) formData.append("AudioFile", modalData.audioFile);
+      else formData.append("AudioFile", new Blob());
 
       const updatedSong = await adminApi.updateSong(modalData.id, formData);
       if (updatedSong) {
@@ -357,13 +356,7 @@ export default function AdminPageForSongs() {
                 value={modalData.genre || ""}
                 onChange={handleModalChange}
               />
-              <input
-                type="date"
-                name="releaseDate"
-                className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
-                value={modalData.releaseDate || ""}
-                onChange={handleModalChange}
-              />
+
               <select
                 name="artist"
                 value={modalData.artists[0]?.id || ""}
@@ -390,14 +383,28 @@ export default function AdminPageForSongs() {
                   </option>
                 ))}
               </select>
+              <label className="text-gray-400 text-sm mb-1">Cover Image:</label>
+              <label
+                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+                  <path
+                    d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
+                    data-original="#000000" />
+                  <path
+                    d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
+                    data-original="#000000" />
+                </svg>
+                Upload Cover
+                <input
+                  type="file"
+                  name="coverFile"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleModalChange}
+                />
+                
+              </label>
 
-              <input
-                type="file"
-                name="coverFile"
-                accept="image/*"
-                className="w-full mb-2"
-                onChange={handleModalChange}
-              />
               {coverPreview && (
                 <img
                   src={coverPreview}
@@ -406,13 +413,26 @@ export default function AdminPageForSongs() {
                 />
               )}
 
-              <input
-                type="file"
-                name="audioFile"
-                accept=".mp3,.wav,.flac,.m4a,.ogg"
-                className="w-full mb-2"
-                onChange={handleModalChange}
-              />
+              <label className="text-gray-400 text-sm mb-1">Audio File:</label>
+              <label
+                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+                  <path
+                    d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
+                    data-original="#000000" />
+                  <path
+                    d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
+                    data-original="#000000" />
+                </svg>
+                Upload Audio
+                <input
+                  type="file"
+                  name="audioFile"
+                  accept=".mp3,.wav,.flac,.m4a,.ogg"
+                  className="hidden"
+                  onChange={handleModalChange}
+                />
+              </label>
               {!modalData.audioFile && !isCreateModalOpen && (
                 <p className="text-gray-400 mb-2">Audio file exists. Select a new file to replace it.</p>
               )}
@@ -429,11 +449,10 @@ export default function AdminPageForSongs() {
                   Cancel
                 </button>
                 <button
-                  className={`${
-                    isCreateModalOpen
-                      ? "bg-purple-600 hover:bg-purple-700"
-                      : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded`}
+                  className={`${isCreateModalOpen
+                    ? "bg-purple-600 hover:bg-purple-700"
+                    : "bg-yellow-500 hover:bg-yellow-600"
+                    } text-white px-4 py-2 rounded`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}
