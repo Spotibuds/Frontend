@@ -22,6 +22,7 @@ interface FriendHubState {
   lastFriendRequestReceived?: FriendRequest;
   lastFriendRequestAccepted?: { requestId: string; friendId: string; friendName: string; friendAvatar?: string };
   lastFriendRequestDeclined?: { requestId: string };
+  lastFriendRequestSent?: { requestId: string; targetUserId: string; timestamp: string };
   lastFriendRemoved?: { friendId: string };
 }
 
@@ -40,6 +41,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     lastFriendRequestReceived: undefined,
     lastFriendRequestAccepted: undefined,
     lastFriendRequestDeclined: undefined,
+    lastFriendRequestSent: undefined,
     lastFriendRemoved: undefined
   });
 
@@ -205,6 +207,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       lastFriendRequestReceived: undefined,
       lastFriendRequestAccepted: undefined,
       lastFriendRequestDeclined: undefined,
+      lastFriendRequestSent: undefined,
       lastFriendRemoved: undefined
     }));
   }, []);
@@ -271,12 +274,23 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       }));
     });
 
+    friendHubManager.setOnFriendRequestSent((data) => {
+      setState(prev => ({
+        ...prev,
+        lastFriendRequestSent: {
+          requestId: data.requestId,
+          targetUserId: data.targetUserId,
+          timestamp: data.timestamp
+        }
+      }));
+    });
+
     friendHubManager.setOnFriendRemoved((data) => {
       setState(prev => ({
         ...prev,
-        friends: prev.friends.filter(friend => friend.id !== data.removedFriendId),
-        chats: prev.chats.filter(chat => !chat.participants.includes(data.removedFriendId)),
-        lastFriendRemoved: { friendId: data.removedFriendId }
+        friends: prev.friends.filter(friend => friend.id !== data.RemovedFriendId),
+        chats: prev.chats.filter(chat => !chat.participants.includes(data.RemovedFriendId)),
+        lastFriendRemoved: { friendId: data.RemovedFriendId }
       }));
     });
 
@@ -378,6 +392,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       friendHubManager.setOnFriendRequestReceived(null);
       friendHubManager.setOnFriendRequestAccepted(null);
       friendHubManager.setOnFriendRequestDeclined(null);
+      friendHubManager.setOnFriendRequestSent(null);
       friendHubManager.setOnFriendRemoved(null);
       friendHubManager.setOnFriendStatusChanged(null);
       friendHubManager.setOnMessageReceived(null);

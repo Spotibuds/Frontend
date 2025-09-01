@@ -36,9 +36,11 @@ export default function FriendsPage() {
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
+    // Longer timeout for better user feedback
+    const timeout = type === 'success' ? 4000 : type === 'error' ? 6000 : 5000;
     setTimeout(() => {
       setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
+    }, timeout);
   }, []);
 
   const removeToast = useCallback((id: string) => {
@@ -58,6 +60,7 @@ export default function FriendsPage() {
     lastFriendRequestReceived,
     lastFriendRequestAccepted,
     lastFriendRequestDeclined,
+    lastFriendRequestSent,
     lastFriendRemoved,
     clearLastEvents
   } = useFriendHub({
@@ -157,10 +160,21 @@ export default function FriendsPage() {
     if (lastFriendRequestAccepted) {
       addToast(`Friend request accepted!`, 'success');
       setFriendRequests(prev => prev.filter(req => req.requestId !== lastFriendRequestAccepted.requestId));
-      loadFriends(); // Reload friends list to show the new friend
+      
+      // Add the new friend to the local friends state
+      const newFriend: User = {
+        id: lastFriendRequestAccepted.friendId,
+        username: lastFriendRequestAccepted.friendName,
+        avatarUrl: lastFriendRequestAccepted.friendAvatar,
+        displayName: lastFriendRequestAccepted.friendName,
+        bio: '',
+        isPrivate: false
+      };
+      setFriends(prev => [...prev, newFriend]);
+      
       clearLastEvents();
     }
-  }, [lastFriendRequestAccepted, clearLastEvents, loadFriends, addToast]);
+  }, [lastFriendRequestAccepted, clearLastEvents, addToast]);
 
   // Handle real-time friend request declined
   useEffect(() => {
@@ -170,6 +184,14 @@ export default function FriendsPage() {
       clearLastEvents();
     }
   }, [lastFriendRequestDeclined, clearLastEvents, addToast]);
+
+  // Handle real-time friend request sent
+  useEffect(() => {
+    if (lastFriendRequestSent) {
+      addToast(`Friend request sent successfully!`, 'success');
+      clearLastEvents();
+    }
+  }, [lastFriendRequestSent, clearLastEvents, addToast]);
 
   // Handle real-time friend removed
   useEffect(() => {
@@ -236,11 +258,10 @@ export default function FriendsPage() {
     setProcessingRequests(prev => new Set([...prev, targetUserId]));
     try {
       await userApi.sendFriendRequest(currentUser.id, targetUserId);
-      addToast('Friend request sent!', 'success');
+      // Don't show manual toast - let SignalR handle the success notification
       console.log('Adding to sentRequests:', targetUserId);
       setSentRequests(prev => new Set([...prev, targetUserId]));
-      // Refresh the page to update the UI
-      window.location.reload();
+      // Don't reload friend requests - this was causing sent requests to appear in your own box
     } catch (error: unknown) {
       console.error('Send friend request error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -248,7 +269,7 @@ export default function FriendsPage() {
         addToast('Friend request already pending', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
       } else if (errorMessage.includes('already friends')) {
-        addToast('Users are already friends', 'info');
+        addToast('You are already friends with this user', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
       } else {
         addToast(`Failed to send friend request: ${errorMessage}`, 'error');
@@ -275,9 +296,8 @@ export default function FriendsPage() {
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
       // Reload friends list to show the new friend
-      loadFriends();
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      await loadFriends();
+      // No need to reload page - state updates will handle UI changes
     } catch (error: unknown) {
       console.error('Accept friend request error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -303,8 +323,7 @@ export default function FriendsPage() {
       addToast('Friend request declined', 'info');
       // Remove from local state immediately
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // Refresh the page to ensure all data is up to date
-      window.location.reload();
+      // No need to reload page - state updates will handle UI changes
     } catch (error: unknown) {
       console.error('Decline friend request error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -323,10 +342,20 @@ export default function FriendsPage() {
     
     setProcessingFriends(prev => new Set([...prev, friendId]));
     try {
-      // For now, just remove from local state since we don't have friendship IDs
-      setFriends(prev => prev.filter(friend => friend.id !== friendId));
-      addToast('Friend removed', 'info');
-    } catch {
+      // Get the friendship ID first
+      const friendship = await userApi.getFriendshipStatus(currentUser.id, friendId);
+      if (!friendship.friendshipId) {
+        addToast('Could not find friendship to remove', 'error');
+        return;
+      }
+
+      // Remove the friend via API
+      await userApi.removeFriend(friendship.friendshipId, currentUser.id);
+      
+      // The real-time SignalR event will handle UI updates
+      addToast('Friend removed successfully', 'success');
+    } catch (error) {
+      console.error('Failed to remove friend:', error);
       addToast('Failed to remove friend', 'error');
     } finally {
       setProcessingFriends(prev => {

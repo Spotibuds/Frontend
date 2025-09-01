@@ -554,6 +554,57 @@ export interface UpdatePlaylistDto
     Description :string;
 } 
 
+// Token validation utilities
+const isTokenExpired = (token: string): boolean => {
+  try {
+    // JWT tokens have 3 parts separated by dots
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    
+    // Decode the payload (second part)
+    const payload = JSON.parse(atob(parts[1]));
+    
+    // Check expiration time (exp is in seconds, Date.now() is in milliseconds)
+    const now = Math.floor(Date.now() / 1000);
+    return payload.exp < now;
+  } catch (error) {
+    console.error('Error checking token expiration:', error);
+    return true; // Assume expired if we can't parse it
+  }
+};
+
+const validateTokenAndRefresh = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+  
+  const token = localStorage.getItem('token');
+  if (!token) {
+    console.log('No token found in localStorage');
+    return false;
+  }
+  
+  // If token is not expired, we're good
+  if (!isTokenExpired(token)) {
+    console.log('Token is still valid');
+    return true;
+  }
+  
+  // Token is expired, try to refresh it
+  console.log('Token expired, attempting refresh...');
+  try {
+    const newToken = await refreshToken();
+    if (newToken) {
+      console.log('Token refresh successful');
+      return true;
+    } else {
+      console.log('Token refresh failed - no new token received');
+      return false;
+    }
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    return false;
+  }
+};
+
 // API Functions
 export const identityApi = {
   register: async (data: RegisterRequest): Promise<RegisterResponse> => {
@@ -589,6 +640,21 @@ export const identityApi = {
     
     const userStr = localStorage.getItem('currentUser');
     return userStr ? JSON.parse(userStr) : null;
+  },
+
+  async getCurrentUserWithTokenCheck(): Promise<User | null> {
+    const user = this.getCurrentUser();
+    if (!user) return null;
+    
+    // Validate token and refresh if needed
+    const isValid = await validateTokenAndRefresh();
+    if (!isValid) {
+      // Token refresh failed, user needs to login again
+      this.logout();
+      return null;
+    }
+    
+    return user;
   },
 
 

@@ -109,7 +109,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   
   useEffect(() => {
     const initializeUser = async () => {
-      const currentUser = identityApi.getCurrentUser();
+      // Use the new method that checks token validity
+      const currentUser = await identityApi.getCurrentUserWithTokenCheck();
       if (currentUser) {
         setIsLoggedIn(true);
         setIsAdmin(currentUser.roles?.includes("Admin") || false);
@@ -132,6 +133,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
         if (!loadedFriendRequestsRef.current) {
           loadFriendRequests(currentUser.id);
         }
+      } else {
+        // No valid user/token, redirect to login
+        setIsLoggedIn(false);
+        setUser(null);
       }
       setIsLoading(false);
     };

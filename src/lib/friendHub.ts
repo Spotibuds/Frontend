@@ -137,6 +137,8 @@ class FriendHubManager {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendRequestDeclined: ((data: any) => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onFriendRequestSent: ((data: any) => void) | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendRemoved: ((data: any) => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendStatusChanged: ((data: any) => void) | null = null;
@@ -277,6 +279,13 @@ class FriendHubManager {
     this.connection.on('FriendRequestDeclined', (data: any) => {
       if (this.onFriendRequestDeclined) {
         this.onFriendRequestDeclined(data);
+      }
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.connection.on('FriendRequestSent', (data: any) => {
+      if (this.onFriendRequestSent) {
+        this.onFriendRequestSent(data);
       }
     });
 
@@ -496,6 +505,11 @@ class FriendHubManager {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setOnFriendRequestDeclined(handler: ((data: any) => void) | null): void {
     this.onFriendRequestDeclined = handler;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setOnFriendRequestSent(handler: ((data: any) => void) | null): void {
+    this.onFriendRequestSent = handler;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
