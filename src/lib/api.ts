@@ -1619,7 +1619,7 @@ async getAllUsers(): Promise<UserAdmin[]> {
 
 promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
   try {
-    const response = await fetch(`/api/auth/users/${data.id}/promote-to-admin`, {
+    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/promote-to-admin`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1642,7 +1642,7 @@ promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
 
 demoteToUser: async (data: { id: string }): Promise<boolean> => {
   try {
-    const response = await fetch(`/api/auth/users/${data.id}/demote-to-user`, {
+    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/demote-to-user`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
