@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import MusicImage from "@/components/ui/MusicImage";
+import NotificationDropdown from "@/components/ui/NotificationDropdown";
 import {
   Bars3Icon,
   XMarkIcon,
@@ -487,83 +488,24 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {/* Right side items */}
               <div className="flex items-center space-x-4">
                 {/* Notifications */}
-                <div className="relative notifications-dropdown">
-                  <button 
-                    onClick={() => setNotificationsOpen(!notificationsOpen)}
-                    className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors relative"
-                  >
-                    <BellIcon className="h-6 w-6" />
-                    {friendRequests.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                        {friendRequests.length}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Notifications Dropdown */}
-                  {notificationsOpen && (
-                    <div className="absolute right-0 mt-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
-                      <div className="p-4 border-b border-gray-700">
-                        <h3 className="text-white font-semibold">Notifications</h3>
-                      </div>
-                      
-                      <div className="max-h-96 overflow-y-auto">
-                        {isLoadingNotifications ? (
-                          <div className="p-4 text-center">
-                            <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-                            <p className="text-gray-400 text-sm mt-2">Loading...</p>
-                          </div>
-                        ) : friendRequests.length > 0 ? (
-                          <div className="p-4 space-y-3">
-                            <h4 className="text-gray-300 font-medium text-sm">Friend Requests</h4>
-                            {friendRequests.map((request) => (
-                              <div key={request.requestId} className="flex items-center justify-between p-3 bg-gray-700/50 rounded-lg">
-                                <div className="flex items-center space-x-3">
-                                                                     <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                                     <span className="text-white font-bold text-sm">
-                                       {(request.requesterUsername || 'U').charAt(0).toUpperCase()}
-                                     </span>
-                                   </div>
-                                                                     <div>
-                                     <p className="text-white text-sm font-medium">{request.requesterUsername || 'Unknown User'}</p>
-                                     <p className="text-gray-400 text-xs">
-                                       {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString('en-US', {
-                                         year: 'numeric',
-                                         month: 'short',
-                                         day: 'numeric'
-                                       }) : 'Unknown date'}
-                                     </p>
-                                   </div>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    onClick={() => handleAcceptRequest(request.requestId)}
-                                    className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded transition-colors"
-                                  >
-                                    Accept
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeclineRequest(request.requestId)}
-                                    className="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded transition-colors"
-                                  >
-                                    Decline
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-4 text-center">
-                            <div className="w-12 h-12 bg-gray-700/50 rounded-full flex items-center justify-center mx-auto mb-3">
-                              <BellIcon className="w-6 h-6 text-gray-400" />
-                            </div>
-                            <p className="text-gray-400 text-sm">No new notifications</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <NotificationDropdown 
+                  userId={user?.id || ''} 
+                  isLoggedIn={isLoggedIn}
+                  onNotificationAction={(type, data) => {
+                    if (type === 'friend_accepted') {
+                      addToast('Friend request accepted!', 'success');
+                      // Refresh friend requests
+                      if (user?.id) {
+                        loadFriendRequests(user.id);
+                      }
+                    } else if (type === 'friend_declined') {
+                      addToast('Friend request declined', 'info');
+                      if (user?.id) {
+                        loadFriendRequests(user.id);
+                      }
+                    }
+                  }}
+                />
 
                 {/* Profile Menu */}
                 <div className="relative">

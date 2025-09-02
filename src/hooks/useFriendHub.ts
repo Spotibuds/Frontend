@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { friendHubManager, FriendRequest, Friend, ChatMessage, Chat } from '../lib/friendHub';
+import { eventBus } from '../lib/eventBus';
 
 interface UseFriendHubOptions {
   userId?: string;
@@ -23,6 +24,7 @@ interface FriendHubState {
   lastFriendRequestAccepted?: { requestId: string; friendId: string; friendName: string; friendAvatar?: string };
   lastFriendRequestDeclined?: { requestId: string };
   lastFriendRequestSent?: { requestId: string; targetUserId: string; timestamp: string };
+  lastFriendAdded?: { friendId: string; friendName: string; friendAvatar?: string };
   lastFriendRemoved?: { friendId: string };
 }
 
@@ -42,6 +44,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     lastFriendRequestAccepted: undefined,
     lastFriendRequestDeclined: undefined,
     lastFriendRequestSent: undefined,
+    lastFriendAdded: undefined,
     lastFriendRemoved: undefined
   });
 
@@ -248,22 +251,35 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     });
 
     friendHubManager.setOnFriendRequestAccepted((data) => {
+      console.log('🔥 useFriendHub: FriendRequestAccepted received:', data);
+      console.log('🔥 useFriendHub: Current userId:', userId);
+      console.log('🔥 useFriendHub: data.friendId:', data.friendId);
+      console.log('🔥 useFriendHub: data.FriendId:', data.FriendId);
       setState(prev => ({
         ...prev,
         friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
         friends: [...prev.friends, {
-          id: data.friendId,
-          username: data.friendName,
-          avatarUrl: data.friendAvatar,
+          id: data.friendId || data.FriendId,
+          username: data.friendName || data.FriendName,
+          avatarUrl: data.friendAvatar || data.FriendAvatar,
           isOnline: false
         }],
         lastFriendRequestAccepted: {
-          requestId: data.requestId,
-          friendId: data.friendId,
-          friendName: data.friendName,
-          friendAvatar: data.friendAvatar
+          requestId: data.requestId || data.RequestId,
+          friendId: data.friendId || data.FriendId,
+          friendName: data.friendName || data.FriendName,
+          friendAvatar: data.friendAvatar || data.FriendAvatar
         }
       }));
+      
+      // Emit friendship status changed event for user profile page updates
+      const friendId = data.friendId || data.FriendId;
+      if (userId && friendId) {
+        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged event:', userId, friendId);
+        eventBus.emit('friendshipStatusChanged', userId, friendId);
+      } else {
+        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged - userId:', userId, 'friendId:', friendId);
+      }
     });
 
     friendHubManager.setOnFriendRequestDeclined((data) => {
@@ -272,6 +288,43 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
         friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
         lastFriendRequestDeclined: { requestId: data.requestId }
       }));
+      
+      // Emit friendship status changed event for user profile page updates
+      // Note: For declined requests, we need to get the involved user IDs from state
+      const declinedRequest = state.friendRequests.find(req => req.requestId === data.requestId);
+      if (userId && declinedRequest) {
+        eventBus.emit('friendshipStatusChanged', userId, declinedRequest.senderId);
+      }
+    });
+
+    friendHubManager.setOnFriendAdded((data) => {
+      console.log('🔥 useFriendHub: FriendAdded received:', data);
+      console.log('🔥 useFriendHub: Current userId:', userId);
+      console.log('🔥 useFriendHub: data.friendId:', data.friendId);
+      console.log('🔥 useFriendHub: data.FriendId:', data.FriendId);
+      setState(prev => ({
+        ...prev,
+        friends: [...prev.friends, {
+          id: data.friendId || data.FriendId,
+          username: data.friendName || data.FriendName,
+          avatarUrl: data.friendAvatar || data.FriendAvatar,
+          isOnline: false
+        }],
+        lastFriendAdded: {
+          friendId: data.friendId || data.FriendId,
+          friendName: data.friendName || data.FriendName,
+          friendAvatar: data.friendAvatar || data.FriendAvatar
+        }
+      }));
+      
+      // Emit friendship status changed event for user profile page updates
+      const friendId = data.friendId || data.FriendId;
+      if (userId && friendId) {
+        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged for FriendAdded:', userId, friendId);
+        eventBus.emit('friendshipStatusChanged', userId, friendId);
+      } else {
+        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged for FriendAdded - userId:', userId, 'friendId:', friendId);
+      }
     });
 
     friendHubManager.setOnFriendRequestSent((data) => {
@@ -283,15 +336,30 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
           timestamp: data.timestamp
         }
       }));
+      
+      // Emit friendship status changed event for user profile page updates
+      if (userId && data.targetUserId) {
+        eventBus.emit('friendshipStatusChanged', userId, data.targetUserId);
+      }
     });
 
     friendHubManager.setOnFriendRemoved((data) => {
+      console.log('🔥 useFriendHub: FriendRemoved received:', data);
+      const removedFriendId = data.RemovedFriendId || data.removedFriendId; // Handle both cases
       setState(prev => ({
         ...prev,
-        friends: prev.friends.filter(friend => friend.id !== data.RemovedFriendId),
-        chats: prev.chats.filter(chat => !chat.participants.includes(data.RemovedFriendId)),
-        lastFriendRemoved: { friendId: data.RemovedFriendId }
+        friends: prev.friends.filter(friend => friend.id !== removedFriendId),
+        chats: prev.chats.filter(chat => !chat.participants.includes(removedFriendId)),
+        lastFriendRemoved: { friendId: removedFriendId }
       }));
+      
+      // Emit friendship status changed event for user profile page updates
+      if (userId && removedFriendId) {
+        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged for friend removal:', userId, removedFriendId);
+        eventBus.emit('friendshipStatusChanged', userId, removedFriendId);
+      } else {
+        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged for removal - userId:', userId, 'removedFriendId:', removedFriendId);
+      }
     });
 
     friendHubManager.setOnFriendStatusChanged((data) => {

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon, HeartIcon } from '@heroicons/react/24/outline';
 import { userApi, identityApi, safeString, type Artist } from '@/lib/api';
 import { Playlist } from '@/lib/playlist';
-
+import { useFriendHub } from '@/hooks/useFriendHub';
 
 import { eventBus } from '@/lib/eventBus';
 
@@ -59,7 +59,11 @@ export default function UserProfilePage() {
   const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; postId?: string }>>([]);
   const [isLoadingReactions, setIsLoadingReactions] = useState(false);
 
-
+  // Initialize friend hub for real-time notifications
+  const friendHubState = useFriendHub({ 
+    userId: currentUser?.id,
+    autoConnect: !!currentUser?.id 
+  });
 
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
 
@@ -288,11 +292,20 @@ export default function UserProfilePage() {
   // Separate useEffect for event listener to avoid dependency issues
   useEffect(() => {
     const handleFriendshipStatusChanged = (...args: unknown[]) => {
+      console.log('🔥 UserProfile: friendshipStatusChanged event received:', args);
       const [userId1, userId2] = args as [string, string];
+      console.log('🔥 UserProfile: Checking if event applies to this profile...');
+      console.log('🔥 UserProfile: currentUser?.id:', currentUser?.id);
+      console.log('🔥 UserProfile: profileUser?.identityUserId:', profileUser?.identityUserId);
+      console.log('🔥 UserProfile: userId1:', userId1, 'userId2:', userId2);
+      
       if (currentUser && profileUser && 
           ((userId1 === currentUser.id && userId2 === profileUser.identityUserId) ||
            (userId2 === currentUser.id && userId1 === profileUser.identityUserId))) {
+        console.log('🔥 UserProfile: Event applies! Loading friendship status...');
         loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
+      } else {
+        console.log('🔥 UserProfile: Event does not apply to this profile, ignoring');
       }
     };
 

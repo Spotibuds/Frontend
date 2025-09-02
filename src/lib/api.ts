@@ -1012,7 +1012,8 @@ export const userApi = {
 
   // Friend management
   sendFriendRequest: (requesterId: string, addresseeId: string) => {
-    const requestBody = { userId: requesterId, targetUserId: addresseeId };
+    // Note: requesterId is ignored since backend gets user ID from JWT token
+    const requestBody = { toUserId: addresseeId };
     return apiRequest<{ message: string; friendshipId: string }>(`${API_CONFIG.USER_API}/api/friends/request`, {
       method: 'POST',
       body: JSON.stringify(requestBody),
@@ -1683,4 +1684,101 @@ demoteToUser: async (data: { id: string }): Promise<boolean> => {
       return null;
     }
   },
+};
+
+// Notification types
+export interface Notification {
+  id: string;
+  targetUserId: string;
+  sourceUserId?: string;
+  type: 'FriendRequest' | 'FriendRequestAccepted' | 'FriendRequestDeclined' | 'FriendRemoved' | 'Message' | 'Other';
+  status: 'Unread' | 'Read' | 'Handled';
+  title: string;
+  message: string;
+  data: Record<string, any>;
+  actionUrl?: string;
+  expiresAt?: string;
+  createdAt: string;
+  readAt?: string;
+  handledAt?: string;
+}
+
+export interface NotificationResponse {
+  notifications: Notification[];
+  totalCount: number;
+  unreadCount: number;
+}
+
+// Notifications API
+export const notificationsApi = {
+  async getNotifications(userId: string, limit = 50, skip = 0): Promise<NotificationResponse> {
+    try {
+      return await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${userId}?limit=${limit}&skip=${skip}`
+      );
+    } catch (error) {
+      console.error('Failed to get notifications:', error);
+      return { notifications: [], totalCount: 0, unreadCount: 0 };
+    }
+  },
+
+  async markAsRead(notificationId: string, userId: string): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${notificationId}/read`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+      return false;
+    }
+  },
+
+  async markAsHandled(notificationId: string, userId: string): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${notificationId}/handle`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to mark notification as handled:', error);
+      return false;
+    }
+  },
+
+  async markAllAsRead(userId: string): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${userId}/read-all`,
+        { method: 'POST' }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+      return false;
+    }
+  },
+
+  async cleanupNotifications(userId: string, daysOld = 30): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${userId}/cleanup?daysOld=${daysOld}`,
+        { method: 'DELETE' }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to cleanup notifications:', error);
+      return false;
+    }
+  }
 };

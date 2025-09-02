@@ -8,6 +8,7 @@ import MusicImage from "@/components/ui/MusicImage";
 import { Toast } from "@/components/ui/Toast";
 import { identityApi, userApi, FriendRequest } from "@/lib/api";
 import { useFriendHub } from "@/hooks/useFriendHub";
+import { notificationHub } from "@/lib/notificationHub";
 
 interface User {
   id: string;
@@ -138,6 +139,56 @@ export default function FriendsPage() {
   // Real-time friend request updates - handled by useFriendHub hook
   // Removed duplicate event handler setup to prevent infinite loop
 
+  // Setup notification hub for friend request notifications
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // Set up friend-specific notification handlers
+    notificationHub.setHandlers({
+      onNewNotification: (notification: any) => {
+        // Handle friend-specific UI updates
+        console.log('🔔 Friend notification received:', notification);
+        
+        if (notification.type === 'FriendRequest' && notification.data) {
+          // Extract friend request data
+          const { fromUsername } = notification.data;
+          
+          // Instead of adding a temporary friend request, reload the actual friend requests
+          // This ensures we get the real request ID from the database
+          loadFriendRequests();
+          addToast(`New friend request from ${fromUsername}!`, 'info');
+        } else if (notification.type === 'FriendAdded' && notification.data) {
+          // Friend was added - reload friends list to show the new friend
+          // Also reload friend requests to remove the accepted request
+          const { friendUsername } = notification.data;
+          loadFriends();
+          loadFriendRequests(); // Add this to remove the accepted request
+          addToast(`You are now friends with ${friendUsername}!`, 'success');
+        } else if (notification.type === 'FriendRequestAccepted' && notification.data) {
+          // Friend request was accepted - reload friends list to show the new friend
+          const { accepterUsername } = notification.data;
+          loadFriends();
+          addToast(`${accepterUsername} accepted your friend request!`, 'success');
+        } else if (notification.type === 'FriendRemoved' && notification.data) {
+          // Friend was removed by someone else - reload friends list
+          const { removerUsername } = notification.data;
+          loadFriends();
+          addToast(`${removerUsername} removed you as a friend`, 'info');
+        } else if (notification.type === 'FriendRemovedByYou' && notification.data) {
+          // You removed a friend - reload friends list
+          loadFriends();
+          addToast(`Friend removed successfully`, 'success');
+        }
+      },
+      onError: (error: string) => console.error('NotificationHub error:', error)
+    }, 'FriendsPage');
+
+    // Cleanup function
+    return () => {
+      notificationHub.removeHandlers('FriendsPage');
+    };
+  }, [currentUser?.id, addToast, loadFriendRequests, loadFriends]);
+
   // Handle real-time friend request received
   useEffect(() => {
     if (lastFriendRequestReceived) {
@@ -261,6 +312,10 @@ export default function FriendsPage() {
       // Don't show manual toast - let SignalR handle the success notification
       console.log('Adding to sentRequests:', targetUserId);
       setSentRequests(prev => new Set([...prev, targetUserId]));
+      
+      // Remove the user from search results since we've sent them a friend request
+      setSearchResults(prev => prev.filter(user => user.id !== targetUserId));
+      
       // Don't reload friend requests - this was causing sent requests to appear in your own box
     } catch (error: unknown) {
       console.error('Send friend request error:', error);
@@ -268,9 +323,13 @@ export default function FriendsPage() {
       if (errorMessage.includes('already pending')) {
         addToast('Friend request already pending', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
+        // Remove from search results since request is already pending
+        setSearchResults(prev => prev.filter(user => user.id !== targetUserId));
       } else if (errorMessage.includes('already friends')) {
         addToast('You are already friends with this user', 'info');
         setSentRequests(prev => new Set([...prev, targetUserId]));
+        // Remove from search results since already friends
+        setSearchResults(prev => prev.filter(user => user.id !== targetUserId));
       } else {
         addToast(`Failed to send friend request: ${errorMessage}`, 'error');
       }
