@@ -283,18 +283,21 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     });
 
     friendHubManager.setOnFriendRequestDeclined((data) => {
-      setState(prev => ({
-        ...prev,
-        friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
-        lastFriendRequestDeclined: { requestId: data.requestId }
-      }));
-      
-      // Emit friendship status changed event for user profile page updates
-      // Note: For declined requests, we need to get the involved user IDs from state
-      const declinedRequest = state.friendRequests.find(req => req.requestId === data.requestId);
-      if (userId && declinedRequest) {
-        eventBus.emit('friendshipStatusChanged', userId, declinedRequest.senderId);
-      }
+      setState(prev => {
+        // Get the declined request before removing it
+        const declinedRequest = prev.friendRequests.find(req => req.requestId === data.requestId);
+        
+        // Emit friendship status changed event for user profile page updates
+        if (userId && declinedRequest) {
+          eventBus.emit('friendshipStatusChanged', userId, declinedRequest.senderId);
+        }
+        
+        return {
+          ...prev,
+          friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
+          lastFriendRequestDeclined: { requestId: data.requestId }
+        };
+      });
     });
 
     friendHubManager.setOnFriendAdded((data) => {

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import Image from "next/image";
 import { BellIcon, CheckIcon, XMarkIcon, UserPlusIcon, UserMinusIcon, HeartIcon } from "@heroicons/react/24/outline";
 import { BellIcon as BellIconSolid } from "@heroicons/react/24/solid";
 import { notificationHub, RealtimeNotification, NotificationHandlers } from "@/lib/notificationHub";
@@ -159,7 +158,7 @@ export default function NotificationDropdown({
       // Remove only this component's handlers
       notificationHub.removeHandlers('NotificationDropdown');
     };
-  }, [isLoggedIn, userId]); // Removed loadNotifications to prevent duplicate handlers
+  }, [isLoggedIn, userId, loadNotifications]); // Added loadNotifications dependency
 
   const handleMarkAsRead = useCallback(async (notificationId: string) => {
     // Skip API calls for temporary notifications (real-time ones)

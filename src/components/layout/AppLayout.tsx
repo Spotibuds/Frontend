@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -25,7 +25,6 @@ import {
   BackwardIcon,
   HeartIcon,
   ArrowLeftOnRectangleIcon,
-  BellIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
   ArrowPathIcon,
@@ -67,15 +66,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
       localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
     }
   }, [sidebarOpen]);
-  const [friendRequests, setFriendRequests] = useState<{ requestId: string; requesterId: string; requesterUsername: string; requesterAvatar?: string; requestedAt: string }[]>([]);
-  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [likedSongsPlaylistId, setLikedSongsPlaylistId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
-  const loadedFriendRequestsRef = useRef(false);
   const { state, togglePlayPause, nextSong, previousSong, skipForward, skipBackward, seekTo, setVolume, toggleMute, setShuffle, setRepeat, shuffleMode, repeatMode, removeFromQueue, clearQueue } = useAudio();
   
 
@@ -129,11 +125,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
           console.error('Failed to load user profile, using basic data:', error);
           setUser(currentUser);
         }
-        
-        // Only load friend requests once on mount
-        if (!loadedFriendRequestsRef.current) {
-          loadFriendRequests(currentUser.id);
-        }
       } else {
         // No valid user/token, redirect to login
         setIsLoggedIn(false);
@@ -144,7 +135,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
     initializeUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount, loadFriendRequests is stable
+  }, []); // Run only once on mount
 
   useEffect(() => {
     // Set up chat notification handler
@@ -205,63 +196,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [notificationsOpen]);
-
-  const loadFriendRequests = useCallback(async (userId: string) => {
-    // Prevent multiple simultaneous requests
-    if (isLoadingNotifications || loadedFriendRequestsRef.current) {
-      console.log('Friend requests already loading/loaded, skipping...');
-      return;
-    }
-
-    loadedFriendRequestsRef.current = true;
-
-    try {
-      setIsLoadingNotifications(true);
-      const requests = await userApi.getPendingFriendRequests(userId);
-      setFriendRequests(requests);
-    } catch (error) {
-      console.error('Failed to load friend requests:', error);
-      // On service unavailable, set empty array to prevent retries
-      if (error instanceof Error && error.message.includes('service unavailable')) {
-        console.warn('🚫 User service unavailable - setting empty friend requests');
-        setFriendRequests([]);
-      }
-    } finally {
-      setIsLoadingNotifications(false);
-    }
-  }, [isLoadingNotifications]);
-
-  const handleAcceptRequest = async (requestId: string) => {
-    if (!user || !requestId) {
-      console.error('Invalid request: missing user or requestId');
-      return;
-    }
-
-    try {
-      await userApi.acceptFriendRequest(requestId, user.id);
-      // Remove from local state immediately
-      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // No need to refresh - state is already updated
-    } catch (error) {
-      console.error('Failed to accept friend request:', error);
-    }
-  };
-
-  const handleDeclineRequest = async (requestId: string) => {
-    if (!user || !requestId) {
-      console.error('Invalid request: missing user or requestId');
-      return;
-    }
-
-    try {
-      await userApi.declineFriendRequest(requestId, user.id);
-      // Remove from local state immediately
-      setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
-      // No need to refresh - state is already updated
-    } catch (error) {
-      console.error('Failed to decline friend request:', error);
-    }
-  };
 
   // Real-time friend request updates - handled by useFriendHub hook in individual pages
   // Removed duplicate event handler setup to prevent infinite loop
@@ -491,18 +425,13 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <NotificationDropdown 
                   userId={user?.id || ''} 
                   isLoggedIn={isLoggedIn}
-                  onNotificationAction={(type, data) => {
+                  onNotificationAction={(type) => {
                     if (type === 'friend_accepted') {
                       addToast('Friend request accepted!', 'success');
-                      // Refresh friend requests
-                      if (user?.id) {
-                        loadFriendRequests(user.id);
-                      }
+                      // Real-time updates handled by useFriendHub
                     } else if (type === 'friend_declined') {
                       addToast('Friend request declined', 'info');
-                      if (user?.id) {
-                        loadFriendRequests(user.id);
-                      }
+                      // Real-time updates handled by useFriendHub
                     }
                   }}
                 />

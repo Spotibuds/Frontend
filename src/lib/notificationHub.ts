@@ -115,7 +115,7 @@ class NotificationHubService {
     onError: [],
     onConnectionStateChange: []
   };
-  private handlerSets = new Map<string, Set<Function>>(); // Track unique handlers per component
+  private handlerSets = new Map<string, Set<(...args: any[]) => void>>(); // Track unique handlers per component
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isDestroyed = false;
   private connectionAttempts = 0;

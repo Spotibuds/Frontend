@@ -60,7 +60,7 @@ export default function UserProfilePage() {
   const [isLoadingReactions, setIsLoadingReactions] = useState(false);
 
   // Initialize friend hub for real-time notifications
-  const friendHubState = useFriendHub({ 
+  useFriendHub({ 
     userId: currentUser?.id,
     autoConnect: !!currentUser?.id 
   });
