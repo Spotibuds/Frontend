@@ -23,7 +23,6 @@ export default function NotificationDropdown({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [connectionState, setConnectionState] = useState<string>('Disconnected');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Handle clicks outside to close dropdown
@@ -58,20 +57,12 @@ export default function NotificationDropdown({
   useEffect(() => {
     if (!isLoggedIn || !userId) return;
 
-    // Get current connection state when component mounts
-    const currentState = notificationHub.getConnectionState();
-    setConnectionState(currentState.toString());
-
-    // Periodically check connection state (as fallback)
+    // Periodically check connection state (as fallback) - for debugging
     const connectionCheckInterval = setInterval(() => {
       const state = notificationHub.getConnectionState();
-      setConnectionState(prev => {
-        const newState = state.toString();
-        if (prev !== newState) {
-          console.log(`🔔 Connection state changed from ${prev} to ${newState}`);
-        }
-        return newState;
-      });
+      const newState = state.toString();
+      // Just log the state for debugging, no UI updates needed
+      console.log(`🔔 Connection state: ${newState}`);
     }, 2000); // Check every 2 seconds
 
     const handlers: NotificationHandlers = {
@@ -122,7 +113,8 @@ export default function NotificationDropdown({
       },
 
       onConnectionStateChange: (state) => {
-        setConnectionState(state.toString());
+        // Just log connection state changes for debugging
+        console.log(`🔔 Connection state changed to: ${state.toString()}`);
       },
 
       onError: (error) => {
