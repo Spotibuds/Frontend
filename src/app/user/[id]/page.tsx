@@ -159,10 +159,16 @@ export default function UserProfilePage() {
       // Use the passed user parameter - don't reference currentUser to avoid dependency issues
       const activeUser = authenticatedUser;
 
-      // Fetch listening history for the user's own profile
+      // Fetch listening history for recent activity
       let recentActivity: { action: string; item: string; artist: string; coverUrl?: string; time: string }[] = [];
       
-      if (activeUser && userData.identityUserId === activeUser.id) {
+      // Load recent activity for own profile or non-private users
+      const shouldLoadActivity = activeUser && (
+        userData.identityUserId === activeUser.id || // Own profile
+        !userData.isPrivate // Public profile
+      );
+      
+      if (shouldLoadActivity) {
         try {
           const listeningHistory = await userApi.getListeningHistory(userData.identityUserId);
           // Transform listening history into recent activity format

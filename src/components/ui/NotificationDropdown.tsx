@@ -304,18 +304,6 @@ export default function NotificationDropdown({
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
-
-        {/* Connection status indicator */}
-        <div 
-          className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800 ${
-            connectionState === 'Connected' 
-              ? 'bg-green-500' 
-              : connectionState === 'Connecting' || connectionState === 'Reconnecting'
-              ? 'bg-yellow-500'
-              : 'bg-red-500'
-          }`}
-          title={`SignalR: ${connectionState}`}
-        />
       </button>
 
       {isOpen && (

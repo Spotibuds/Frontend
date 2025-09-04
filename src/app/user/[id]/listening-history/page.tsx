@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi } from '@/lib/api';
-import { ArrowLeftIcon, PlayIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 interface ListeningHistoryItem {
   songId: string;
@@ -89,20 +89,49 @@ export default function ListeningHistoryPage() {
       // Load profile user first
       const loadProfileUser = async () => {
         try {
-          const userData = await userApi.getUserProfileByIdentityId(userId);
-          setProfileUser({
-            id: userData.id,
-            identityUserId: userId, // Use the passed userId as identityUserId
-            username: userData.username,
-            displayName: userData.displayName,
-            isPrivate: userData.isPrivate || false
-          });
-          if ('createdAt' in userData && userData.createdAt) {
-            setRegistrationDate(new Date(userData.createdAt));
-          } else {
-            // fallback: use earliest playedAt in history after fetch
-            setRegistrationDate(null);
+          let userData: User | null = null;
+          
+          // First try to get user by ID (in case userId is actually an identityUserId)
+          try {
+            const userResult = await userApi.getUserProfileByIdentityId(userId);
+            userData = {
+              id: userResult.id,
+              identityUserId: userId, // Use the passed userId as identityUserId
+              username: userResult.username,
+              displayName: userResult.displayName,
+              isPrivate: userResult.isPrivate || false
+            };
+          } catch {
+            // If that fails, try to search by username
+            try {
+              const searchResults = await userApi.searchUsers(userId);
+              const userByUsername = searchResults.find(user => 
+                user.username.toLowerCase() === userId.toLowerCase()
+              );
+              if (userByUsername) {
+                const userResult = await userApi.getUserProfileByIdentityId(userByUsername.id);
+                userData = {
+                  id: userResult.id,
+                  identityUserId: userByUsername.id, // Use the found user's identity ID
+                  username: userResult.username,
+                  displayName: userResult.displayName,
+                  isPrivate: userResult.isPrivate || false
+                };
+              }
+            } catch (searchError) {
+              console.error('Username search failed:', searchError);
+            }
           }
+
+          if (!userData) {
+            setError('User not found');
+            return;
+          }
+
+          setProfileUser(userData);
+          // Note: userData from getUserProfileByIdentityId may not have createdAt
+          // fallback: use earliest playedAt in history after fetch
+          setRegistrationDate(null);
         } catch (error) {
           console.error('Failed to load user profile:', error);
           setError('Failed to load user profile');
@@ -138,15 +167,15 @@ export default function ListeningHistoryPage() {
     }
   }, [registrationDate, listeningHistory]);
 
-  // Set default selected month/week after data load
+  // Set default selected month/week after data load (only if not already set)
   useEffect(() => {
-    if (listeningHistory.length > 0) {
+    if (listeningHistory.length > 0 && !selectedMonth) {
       const latest = new Date(listeningHistory[0].playedAt);
       const monthStr = `${latest.getFullYear()}-${(latest.getMonth()+1).toString().padStart(2,'0')}`;
       setSelectedMonth(monthStr);
       setSelectedWeek(1);
     }
-  }, [listeningHistory]);
+  }, [listeningHistory, selectedMonth]);
   // Group history by month and week
   const groupedHistory = useMemo(() => {
     if (!registrationDate || listeningHistory.length === 0) return {};
@@ -302,14 +331,11 @@ export default function ListeningHistoryPage() {
                   key={`${item.songId}-${item.playedAt}-${index}`}
                   className="flex items-center space-x-4 p-4 hover:bg-gray-800/50 rounded-lg transition-colors group"
                 >
-                  {/* Play Button */}
+                  {/* Track Number */}
                   <div className="w-10 h-10 flex items-center justify-center">
-                    <span className="text-gray-400 text-sm group-hover:hidden">
+                    <span className="text-gray-400 text-sm">
                       {index + 1}
                     </span>
-                    <button className="hidden group-hover:flex w-8 h-8 bg-green-500 hover:bg-green-600 rounded-full items-center justify-center transition-colors">
-                      <PlayIcon className="w-4 h-4 text-white ml-0.5" />
-                    </button>
                   </div>
                   {/* Song Cover */}
                   <div className="flex-shrink-0">

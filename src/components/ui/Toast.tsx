@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { CheckCircleIcon, XCircleIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface ToastProps {
   message: string;
@@ -25,32 +26,48 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
     return () => clearTimeout(timer);
   }, [duration, onClose]);
 
+  const getTypeIcon = () => {
+    switch (type) {
+      case 'success':
+        return <CheckCircleIcon className="w-5 h-5 text-white/90 flex-shrink-0" />;
+      case 'error':
+        return <XCircleIcon className="w-5 h-5 text-white/90 flex-shrink-0" />;
+      case 'info':
+        return <InformationCircleIcon className="w-5 h-5 text-white/90 flex-shrink-0" />;
+      default:
+        return <ExclamationTriangleIcon className="w-5 h-5 text-white/90 flex-shrink-0" />;
+    }
+  };
+
   const getTypeStyles = () => {
     switch (type) {
       case 'success':
-        return 'bg-green-500 border-green-400 text-white';
+        return 'bg-gradient-to-r from-green-500 to-emerald-500 border-green-400/30 text-white shadow-lg shadow-green-500/25';
       case 'error':
-        return 'bg-red-500 border-red-400 text-white';
+        return 'bg-gradient-to-r from-red-500 to-red-600 border-red-400/30 text-white shadow-lg shadow-red-500/25';
       case 'info':
-        return 'bg-blue-500 border-blue-400 text-white';
+        return 'bg-gradient-to-r from-blue-500 to-purple-500 border-blue-400/30 text-white shadow-lg shadow-blue-500/25';
       default:
-        return 'bg-gray-500 border-gray-400 text-white';
+        return 'bg-gradient-to-r from-gray-700 to-gray-800 border-gray-600/30 text-white shadow-lg shadow-gray-500/25';
     }
   };
 
   return (
     <div
-      className={`fixed top-4 right-4 z-50 p-4 rounded-lg border shadow-lg transition-all duration-300 ${
-        isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-full'
-      } ${getTypeStyles()} ${action ? 'cursor-pointer hover:opacity-90' : ''}`}
+      className={`fixed top-4 right-4 z-50 p-4 rounded-xl border backdrop-blur-sm transition-all duration-300 transform ${
+        isVisible ? 'opacity-100 translate-x-0 scale-100' : 'opacity-0 translate-x-full scale-95'
+      } ${getTypeStyles()} ${
+        action ? 'cursor-pointer hover:scale-105 hover:shadow-xl' : 'hover:scale-102'
+      }`}
       onClick={action ? () => {
         action.onClick();
         setIsVisible(false);
         setTimeout(onClose, 300);
       } : undefined}
     >
-      <div className="flex items-center justify-between space-x-3">
-        <span className="text-sm font-medium flex-1">{message}</span>
+      <div className="flex items-center space-x-3">
+        {getTypeIcon()}
+        <span className="text-sm font-semibold flex-1 text-white/95">{message}</span>
         <div className="flex items-center space-x-2">
           {action && (
             <button
@@ -60,7 +77,7 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
                 setIsVisible(false);
                 setTimeout(onClose, 300);
               }}
-              className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-medium transition-colors"
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition-all duration-200 transform hover:scale-105 backdrop-blur-sm"
             >
               {action.label}
             </button>
@@ -71,7 +88,7 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
               setIsVisible(false);
               setTimeout(onClose, 300);
             }}
-            className="text-white hover:text-gray-200 text-lg leading-none"
+            className="text-white/80 hover:text-white text-xl leading-none w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-200"
           >
             ×
           </button>
