@@ -116,79 +116,109 @@ export default function SinglePostPage() {
 				setIsLoading(true);
 				setError(null);
 
-				// Get the post data
-				const postData = await userApi.getPostById(postId, me.id);
-				setPost(postData);
+				// Load all data in parallel to reduce sequential state updates
+				const [
+					postDataResult,
+					artistsResult
+				] = await Promise.allSettled([
+					userApi.getPostById(postId, me.id),
+					musicApi.getArtists()
+				]);
 
-				// Load user profile for better display
-				if (postData.identityUserId) {
-					try {
-						const profile = await userApi.getUserProfileByIdentityId(postData.identityUserId);
-						setUserProfile(profile);
-					} catch (e) {
-						console.warn("Failed to load user profile:", e);
+				// Handle post data
+				if (postDataResult.status === 'fulfilled') {
+					const postData = postDataResult.value;
+					setPost(postData);
+
+					// Load additional data based on post type in parallel
+					const additionalPromises: Promise<any>[] = [
+						// Always load reactions
+						userApi.getReactionsByPost(postId, me.id).catch(() => [])
+					];
+
+					// Load user profile if available
+					if (postData.identityUserId) {
+						additionalPromises.push(
+							userApi.getUserProfileByIdentityId(postData.identityUserId).catch(() => null)
+						);
 					}
-				}
 
-				// If it's a recent_song, try to get the full song data
-				if (postData.type === "recent_song" && postData.songId && typeof postData.songId === 'string') {
-					try {
-						const songData = await musicApi.getSong(postData.songId);
-						setSong(songData);
-					} catch (e) {
-						console.warn("Failed to load song data:", e);
+					// Load song data for recent_song posts
+					if (postData.type === "recent_song" && postData.songId && typeof postData.songId === 'string') {
+						additionalPromises.push(
+							musicApi.getSong(postData.songId).catch(() => null)
+						);
 					}
-				}
 
-				// Load reactions for this post
-				try {
-					const reactionData = await userApi.getReactionsByPost(postId, me.id);
-					setReactions(reactionData || []);
-				} catch (e) {
-					console.warn("Failed to load reactions:", e);
-				}
-
-				// Load artists for image display
-				try {
-					const allArtists = await musicApi.getArtists();
-					setArtists(allArtists);
-				} catch (e) {
-					console.warn("Failed to load artists:", e);
-				}
-
-				// Load song details for top_songs_week posts
-				if (postData.type === "top_songs_week" && postData.topSongs && Array.isArray(postData.topSongs)) {
-					try {
+					// Load song details for top_songs_week posts
+					if (postData.type === "top_songs_week" && postData.topSongs && Array.isArray(postData.topSongs)) {
 						const songPromises = postData.topSongs
 							.filter((ts: unknown): ts is { songId: string } => 
 								typeof ts === 'object' && ts !== null && 'songId' in ts && typeof (ts as { songId: unknown }).songId === 'string'
 							)
 							.map((ts) => musicApi.getSong(ts.songId).catch(() => null));
-						const songResults = await Promise.all(songPromises);
-						const songMap: Record<string, Song> = {};
-						songResults.forEach((songData: Song | null, index: number) => {
-							if (songData) {
-								const validTopSongs = postData.topSongs as { songId: string }[];
-								const filteredSongs = validTopSongs.filter(ts => ts.songId);
-								const originalSong = filteredSongs[index];
-								if (originalSong) {
-									songMap[originalSong.songId] = songData;
-								}
-							}
-						});
-						setTopSongs(songMap);
-					} catch (e) {
-						console.warn("Failed to load top songs details:", e);
+						additionalPromises.push(Promise.all(songPromises));
 					}
+
+					// Execute all additional promises in parallel
+					const results = await Promise.allSettled(additionalPromises);
+					
+					// Process results
+					let resultIndex = 0;
+					
+					// Reactions (always first)
+					const reactionResult = results[resultIndex];
+					if (reactionResult?.status === 'fulfilled') {
+						setReactions(reactionResult.value || []);
+					}
+					resultIndex++;
+
+					// User profile (if requested)
+					if (postData.identityUserId) {
+						const profileResult = results[resultIndex];
+						if (profileResult?.status === 'fulfilled') {
+							setUserProfile(profileResult.value);
+						}
+						resultIndex++;
+					}
+
+					// Song data (if recent_song)
+					if (postData.type === "recent_song" && postData.songId) {
+						const songResult = results[resultIndex];
+						if (songResult?.status === 'fulfilled') {
+							setSong(songResult.value);
+						}
+						resultIndex++;
+					}
+
+					// Top songs data (if top_songs_week)
+					if (postData.type === "top_songs_week" && postData.topSongs && Array.isArray(postData.topSongs)) {
+						const topSongsResult = results[resultIndex];
+						if (topSongsResult?.status === 'fulfilled') {
+							const songResults = topSongsResult.value;
+							const songMap: Record<string, Song> = {};
+							songResults.forEach((songData: Song | null, index: number) => {
+								if (songData) {
+									const validTopSongs = postData.topSongs as { songId: string }[];
+									const filteredSongs = validTopSongs.filter(ts => ts.songId);
+									const originalSong = filteredSongs[index];
+									if (originalSong) {
+										songMap[originalSong.songId] = songData;
+									}
+								}
+							});
+							setTopSongs(songMap);
+						}
+					}
+				} else {
+					setError("Failed to load post");
 				}
 
-				// Load artists for image display
-				try {
-					const allArtists = await musicApi.getArtists();
-					setArtists(allArtists);
-				} catch (e) {
-					console.warn("Failed to load artists:", e);
+				// Handle artists data
+				if (artistsResult.status === 'fulfilled') {
+					setArtists(artistsResult.value);
 				}
+
 			} catch (e) {
 				console.error("Failed to load post:", e);
 				setError("Failed to load post");

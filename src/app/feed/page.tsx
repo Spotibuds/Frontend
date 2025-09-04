@@ -273,6 +273,8 @@ function FeedInner() {
 					}
 				} else if (slide.type === 'now_playing') {
 					postIds.push(slideKey);
+					postIds.push(`nowplaying:${slide.identityUserId}:${slide.songId}`);
+					// Also try the old format in case there are existing reactions
 					postIds.push(`now_playing:${slide.identityUserId}:${slide.songId}`);
 				} else if (slide.type === 'top_artists_week') {
 					const weekStart = new Date();
@@ -637,6 +639,15 @@ function FeedInner() {
 				} else if (target.type === "top_songs_week") {
 					postId = 'postId' in target ? String(target.postId) : undefined;
 					await userApi.sendReaction({ ...base, contextType: "top_songs_week", postId });
+				} else if (target.type === "now_playing") {
+					// Send reaction to now_playing - backend will handle redirection
+					await userApi.sendReaction({
+						...base,
+						contextType: "now_playing",
+						songId: target.songId,
+						songTitle: target.songTitle,
+						artist: target.artist,
+					});
 				}
 				
 				if (typeof index === 'number') {
@@ -857,11 +868,14 @@ function FeedInner() {
 				<div className="absolute right-3 top-3 z-10">
 					<ReactionCluster slide={slide} />
 				</div>
+				{/* Post label moved to bottom right */}
+				<div className="absolute right-3 bottom-3 z-10">
+					<div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">Top artists this week</div>
+				</div>
 				<div className="flex items-center justify-between">
 					<UserHeader slide={slide} userMeta={userMeta} />
-					<div className="text-white/60 text-xs">Top artists this week</div>
 				</div>
-				<div className="mt-4 grid grid-cols-1 gap-3">
+				<div className="mt-4 grid grid-cols-1 gap-3 pb-10">
 					{slide.topArtists.slice(0, 5).map((a, i) => {
 						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === a.name.toLowerCase());
 						return (
@@ -900,11 +914,14 @@ function FeedInner() {
 				<div className="absolute right-3 top-3 z-10">
 					<ReactionCluster slide={slide} />
 				</div>
+				{/* Post label moved to bottom right */}
+				<div className="absolute right-3 bottom-3 z-10">
+					<div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">Top songs this week</div>
+				</div>
 				<div className="flex items-center justify-between">
 					<UserHeader slide={slide} userMeta={userMeta} />
-					<div className="text-white/60 text-xs">Top songs this week</div>
 				</div>
-				<div className="mt-4 grid grid-cols-1 gap-3">
+				<div className="mt-4 grid grid-cols-1 gap-3 pb-10">
 					{slide.topSongs.slice(0, 5).map((ts, i) => {
 						const song = ts.songId ? songsById[ts.songId] : null;
 						const title = song?.title || ts.songTitle || "Unknown Song";
@@ -983,12 +1000,7 @@ function FeedInner() {
 							{(song as any)?.album?.id && (
 								<Link href={`/album/${(song as any).album.id}`} className="text-emerald-300 text-sm hover:underline">View album</Link>
 							)}
-							{typeof slide.positionSec === 'number' && (
-								<div className="text-emerald-300/90 text-xs mt-1">{Math.floor((slide.positionSec || 0) / 60)}:{String((slide.positionSec || 0) % 60).padStart(2,'0')} elapsed</div>
-							)}
-							{slide.updatedAt && (
-								<div className="text-gray-400 text-xs mt-1">Updated {new Date(slide.updatedAt).toLocaleTimeString()}</div>
-							)}
+
 						</div>
 					</div>
 				</div>
@@ -1008,11 +1020,14 @@ function FeedInner() {
 				<div className="absolute right-3 top-3 z-10">
 					<ReactionCluster slide={slide} />
 				</div>
+				{/* Post label moved to bottom right */}
+				<div className="absolute right-3 bottom-3 z-10">
+					<div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">Artists in common</div>
+				</div>
 				<div className="flex items-center justify-between">
 					<UserHeader slide={slide} userMeta={userMeta} />
-					<div className="text-white/60 text-xs">Artists in common</div>
 				</div>
-				<div className="mt-4 grid grid-cols-1 gap-3">
+				<div className="mt-4 grid grid-cols-1 gap-3 pb-10">
 					{slide.commonArtists.slice(0, 5).map((artist, i) => {
 						const artistDetails = artists.find((ar) => ar.name.toLowerCase() === artist.toLowerCase());
 						return (

@@ -47,9 +47,12 @@ const MusicImage = React.memo(function MusicImage({
     setImageLoaded(false);
     setDebugAttempts([]);
     
-    if (src) {
-      console.log('MusicImage: Processing new image URL:', src);
-      console.log('MusicImage: Proxied URL:', proxiedUrl);
+    if (src && proxiedUrl) {
+      // Only log in development to reduce console spam
+      if (process.env.NODE_ENV === 'development') {
+        console.log('MusicImage: Processing new image URL:', src);
+        console.log('MusicImage: Proxied URL:', proxiedUrl);
+      }
       setImageSrc(proxiedUrl);
       setDebugAttempts(prev => [...prev, `Original: ${src}`, `Proxied: ${proxiedUrl}`]);
     } else {
@@ -118,6 +121,7 @@ const MusicImage = React.memo(function MusicImage({
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            key={imageSrc} // Force re-mount when src changes to prevent glitching
             src={imageSrc}
             alt={alt}
             className={`w-full h-full object-cover transition-opacity duration-300 ${
