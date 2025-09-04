@@ -7,6 +7,7 @@ import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi, Chat, User } from '@/lib/api';
 import { notificationService } from '@/lib/notificationService';
 import { notificationHub } from '@/lib/notificationHub';
+import { chatHub } from '@/lib/chatHub';
 
 interface ChatWithParticipants extends Chat {
   participantProfiles?: User[];
@@ -19,19 +20,7 @@ export default function ChatPage() {
   const [friends, setFriends] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
-
-  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  }, []);
+  // Local toasts removed - global notifications are handled by AppLayout via notificationService
 
   const loadUnreadCounts = useCallback(async () => {
     try {
@@ -42,74 +31,17 @@ export default function ChatPage() {
     }
   }, []);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const user = identityApi.getCurrentUser();
-      if (user) {
-        // Get the full user profile with IdentityUserId for proper API calls
-        const userProfile = await userApi.getCurrentUserProfile();
-        setCurrentUser(userProfile || user);
-
-        // Always use IdentityUserId for API calls
-        const userId = userProfile?.id || user.id;
-        loadUserChats(userId);
-        loadUserFriends(userId);
-        loadUnreadCounts();
-      }
-    };
-    
-    loadData();
-  }, [loadUnreadCounts]);
-
-  // Clear current chat ID when on main chat page
-  useEffect(() => {
-    notificationService.setCurrentChatId(null);
-  }, []);
-
-  // Setup notification hub for message notifications
-  useEffect(() => {
-    if (!currentUser?.id) return;
-
-    // Set up message notification handlers
-    notificationHub.setHandlers({
-      onNewNotification: (notification: { type?: string; data?: { chatId?: string; senderUsername?: string } }) => {
-        if ((notification.type === 'Message' || notification.type === 'message') && notification.data) {
-          const { senderUsername } = notification.data;
-
-          // Show toast notification
-          addToast(`New message from ${senderUsername}`, 'info');
-
-          // Reload unread counts to update the UI
-          loadUnreadCounts();
-        }
-      },
-      onChatUnreadCountUpdate: (data: { chatId: string, unreadCount: number }) => {
-        // Update the unread count for this specific chat
-        setUnreadCounts(prev => ({
-          ...prev,
-          [data.chatId]: data.unreadCount
-        }));
-      }
-    }, 'ChatPage');
-
-    return () => {
-      notificationHub.removeHandlers('ChatPage');
-    };
-  }, [currentUser?.id, addToast, loadUnreadCounts]);
-
-  const loadUserChats = async (userId: string) => {
+  const loadUserChats = useCallback(async (userId: string) => {
     try {
       const userChats = await userApi.getUserChats(userId);
       
-      // Collect all unique participant IDs from all chats
-      const allParticipantIds = Array.from(
-        new Set(userChats.flatMap(chat => chat.participants))
-      );
+      // Get all unique participant IDs from all chats
+      const allParticipantIds = [...new Set(userChats.flatMap(chat => chat.participants))];
       
-      // Fetch all participant profiles in one batch call
+      // Fetch profiles for all participants in one batch call
       const participantProfiles = await userApi.getUserProfilesBatch(allParticipantIds);
       
-      // Create a lookup map for fast access
+      // Create a map for easy lookup
       const profileMap = new Map(participantProfiles.map(profile => [profile.id, profile]));
       
       // Map chats with their participant profiles
@@ -126,13 +58,11 @@ export default function ChatPage() {
       
       setChats(chatsWithProfiles);
     } catch (error) {
-      console.error('Failed to load chats:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Failed to load user chats:', error);
     }
-  };
+  }, []);
 
-  const loadUserFriends = async (userId: string) => {
+  const loadUserFriends = useCallback(async (userId: string) => {
     try {
       const friendIds = await userApi.getFriends(userId);
       
@@ -143,7 +73,83 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Failed to load friends:', error);
     }
-  };
+  }, []); // No dependencies for loadUserFriends
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const user = identityApi.getCurrentUser();
+        if (user) {
+          // Get the full user profile with IdentityUserId for proper API calls
+          const userProfile = await userApi.getCurrentUserProfile();
+          setCurrentUser(userProfile || user);
+
+          // Always use IdentityUserId for API calls
+          const userId = userProfile?.id || user.id;
+          await Promise.all([
+            loadUserChats(userId),
+            loadUserFriends(userId),
+            loadUnreadCounts()
+          ]);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [loadUnreadCounts, loadUserChats, loadUserFriends]);
+
+  // Clear current chat ID when on main chat page
+  useEffect(() => {
+    notificationService.setCurrentChatId(null);
+  }, []);
+
+  // Setup notification hub for message notifications
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // Set up message notification handlers
+    notificationHub.setHandlers({
+      onNewNotification: (notification: { type?: string; data?: { chatId?: string; senderUsername?: string } }) => {
+        if ((notification.type === 'Message' || notification.type === 'message') && notification.data) {
+          // The NotificationHub now forwards message notifications into notificationService directly.
+          // Avoid forwarding again here to prevent duplicate toasts.
+
+          // Still reload chats and unread counts to update the UI with new last message
+          if (currentUser?.id) {
+            loadUserChats(currentUser.id);
+            loadUnreadCounts();
+          }
+        }
+      },
+      onChatUnreadCountUpdate: (data: { chatId: string, unreadCount: number }) => {
+        // Update the unread count for this specific chat
+        setUnreadCounts(prev => ({
+          ...prev,
+          [data.chatId]: data.unreadCount
+        }));
+      }
+  }, 'ChatPage');
+
+    // Set up chat hub handlers for real-time updates
+    chatHub.setHandlers({
+      onMessageReceived: (message) => {
+        console.log('💬 Chat page received message:', message);
+        // Reload chats to update last message and unread counts
+        loadUserChats(currentUser.id);
+        loadUnreadCounts();
+      },
+      onError: (error) => {
+        console.error('💬 Chat hub error on chat page:', error);
+      }
+    });
+
+    return () => {
+      notificationHub.removeHandlers('ChatPage');
+      chatHub.removeHandlers();
+    };
+  }, [currentUser?.id, loadUnreadCounts, loadUserChats]);
 
   const handleChatClick = (chatId: string) => {
     router.push(`/chat/${chatId}`);
@@ -194,21 +200,6 @@ export default function ChatPage() {
 
   return (
     <>
-      {/* Toast notifications */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`p-3 rounded-lg shadow-lg text-white max-w-sm cursor-pointer transition-opacity ${
-              toast.type === 'success' ? 'bg-green-600' :
-              toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
-            }`}
-            onClick={() => removeToast(toast.id)}
-          >
-            {toast.message}
-          </div>
-        ))}
-      </div>
 
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">

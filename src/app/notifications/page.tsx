@@ -178,7 +178,7 @@ export default function NotificationsPage() {
   };
 
   // Mark notification as read
-  const handleMarkAsRead = async (notificationId: string) => {
+  const handleMarkAsRead = useCallback(async (notificationId: string) => {
     if (!currentUser?.id) return;
 
     try {
@@ -189,7 +189,7 @@ export default function NotificationsPage() {
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
     }
-  };
+  }, [currentUser?.id]);
 
   const handleNotificationClick = useCallback(async (notification: Notification) => {
     // Handle different notification types
@@ -295,12 +295,6 @@ export default function NotificationsPage() {
                       <div className="flex items-center gap-4 text-sm text-white/60">
                         <span>
                           {timeAgo(notification.createdAt)}
-                        </span>
-                        <span className="capitalize">
-                          {typeof notification.type === 'string' 
-                            ? notification.type.replace(/([A-Z])/g, ' $1').trim()
-                            : String(notification.type || 'Notification')
-                          }
                         </span>
                       </div>
                     </div>

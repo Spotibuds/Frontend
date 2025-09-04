@@ -10,7 +10,19 @@ class NotificationService {
   // Register a notification handler (e.g., for showing toast notifications)
   addNotificationHandler(handler: NotificationHandler): () => void {
     this.handlers.add(handler);
-    return () => this.handlers.delete(handler);
+    try {
+      // Debug: log when handlers are registered
+      // eslint-disable-next-line no-console
+      console.debug('notificationService: handler added, totalHandlers=', this.handlers.size);
+    } catch {}
+    return () => {
+      this.handlers.delete(handler);
+      try {
+        // Debug: log when handlers are removed
+        // eslint-disable-next-line no-console
+        console.debug('notificationService: handler removed, totalHandlers=', this.handlers.size);
+      } catch {}
+    };
   }
 
   // Set the current chat ID to prevent notifications for the active chat
@@ -20,8 +32,17 @@ class NotificationService {
 
   // Handle incoming message and decide whether to show notification
   handleMessage(message: ChatMessage): void {
+    try {
+      // Debug: log incoming message and number of handlers
+      // eslint-disable-next-line no-console
+      console.debug('notificationService.handleMessage called', { chatId: message.chatId, messageId: message.messageId, senderId: message.senderId, handlers: this.handlers.size });
+    } catch {}
     // Don't show notification if user is currently in the chat where the message was sent
     if (this.currentChatId === message.chatId) {
+      try {
+        // eslint-disable-next-line no-console
+        console.debug('notificationService: suppressed notification for current chat', this.currentChatId);
+      } catch {}
       return;
     }
 

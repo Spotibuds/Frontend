@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useFriendHub } from '../../../hooks/useFriendHub';
 import { userApi, identityApi } from '../../../lib/api';
 import { notificationService } from '../../../lib/notificationService';
+import { chatHub, ChatMessage as ChatHubMessage } from '../../../lib/chatHub';
 
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -72,6 +73,12 @@ export default function ChatPage() {
   }, [addToast]);
 
   const handleMessageReceived = useCallback((message: ChatMessage) => {
+    // Validate message structure
+    if (!message.messageId) {
+      console.warn('Received message without messageId:', message);
+      return;
+    }
+    
     // Add incoming message to local state, but check for duplicates first
     setChatMessages(prev => {
       const exists = prev.some(m => m.messageId === message.messageId);
@@ -83,6 +90,12 @@ export default function ChatPage() {
   }, []);
 
   const handleMessageSent = useCallback((message: ChatMessage) => {
+    // Validate message structure
+    if (!message.messageId) {
+      console.warn('Sent message without messageId:', message);
+      return;
+    }
+    
     // Add sent message to local state (in case it wasn't already added)
     setChatMessages(prev => {
       const exists = prev.some(m => m.messageId === message.messageId);
@@ -103,7 +116,6 @@ export default function ChatPage() {
   const {
     isConnected,
     connectionState,
-    sendMessage: sendSignalRMessage,
     markMessageAsRead: markMessageAsReadSignalR,
   } = useFriendHub({
     userId: currentUser?.id,
@@ -158,16 +170,18 @@ export default function ChatPage() {
 
         // Load chat messages
         const messages = await userApi.getChatMessages(chatId);
-        // Convert API messages to ChatMessage format
-        const formattedMessages: ChatMessage[] = messages.map(msg => ({
-          messageId: msg.messageId,
-          chatId: msg.chatId,
-          senderId: msg.senderId,
-          senderName: msg.senderName || 'Unknown User',
-          content: msg.content,
-          timestamp: msg.sentAt,
-          isRead: msg.readBy.length > 0
-        }));
+        // Convert API messages to ChatMessage format, filtering out invalid messages
+        const formattedMessages: ChatMessage[] = messages
+          .filter(msg => msg.messageId) // Only keep messages with valid messageId
+          .map(msg => ({
+            messageId: msg.messageId,
+            chatId: msg.chatId,
+            senderId: msg.senderId,
+            senderName: msg.senderName || 'Unknown User',
+            content: msg.content,
+            timestamp: msg.sentAt,
+            isRead: msg.readBy.length > 0
+          }));
         // Sort messages by timestamp ascending (oldest first)
         const sortedMessages = formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         setChatMessages(sortedMessages);
@@ -191,18 +205,18 @@ export default function ChatPage() {
   }, [chatId]); // Remove addToast from dependencies to prevent infinite loops
 
   const handleSendMessage = useCallback(async () => {
-    if (!message.trim() || !isConnected || !currentUser) return;
+    if (!message.trim() || !currentUser) return;
 
     try {
-      // Send message via SignalR for real-time delivery
-      await sendSignalRMessage(chatId, message.trim());
+      // Send message via Chat Hub for real-time delivery
+      await chatHub.sendMessage(chatId, message.trim());
       setMessage('');
       inputRef.current?.focus();
     } catch (error) {
       console.error('Failed to send message:', error);
       addToast('Failed to send message', 'error');
     }
-  }, [message, isConnected, currentUser, sendSignalRMessage, chatId, addToast]);
+  }, [message, currentUser, chatId, addToast]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -226,6 +240,66 @@ export default function ChatPage() {
     };
   }, [chatId]);
 
+  // Setup chat hub for this specific chat
+  useEffect(() => {
+    if (!chatId || !currentUser?.id) return;
+
+    // Set up chat hub handlers for real-time messages
+    chatHub.setHandlers({
+      onMessageReceived: (message: ChatHubMessage) => {
+        // Only handle messages for this chat
+        if (message.chatId === chatId) {
+          console.log('💬 Real-time message received in chat:', message);
+          
+          // Convert to local format and add to messages
+          const formattedMessage: ChatMessage = {
+            messageId: message.messageId,
+            chatId: message.chatId,
+            senderId: message.senderId,
+            senderName: message.senderName,
+            content: message.content,
+            timestamp: message.timestamp,
+            isRead: message.isRead
+          };
+          
+          handleMessageReceived(formattedMessage);
+        }
+      },
+      onMessageSent: (message: ChatHubMessage) => {
+        // Handle message sent confirmation
+        if (message.chatId === chatId) {
+          console.log('💬 Message sent confirmation:', message);
+          const formattedMessage: ChatMessage = {
+            messageId: message.messageId,
+            chatId: message.chatId,
+            senderId: message.senderId,
+            senderName: message.senderName,
+            content: message.content,
+            timestamp: message.timestamp,
+            isRead: message.isRead
+          };
+          
+          handleMessageSent(formattedMessage);
+        }
+      },
+      onError: (error) => {
+        console.error('💬 Chat hub error in chat page:', error);
+        if (!error.includes('transport') && !error.includes('WebSocket')) {
+          addToast(`Chat error: ${error}`, 'error');
+        }
+      }
+    });
+
+    // Join the chat room
+    chatHub.joinChat(chatId);
+
+    return () => {
+      // Leave the chat room when component unmounts
+      chatHub.leaveChat(chatId);
+      chatHub.removeHandlers();
+    };
+  }, [chatId, currentUser?.id, handleMessageReceived, handleMessageSent, addToast]);
+
   useEffect(() => {
     scrollToBottom();
   }, [chatMessages, scrollToBottom]);
@@ -244,6 +318,12 @@ export default function ChatPage() {
       );
 
       unreadMessages.forEach(async (msg) => {
+        // Skip messages without valid messageId
+        if (!msg.messageId) {
+          console.warn('Skipping message mark as read - missing messageId:', msg);
+          return;
+        }
+        
         // Mark this message as being processed
         processedMessagesRef.current.add(msg.messageId);
 
@@ -281,6 +361,12 @@ export default function ChatPage() {
     const retry = async () => {
       const ids = Array.from(pendingRetryRef.current);
       for (const id of ids) {
+        // Skip invalid messageIds
+        if (!id) {
+          pendingRetryRef.current.delete(id);
+          continue;
+        }
+        
         try {
           await markMessageAsReadSignalR(id);
           try {
@@ -386,6 +472,12 @@ export default function ChatPage() {
             </div>
           ) : (
             chatMessages.map((msg) => {
+              // Skip messages without valid messageId to prevent React key warnings and API errors
+              if (!msg.messageId) {
+                console.warn('Message missing messageId:', msg);
+                return null;
+              }
+              
               // Use IdentityUserId for comparison since that's what we're using consistently
               const isOwnMessage = msg.senderId === currentUser?.id;
               

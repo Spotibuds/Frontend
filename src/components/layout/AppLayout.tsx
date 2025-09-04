@@ -37,6 +37,7 @@ import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } 
 import { ToastContainer } from "@/components/ui/Toast";
 import { notificationService } from "@/lib/notificationService";
 import { notificationHub } from "@/lib/notificationHub";
+import { chatHub } from "@/lib/chatHub";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -117,6 +118,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
         console.log('🔔 APP LAYOUT: Enabling notification hub for authenticated user');
         notificationHub.enableConnection();
         
+        // Enable chat hub when authenticated
+        console.log('💬 APP LAYOUT: Enabling chat hub for authenticated user');
+        chatHub.enableConnection();
+        
         // Load full user profile to get avatar and other details
         try {
           const fullProfile = await userApi.getCurrentUserProfile();
@@ -133,6 +138,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       } else {
         // No valid user/token, disable notifications and redirect to login
         notificationHub.disableConnection();
+        chatHub.disableConnection();
         setIsLoggedIn(false);
         setUser(null);
       }
@@ -146,6 +152,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     // Set up chat notification handler
     const removeNotificationHandler = notificationService.addNotificationHandler(async (message) => {
+      try {
+        // Debug: log when AppLayout notification handler is invoked
+        // eslint-disable-next-line no-console
+        console.debug('AppLayout: notification handler invoked', { chatId: message.chatId, messageId: message.messageId, senderId: message.senderId });
+      } catch {}
+
       // Get sender information for better notification
       let senderName = message.senderName || 'Unknown';
       try {
@@ -160,7 +172,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
       // Show enhanced toast notification with click action
       const notificationMessage = `💬 ${senderName}: ${message.content.length > 50 ? message.content.substring(0, 50) + '...' : message.content}`;
       
-      addToast(notificationMessage, 'info', {
+  try { console.debug('AppLayout: adding toast', notificationMessage); } catch {}
+
+  addToast(notificationMessage, 'info', {
         label: 'Open Chat',
         onClick: () => {
           router.push(`/chat/${message.chatId}`);
@@ -258,8 +272,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
   };
 
   const handleLogout = () => {
-    // Disable notifications before logout
+    // Disable notifications and chat before logout
     notificationHub.disableConnection();
+    chatHub.disableConnection();
     identityApi.logout();
     setIsLoggedIn(false);
     router.push("/");

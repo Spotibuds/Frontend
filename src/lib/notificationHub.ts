@@ -1,5 +1,7 @@
 import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState, HttpTransportType } from '@microsoft/signalr';
 import { API_CONFIG } from './api';
+import { notificationService } from './notificationService';
+import type { ChatMessage } from './chatHub';
 
 // Production-ready SignalR configuration
 const getSignalRApiConfig = () => {
@@ -234,6 +236,33 @@ class NotificationHubService {
 
       console.log('🔔 NOTIFICATION HUB: Normalized notification:', normalizedNotification);
       console.log('🔔 NOTIFICATION HUB: Calling handlers, count:', this.handlers.onNewNotification.length);
+
+      // If this notification represents a chat message, also forward it to the global notificationService
+      try {
+        const nt = (normalizedNotification.type || '').toString();
+        const data = normalizedNotification.data || normalizedNotification.Data || {} as Record<string, any>;
+        if (nt && nt.toLowerCase() === 'message') {
+          const mapped: ChatMessage = {
+            messageId: data.messageId || data.id || `notif-${Date.now()}`,
+            chatId: data.chatId || data.ChatId || '',
+            senderId: data.senderId || normalizedNotification.sourceUserId || '',
+            senderName: data.senderUsername || normalizedNotification.sourceUserName || 'Unknown',
+            content: data.content || normalizedNotification.message || normalizedNotification.title || 'New message',
+            timestamp: normalizedNotification.timestamp || new Date().toISOString(),
+            isRead: false
+          };
+
+          try {
+            // Debug
+            // eslint-disable-next-line no-console
+            console.debug('notificationHub: forwarding Message notification to notificationService', { chatId: mapped.chatId, messageId: mapped.messageId });
+          } catch {}
+
+          notificationService.handleMessage(mapped as any);
+        }
+      } catch (err) {
+        console.warn('notificationHub: failed to forward Message notification to notificationService', err);
+      }
 
       this.handlers.onNewNotification.forEach(handler => handler(normalizedNotification));
     });
