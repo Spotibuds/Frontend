@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { BellIcon, CheckIcon, XMarkIcon, UserPlusIcon, UserMinusIcon, HeartIcon } from "@heroicons/react/24/outline";
+import { BellIcon, CheckIcon, XMarkIcon, UserPlusIcon, UserMinusIcon, HeartIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { BellIcon as BellIconSolid } from "@heroicons/react/24/solid";
 import { notificationHub, RealtimeNotification, NotificationHandlers } from "@/lib/notificationHub";
 import { notificationsApi, type Notification } from "@/lib/api";
 import { userApi } from "@/lib/api";
+import Link from "next/link";
 
 interface NotificationDropdownProps {
   userId: string;
   isLoggedIn: boolean;
-  onNotificationAction?: (type: string, data: any) => void;
+  onNotificationAction?: (type: string, data: Record<string, unknown>) => void;
 }
 
 export default function NotificationDropdown({ 
@@ -77,26 +78,13 @@ export default function NotificationDropdown({
       onNewNotification: (notification: RealtimeNotification) => {
         console.log('🔔 New real-time notification:', notification);
         
-        // Add to local notifications list
-        const newNotification: Notification = {
-          id: `temp-${Date.now()}`, // Temporary ID for real-time notifications
-          targetUserId: userId,
-          sourceUserId: notification.sourceUserId,
-          type: notification.type as any,
-          status: 'Unread',
-          title: notification.title,
-          message: notification.message,
-          data: notification.data,
-          createdAt: notification.timestamp
-        };
+        // Reload notifications from API to get the persistent version
+        // This ensures we have the correct database ID instead of temporary ones
+        loadNotifications();
 
-        setNotifications(prev => [newNotification, ...prev]);
-        // Increment unread count for the new notification
-        setUnreadCount(prev => prev + 1);
-        
-        // Show browser notification if supported
+        // Show browser notification if supported and permitted
         if ('Notification' in window && Notification.permission === 'granted') {
-          new window.Notification(notification.title, {
+          new Notification(notification.title, {
             body: notification.message,
             icon: '/logo.svg',
             badge: '/logo.svg'
@@ -152,44 +140,94 @@ export default function NotificationDropdown({
       Notification.requestPermission();
     }
 
-    return () => {
-      // Clear connection check interval
-      clearInterval(connectionCheckInterval);
-      // Remove only this component's handlers
-      notificationHub.removeHandlers('NotificationDropdown');
+    // Listen for custom events from notifications page
+    const handleNotificationsDeletedAll = () => {
+      console.log('🔔 Received notifications-deleted-all event, reloading...');
+      setNotifications([]);
+      setUnreadCount(0);
     };
-  }, [isLoggedIn, userId, loadNotifications]); // Added loadNotifications dependency
+
+    const handleNotificationDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const { notificationId } = customEvent.detail || {};
+      if (notificationId) {
+        console.log('🔔 Received notification-deleted event for:', notificationId);
+        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    };
+
+    window.addEventListener('notifications-deleted-all', handleNotificationsDeletedAll);
+    window.addEventListener('notification-deleted', handleNotificationDeleted);
+
+    return () => {
+      clearInterval(connectionCheckInterval);
+      notificationHub.removeHandlers('NotificationDropdown');
+      window.removeEventListener('notifications-deleted-all', handleNotificationsDeletedAll);
+      window.removeEventListener('notification-deleted', handleNotificationDeleted);
+    };
+  }, [isLoggedIn, userId, loadNotifications]);
 
   const handleMarkAsRead = useCallback(async (notificationId: string) => {
-    // Skip API calls for temporary notifications (real-time ones)
-    if (notificationId.startsWith('temp-')) {
-      // Only call SignalR hub for temporary notifications
-      await notificationHub.markAsRead(notificationId);
-      return;
-    }
-    
     await notificationHub.markAsRead(notificationId);
-    // Also call API as fallback for real notifications
     await notificationsApi.markAsRead(notificationId, userId);
   }, [userId]);
 
   const handleMarkAsHandled = useCallback(async (notificationId: string) => {
-    // Skip API calls for temporary notifications (real-time ones)
-    if (notificationId.startsWith('temp-')) {
-      // Only call SignalR hub for temporary notifications
-      await notificationHub.markAsHandled(notificationId);
-      return;
-    }
-    
     await notificationHub.markAsHandled(notificationId);
-    // Also call API as fallback for real notifications
     await notificationsApi.markAsHandled(notificationId, userId);
   }, [userId]);
 
+  const handleDeleteNotification = useCallback(async (notificationId: string) => {
+    try {
+      // Remove from local state immediately for better UX
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      
+      // Decrease unread count if it was unread
+      const notification = notifications.find(n => n.id === notificationId);
+      if (notification?.status === 'Unread') {
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+      
+      // Notify other components about the deletion
+      window.dispatchEvent(new CustomEvent('notification-deleted', {
+        detail: { notificationId, userId }
+      }));
+      
+      // Call API to delete the notification
+      await notificationsApi.deleteNotification(notificationId, userId);
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      // Reload notifications on error to restore state
+      loadNotifications();
+    }
+  }, [userId, loadNotifications, notifications]);
+
+  const handleDeleteAllNotifications = useCallback(async () => {
+    try {
+      // Clear local state immediately for better UX
+      setNotifications([]);
+      setUnreadCount(0);
+      
+      // Notify other components about the deletion
+      window.dispatchEvent(new CustomEvent('notifications-deleted-all', {
+        detail: { userId }
+      }));
+      
+      await notificationsApi.deleteAllNotifications(userId);
+      setIsOpen(false); // Close dropdown after deleting all
+    } catch (error) {
+      console.error('Failed to delete all notifications:', error);
+      // Reload notifications on error to restore state
+      loadNotifications();
+    }
+  }, [userId, loadNotifications]);
+
   const handleMarkAllAsRead = useCallback(async () => {
     await notificationHub.markAllAsRead();
-    // Also call API as fallback
     await notificationsApi.markAllAsRead(userId);
+    setUnreadCount(0);
+    setNotifications(prev => prev.map(n => ({ ...n, status: 'Read' as const })));
   }, [userId]);
 
   const handleFriendAction = useCallback(async (action: 'accept' | 'decline', requestId: string, senderId: string) => {
@@ -249,33 +287,32 @@ export default function NotificationDropdown({
     return time.toLocaleDateString();
   };
 
-  if (!isLoggedIn) return null;
-
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white transition-colors"
-        title="Notifications"
+        className="relative p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white focus:outline-none focus:text-gray-900 dark:focus:text-white transition-colors"
       >
         {unreadCount > 0 ? (
-          <BellIconSolid className="w-6 h-6 text-yellow-500" />
+          <BellIconSolid className="w-6 h-6" />
         ) : (
           <BellIcon className="w-6 h-6" />
         )}
         
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-medium">
-            {unreadCount > 9 ? '9+' : unreadCount}
+          <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white bg-red-500 rounded-full">
+            {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
-        
+
         {/* Connection status indicator */}
-        <span 
-          className={`absolute bottom-0 right-0 w-2 h-2 rounded-full ${
-            connectionState === 'Connected' ? 'bg-green-500' : 
-            connectionState === 'Connecting' || connectionState === 'Reconnecting' ? 'bg-yellow-500' : 
-            'bg-red-500'
+        <div 
+          className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white dark:border-gray-800 ${
+            connectionState === 'Connected' 
+              ? 'bg-green-500' 
+              : connectionState === 'Connecting' || connectionState === 'Reconnecting'
+              ? 'bg-yellow-500'
+              : 'bg-red-500'
           }`}
           title={`SignalR: ${connectionState}`}
         />
@@ -288,14 +325,26 @@ export default function NotificationDropdown({
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
                 Notifications
               </h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllAsRead}
-                  className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
-                >
-                  Mark all read
-                </button>
-              )}
+              <div className="flex gap-2">
+                {notifications.length > 0 && (
+                  <button
+                    onClick={handleDeleteAllNotifications}
+                    className="text-sm text-red-500 hover:text-red-600 transition-colors flex items-center gap-1"
+                    title="Delete all notifications"
+                  >
+                    <TrashIcon className="w-3 h-3" />
+                    Delete all
+                  </button>
+                )}
+                {unreadCount > 0 && (
+                  <button
+                    onClick={handleMarkAllAsRead}
+                    className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -329,9 +378,18 @@ export default function NotificationDropdown({
                           <p className="text-sm font-medium text-gray-800 dark:text-white">
                             {notification.title}
                           </p>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {formatTimeAgo(notification.createdAt)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatTimeAgo(notification.createdAt)}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteNotification(notification.id)}
+                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                              title="Delete notification"
+                            >
+                              <XMarkIcon className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                         
                         <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
@@ -377,15 +435,13 @@ export default function NotificationDropdown({
 
           {notifications.length > 0 && (
             <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  // Could navigate to full notifications page
-                }}
+              <Link
+                href="/notifications"
+                onClick={() => setIsOpen(false)}
                 className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
               >
                 View all notifications
-              </button>
+              </Link>
             </div>
           )}
         </div>

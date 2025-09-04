@@ -39,8 +39,8 @@ const getApiConfig = () => {
     };
   }
 
-  // Debug logging (always log in console for troubleshooting)
-  if (typeof window !== 'undefined') {
+  // Debug logging (only once per session to reduce noise)
+  if (typeof window !== 'undefined' && !(window as any).__API_DEBUG_LOGGED) {
     console.log('🔧 API Configuration Debug:', {
       nodeEnv,
       hostname,
@@ -52,6 +52,7 @@ const getApiConfig = () => {
       },
       finalConfig: config
     });
+    (window as any).__API_DEBUG_LOGGED = true;
   }
 
   return config;
@@ -1778,6 +1779,32 @@ export const notificationsApi = {
       return true;
     } catch (error) {
       console.error('Failed to cleanup notifications:', error);
+      return false;
+    }
+  },
+
+  async deleteNotification(notificationId: string, userId: string): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${notificationId}?userId=${userId}`,
+        { method: 'DELETE' }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      return false;
+    }
+  },
+
+  async deleteAllNotifications(userId: string): Promise<boolean> {
+    try {
+      await apiRequest(
+        `${API_CONFIG.USER_API}/api/notifications/${userId}/all`,
+        { method: 'DELETE' }
+      );
+      return true;
+    } catch (error) {
+      console.error('Failed to delete all notifications:', error);
       return false;
     }
   }

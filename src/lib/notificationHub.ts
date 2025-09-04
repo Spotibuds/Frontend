@@ -9,13 +9,14 @@ const getSignalRApiConfig = () => {
   const isProduction = nodeEnv === 'production' || 
     (typeof window !== 'undefined' && !hostname.includes('localhost') && !hostname.includes('127.0.0.1'));
 
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && !(window as any).__NOTIFICATION_HUB_DEBUG_LOGGED) {
     console.log('🔔 NotificationHub Configuration:', {
       nodeEnv,
       hostname,
       isProduction,
       hubUrl: `${API_CONFIG.USER_API}/notification-hub`
     });
+    (window as any).__NOTIFICATION_HUB_DEBUG_LOGGED = true;
   }
 
   return API_CONFIG;
@@ -120,18 +121,34 @@ class NotificationHubService {
   private isDestroyed = false;
   private connectionAttempts = 0;
   private maxReconnectAttempts = 5;
+  private connectionEnabled = false; // Add flag to control connection attempts
 
   constructor() {
-    // Only initialize on client side
-    if (typeof window !== 'undefined') {
-      this.initializeConnection();
-    }
+    // Don't initialize connection in constructor - wait for explicit enablement
+    console.log('🔔 NotificationHub service initialized (connection disabled until authenticated)');
+  }
+
+  // Method to enable notifications when user is authenticated
+  enableConnection() {
+    this.connectionEnabled = true;
+    this.initializeConnection();
+  }
+
+  // Method to disable notifications when user logs out
+  disableConnection() {
+    this.connectionEnabled = false;
+    this.disconnect();
   }
 
   private initializeConnection() {
+    // Don't attempt connection if disabled or already destroyed
+    if (!this.connectionEnabled || this.isDestroyed) {
+      return;
+    }
+
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     if (!token) {
-      console.log('🔔 No token found, skipping NotificationHub connection');
+      console.log('🔔 No token found, notifications disabled until login');
       return;
     }
 
@@ -139,21 +156,34 @@ class NotificationHubService {
       this.connection = new HubConnectionBuilder()
         .withUrl(`${SIGNALR_CONFIG.USER_API}/notification-hub`, {
           accessTokenFactory: async () => {
+            // Skip token refresh attempts if connection is disabled
+            if (!this.connectionEnabled) {
+              return '';
+            }
+
             let currentToken = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
             
             if (!currentToken) {
-              console.log('🔔 No token, attempting refresh...');
-              currentToken = await refreshTokenForNotifications();
+              // Only attempt refresh if connection is still enabled
+              if (this.connectionEnabled) {
+                console.log('🔔 No token, attempting refresh...');
+                currentToken = await refreshTokenForNotifications();
+              }
             }
             
             return currentToken || '';
           },
           withCredentials: false,
-          transport: HttpTransportType.LongPolling | HttpTransportType.WebSockets | HttpTransportType.ServerSentEvents,
+          // Prioritize LongPolling for better Azure compatibility, fallback to other transports
+          transport: HttpTransportType.LongPolling,
           skipNegotiation: false
         })
         .withAutomaticReconnect({
           nextRetryDelayInMilliseconds: (retryContext) => {
+            // Don't reconnect if connection is disabled
+            if (!this.connectionEnabled) {
+              return null; // Stop reconnection
+            }
             const delay = Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
             console.log(`🔔 NotificationHub reconnecting in ${delay}ms (attempt ${retryContext.previousRetryCount + 1})`);
             return delay;
@@ -220,7 +250,7 @@ class NotificationHubService {
       console.log('🔔 NotificationHub connection closed');
       this.handlers.onConnectionStateChange.forEach(handler => handler(HubConnectionState.Disconnected));
       
-      if (!this.isDestroyed && this.connectionAttempts < this.maxReconnectAttempts) {
+      if (!this.isDestroyed && this.connectionEnabled && this.connectionAttempts < this.maxReconnectAttempts) {
         this.connectionAttempts++;
         console.log(`🔔 Attempting to reconnect NotificationHub (${this.connectionAttempts}/${this.maxReconnectAttempts})`);
         
@@ -232,7 +262,9 @@ class NotificationHubService {
   }
 
   private async startConnection() {
-    if (!this.connection || this.isDestroyed) return;
+    if (!this.connection || this.isDestroyed || !this.connectionEnabled) {
+      return;
+    }
 
     try {
       await this.connection.start();
@@ -243,7 +275,7 @@ class NotificationHubService {
       console.error('🔔 NotificationHub connection failed:', error);
       this.handlers.onConnectionStateChange.forEach(handler => handler(HubConnectionState.Disconnected));
       
-      if (!this.isDestroyed && this.connectionAttempts < this.maxReconnectAttempts) {
+      if (!this.isDestroyed && this.connectionEnabled && this.connectionAttempts < this.maxReconnectAttempts) {
         this.connectionAttempts++;
         this.reconnectTimer = setTimeout(() => {
           this.startConnection();
@@ -372,8 +404,21 @@ class NotificationHubService {
     return this.connection?.state ?? HubConnectionState.Disconnected;
   }
 
+  async disconnect() {
+    if (this.connection?.state === HubConnectionState.Connected || 
+        this.connection?.state === HubConnectionState.Connecting) {
+      try {
+        console.log('🔔 Disconnecting NotificationHub...');
+        await this.connection.stop();
+      } catch (error) {
+        console.error('🔔 Error disconnecting NotificationHub:', error);
+      }
+    }
+    this.connection = null;
+  }
+
   async reconnect() {
-    if (this.isDestroyed) return;
+    if (this.isDestroyed || !this.connectionEnabled) return;
     
     if (this.connection?.state === HubConnectionState.Connected) {
       console.log('🔔 NotificationHub already connected');

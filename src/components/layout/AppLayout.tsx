@@ -36,6 +36,7 @@ import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
 import { ToastContainer } from "@/components/ui/Toast";
 import { notificationService } from "@/lib/notificationService";
+import { notificationHub } from "@/lib/notificationHub";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -112,6 +113,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
         setIsLoggedIn(true);
         setIsAdmin(currentUser.roles?.includes("Admin") || false);
         
+        // Enable notification hub when authenticated
+        notificationHub.enableConnection();
+        
         // Load full user profile to get avatar and other details
         try {
           const fullProfile = await userApi.getCurrentUserProfile();
@@ -126,7 +130,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
           setUser(currentUser);
         }
       } else {
-        // No valid user/token, redirect to login
+        // No valid user/token, disable notifications and redirect to login
+        notificationHub.disableConnection();
         setIsLoggedIn(false);
         setUser(null);
       }
@@ -252,6 +257,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   };
 
   const handleLogout = () => {
+    // Disable notifications before logout
+    notificationHub.disableConnection();
     identityApi.logout();
     setIsLoggedIn(false);
     router.push("/");
