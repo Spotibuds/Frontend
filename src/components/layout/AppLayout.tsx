@@ -114,6 +114,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         setIsAdmin(currentUser.roles?.includes("Admin") || false);
         
         // Enable notification hub when authenticated
+        console.log('🔔 APP LAYOUT: Enabling notification hub for authenticated user');
         notificationHub.enableConnection();
         
         // Load full user profile to get avatar and other details

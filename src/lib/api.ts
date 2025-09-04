@@ -524,6 +524,8 @@ export interface Chat {
   participants: string[];
   lastActivity: string;
   lastMessageId?: string;
+  lastMessageContent?: string;
+  lastMessageSenderId?: string;
 }
 
 export interface ChatParticipant {
@@ -1088,6 +1090,18 @@ export const userApi = {
   deleteChat: (chatId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/chats/${chatId}`, {
       method: 'DELETE',
+    }),
+
+  // Unread message tracking
+  getUnreadMessageCounts: () =>
+    apiRequest<Record<string, number>>(`${API_CONFIG.USER_API}/api/chats/unread-counts`),
+
+  getChatUnreadCount: (chatId: string) =>
+    apiRequest<number>(`${API_CONFIG.USER_API}/api/chats/${chatId}/unread-count`),
+
+  markAllMessagesAsRead: (chatId: string) =>
+    apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/chats/${chatId}/mark-all-read`, {
+      method: 'POST',
     }),
 
   // Reset all friendships (for development/testing)

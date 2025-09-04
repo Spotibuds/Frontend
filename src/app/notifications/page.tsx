@@ -5,6 +5,7 @@ import { notificationsApi, type Notification } from "@/lib/api";
 import { notificationHub, NotificationHandlers } from "@/lib/notificationHub";
 import { TrashIcon, CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
 
 // Simple time ago function
 const timeAgo = (date: Date | string): string => {
@@ -20,6 +21,7 @@ const timeAgo = (date: Date | string): string => {
 };
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
@@ -189,6 +191,16 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
+    // Handle different notification types
+    if (notification.type === 'Message' && notification.data?.chatId) {
+      // Navigate to chat and mark as read
+      await handleMarkAsRead(notification.id);
+      router.push(`/chat/${notification.data.chatId}`);
+    }
+    // Add other notification type handlers here if needed
+  }, [router, handleMarkAsRead]);
+
   // Get notification icon based on type
   const getNotificationIcon = (type: string | unknown) => {
     const typeString = String(type || 'Other');
@@ -257,7 +269,8 @@ export default function NotificationsPage() {
                 key={notification.id}
                 className={`bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20 transition-all hover:bg-white/15 ${
                   notification.status === 'Unread' ? 'ring-2 ring-purple-400/50' : ''
-                }`}
+                } ${notification.type === 'Message' ? 'cursor-pointer' : ''}`}
+                onClick={() => notification.type === 'Message' ? handleNotificationClick(notification) : undefined}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">

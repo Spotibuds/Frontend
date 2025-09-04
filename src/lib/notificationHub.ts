@@ -71,19 +71,30 @@ const refreshTokenForNotifications = async (): Promise<string | null> => {
 
 // Notification types
 export interface RealtimeNotification {
-  type: string;
-  title: string;
-  message: string;
+  type?: string;
+  Type?: string;
+  title?: string;
+  Title?: string;
+  message?: string;
+  Message?: string;
   sourceUserId?: string;
+  SourceUserId?: string;
   sourceUserName?: string;
+  SourceUserName?: string;
   sourceUserAvatar?: string;
-  data: Record<string, any>;
-  timestamp: string;
+  SourceUserAvatar?: string;
+  data?: Record<string, any>;
+  Data?: Record<string, any>;
+  timestamp?: string;
+  Timestamp?: string;
+  actionUrl?: string;
+  ActionUrl?: string;
 }
 
 export interface NotificationHandlers {
   onNewNotification?: (notification: RealtimeNotification) => void;
   onUnreadCountUpdate?: (count: number) => void;
+  onChatUnreadCountUpdate?: (data: { chatId: string, unreadCount: number }) => void;
   onNotificationMarkedRead?: (notificationId: string) => void;
   onNotificationHandled?: (notificationId: string) => void;
   onAllNotificationsMarkedRead?: () => void;
@@ -96,6 +107,7 @@ export interface NotificationHandlers {
 interface MultipleHandlers {
   onNewNotification: Array<(notification: RealtimeNotification) => void>;
   onUnreadCountUpdate: Array<(count: number) => void>;
+  onChatUnreadCountUpdate: Array<(data: { chatId: string, unreadCount: number }) => void>;
   onNotificationMarkedRead: Array<(notificationId: string) => void>;
   onNotificationHandled: Array<(notificationId: string) => void>;
   onAllNotificationsMarkedRead: Array<() => void>;
@@ -109,6 +121,7 @@ class NotificationHubService {
   private handlers: MultipleHandlers = {
     onNewNotification: [],
     onUnreadCountUpdate: [],
+    onChatUnreadCountUpdate: [],
     onNotificationMarkedRead: [],
     onNotificationHandled: [],
     onAllNotificationsMarkedRead: [],
@@ -204,13 +217,35 @@ class NotificationHubService {
 
     // Handle incoming notifications
     this.connection.on('NewNotification', (notification: RealtimeNotification) => {
-      console.log('🔔 New notification received:', notification);
-      this.handlers.onNewNotification.forEach(handler => handler(notification));
+      console.log('🔔 NOTIFICATION HUB: New notification received from server:', notification);
+
+      // Normalize notification properties to handle both PascalCase and camelCase
+      const normalizedNotification: RealtimeNotification = {
+        type: notification.type || notification.Type,
+        title: notification.title || notification.Title,
+        message: notification.message || notification.Message,
+        sourceUserId: notification.sourceUserId || notification.SourceUserId,
+        sourceUserName: notification.sourceUserName || notification.SourceUserName,
+        sourceUserAvatar: notification.sourceUserAvatar || notification.SourceUserAvatar,
+        data: notification.data || notification.Data,
+        timestamp: notification.timestamp || notification.Timestamp,
+        actionUrl: notification.actionUrl || notification.ActionUrl
+      };
+
+      console.log('🔔 NOTIFICATION HUB: Normalized notification:', normalizedNotification);
+      console.log('🔔 NOTIFICATION HUB: Calling handlers, count:', this.handlers.onNewNotification.length);
+
+      this.handlers.onNewNotification.forEach(handler => handler(normalizedNotification));
     });
 
     this.connection.on('UnreadCountUpdate', (count: number) => {
       console.log('🔔 Unread count update:', count);
       this.handlers.onUnreadCountUpdate.forEach(handler => handler(count));
+    });
+
+    this.connection.on('ChatUnreadCountUpdate', (data: { chatId: string, unreadCount: number }) => {
+      console.log('🔔 Chat unread count update:', data);
+      this.handlers.onChatUnreadCountUpdate.forEach(handler => handler(data));
     });
 
     this.connection.on('NotificationMarkedRead', (notificationId: string) => {
@@ -301,6 +336,10 @@ class NotificationHubService {
       this.handlers.onUnreadCountUpdate.push(handlers.onUnreadCountUpdate);
       componentHandlers.add(handlers.onUnreadCountUpdate);
     }
+    if (handlers.onChatUnreadCountUpdate && !componentHandlers.has(handlers.onChatUnreadCountUpdate)) {
+      this.handlers.onChatUnreadCountUpdate.push(handlers.onChatUnreadCountUpdate);
+      componentHandlers.add(handlers.onChatUnreadCountUpdate);
+    }
     if (handlers.onNotificationMarkedRead && !componentHandlers.has(handlers.onNotificationMarkedRead)) {
       this.handlers.onNotificationMarkedRead.push(handlers.onNotificationMarkedRead);
       componentHandlers.add(handlers.onNotificationMarkedRead);
@@ -336,6 +375,7 @@ class NotificationHubService {
     componentHandlers.forEach(handler => {
       this.handlers.onNewNotification = this.handlers.onNewNotification.filter(h => h !== handler);
       this.handlers.onUnreadCountUpdate = this.handlers.onUnreadCountUpdate.filter(h => h !== handler);
+      this.handlers.onChatUnreadCountUpdate = this.handlers.onChatUnreadCountUpdate.filter(h => h !== handler);
       this.handlers.onNotificationMarkedRead = this.handlers.onNotificationMarkedRead.filter(h => h !== handler);
       this.handlers.onNotificationHandled = this.handlers.onNotificationHandled.filter(h => h !== handler);
       this.handlers.onAllNotificationsMarkedRead = this.handlers.onAllNotificationsMarkedRead.filter(h => h !== handler);
@@ -447,6 +487,7 @@ class NotificationHubService {
     this.handlers = {
       onNewNotification: [],
       onUnreadCountUpdate: [],
+      onChatUnreadCountUpdate: [],
       onNotificationMarkedRead: [],
       onNotificationHandled: [],
       onAllNotificationsMarkedRead: [],

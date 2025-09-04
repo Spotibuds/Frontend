@@ -4,9 +4,9 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 import { FriendRequest } from '@/lib/friendHub';
 
 // Notification types
-export interface FriendNotification {
+export interface BaseNotification {
   id: string;
-  type: 'friend_request_received' | 'friend_request_accepted' | 'friend_request_declined' | 'friend_removed';
+  type: 'friend_request_received' | 'friend_request_accepted' | 'friend_request_declined' | 'friend_removed' | 'message';
   title: string;
   message: string;
   data: any;
@@ -14,9 +14,25 @@ export interface FriendNotification {
   read: boolean;
 }
 
+export interface FriendNotification extends BaseNotification {
+  type: 'friend_request_received' | 'friend_request_accepted' | 'friend_request_declined' | 'friend_removed';
+}
+
+export interface MessageNotification extends BaseNotification {
+  type: 'message';
+  data: {
+    chatId: string;
+    messageId: string;
+    senderUsername: string;
+    senderAvatar?: string;
+  };
+}
+
+export type AppNotification = FriendNotification | MessageNotification;
+
 export interface NotificationContextType {
   // Notifications state
-  notifications: FriendNotification[];
+  notifications: AppNotification[];
   unreadCount: number;
   
   // Friend requests specifically 
@@ -29,7 +45,7 @@ export interface NotificationContextType {
   }>;
   
   // Actions
-  addNotification: (notification: Omit<FriendNotification, 'id' | 'timestamp'>) => void;
+  addNotification: (notification: Omit<AppNotification, 'id' | 'timestamp'>) => void;
   removeNotification: (id: string) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
@@ -40,12 +56,15 @@ export interface NotificationContextType {
   removeFriendRequest: (requestId: string) => void;
   clearFriendRequests: () => void;
   updateFriendRequestsList: (requests: any[]) => void;
+  
+  // Message notification specific actions
+  addMessageNotification: (notification: Omit<MessageNotification, 'id' | 'timestamp'>) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const [notifications, setNotifications] = useState<FriendNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [friendRequests, setFriendRequests] = useState<Array<{
     requestId: string;
     requesterId: string;
@@ -56,10 +75,20 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const addNotification = useCallback((notification: Omit<FriendNotification, 'id' | 'timestamp'>) => {
-    const newNotification: FriendNotification = {
+  const addNotification = useCallback((notification: Omit<AppNotification, 'id' | 'timestamp'>) => {
+    const newNotification: AppNotification = {
       ...notification,
       id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+    };
+    
+    setNotifications(prev => [newNotification, ...prev]);
+  }, []);
+
+  const addMessageNotification = useCallback((notification: Omit<MessageNotification, 'id' | 'timestamp'>) => {
+    const newNotification: MessageNotification = {
+      ...notification,
+      id: `msg_notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: new Date(),
     };
     
@@ -147,6 +176,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     removeFriendRequest,
     clearFriendRequests,
     updateFriendRequestsList,
+    addMessageNotification,
   };
 
   return (

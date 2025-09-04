@@ -171,6 +171,13 @@ export default function ChatPage() {
         // Sort messages by timestamp ascending (oldest first)
         const sortedMessages = formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         setChatMessages(sortedMessages);
+
+        // Mark all messages in this chat as read
+        try {
+          await userApi.markAllMessagesAsRead(chatId);
+        } catch (error) {
+          console.error('Failed to mark messages as read:', error);
+        }
       } catch (error) {
         console.error('Failed to load chat data:', error);
         addToast('Failed to load chat', 'error');

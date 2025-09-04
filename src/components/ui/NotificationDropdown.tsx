@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { BellIcon, CheckIcon, XMarkIcon, UserPlusIcon, UserMinusIcon, HeartIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { BellIcon, CheckIcon, XMarkIcon, UserPlusIcon, UserMinusIcon, TrashIcon, ChatBubbleLeftIcon } from "@heroicons/react/24/outline";
 import { BellIcon as BellIconSolid } from "@heroicons/react/24/solid";
 import { notificationHub, RealtimeNotification, NotificationHandlers } from "@/lib/notificationHub";
 import { notificationsApi, type Notification } from "@/lib/api";
 import { userApi } from "@/lib/api";
 import Link from "next/link";
+import { useRouter } from 'next/navigation';
 
 interface NotificationDropdownProps {
   userId: string;
@@ -19,6 +20,7 @@ export default function NotificationDropdown({
   isLoggedIn, 
   onNotificationAction 
 }: NotificationDropdownProps) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -39,15 +41,23 @@ export default function NotificationDropdown({
 
   // Load notifications from API
   const loadNotifications = useCallback(async () => {
-    if (!isLoggedIn || !userId) return;
+    if (!isLoggedIn || !userId) {
+      console.log('🔔 NOTIFICATION DROPDOWN: loadNotifications skipped - not logged in or no userId');
+      return;
+    }
 
+    console.log('🔔 NOTIFICATION DROPDOWN: loadNotifications called for userId:', userId);
     setIsLoading(true);
     try {
       const response = await notificationsApi.getNotifications(userId, 20, 0);
+      console.log('🔔 NOTIFICATION DROPDOWN: API response received:', response);
+      console.log('🔔 NOTIFICATION DROPDOWN: Setting notifications:', response.notifications.length, 'items');
+      console.log('🔔 NOTIFICATION DROPDOWN: Setting unread count:', response.unreadCount);
+
       setNotifications(response.notifications);
       setUnreadCount(response.unreadCount);
     } catch (error) {
-      console.error('Failed to load notifications:', error);
+      console.error('🔔 NOTIFICATION DROPDOWN: Failed to load notifications:', error);
     } finally {
       setIsLoading(false);
     }
@@ -67,16 +77,23 @@ export default function NotificationDropdown({
 
     const handlers: NotificationHandlers = {
       onNewNotification: (notification: RealtimeNotification) => {
-        console.log('🔔 New real-time notification:', notification);
-        
+        console.log('🔔 NOTIFICATION DROPDOWN: New real-time notification RECEIVED:', notification);
+        console.log('🔔 NOTIFICATION DROPDOWN: Notification type:', notification.type);
+        console.log('🔔 NOTIFICATION DROPDOWN: Notification data:', notification.data);
+        console.log('🔔 NOTIFICATION DROPDOWN: About to call loadNotifications()');
+
         // Reload notifications from API to get the persistent version
         // This ensures we have the correct database ID instead of temporary ones
-        loadNotifications();
+        loadNotifications().then(() => {
+          console.log('🔔 NOTIFICATION DROPDOWN: loadNotifications() completed');
+        }).catch((error) => {
+          console.error('🔔 NOTIFICATION DROPDOWN: loadNotifications() failed:', error);
+        });
 
         // Show browser notification if supported and permitted
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(notification.title, {
-            body: notification.message,
+          new Notification(notification.title || 'New Notification', {
+            body: notification.message || '',
             icon: '/logo.svg',
             badge: '/logo.svg'
           });
@@ -122,9 +139,12 @@ export default function NotificationDropdown({
       }
     };
 
+    console.log('🔔 NOTIFICATION DROPDOWN: Setting up handlers for userId:', userId);
     notificationHub.setHandlers(handlers, 'NotificationDropdown');
-    
+    console.log('🔔 NOTIFICATION DROPDOWN: Handlers set up successfully');
+
     // Load initial notifications
+    console.log('🔔 NOTIFICATION DROPDOWN: Loading initial notifications');
     loadNotifications();
 
     // Request browser notification permission
@@ -246,6 +266,17 @@ export default function NotificationDropdown({
     }
   }, [userId, notifications, onNotificationAction, handleMarkAsHandled]);
 
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
+    // Handle different notification types
+    if (notification.type === 'Message' && notification.data?.chatId) {
+      // Navigate to chat and mark as read
+      setIsOpen(false);
+      await handleMarkAsRead(notification.id);
+      router.push(`/chat/${notification.data.chatId}`);
+    }
+    // Add other notification type handlers here if needed
+  }, [router, handleMarkAsRead]);
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'FriendRequest':
@@ -257,7 +288,7 @@ export default function NotificationDropdown({
       case 'FriendRemoved':
         return <UserMinusIcon className="w-5 h-5 text-red-500" />;
       case 'Message':
-        return <HeartIcon className="w-5 h-5 text-purple-500" />;
+        return <ChatBubbleLeftIcon className="w-5 h-5 text-blue-500" />;
       default:
         return <BellIcon className="w-5 h-5 text-gray-500" />;
     }
@@ -346,7 +377,8 @@ export default function NotificationDropdown({
                     key={notification.id}
                     className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                       notification.status === 'Unread' ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-                    }`}
+                    } ${notification.type === 'Message' ? 'cursor-pointer' : ''}`}
+                    onClick={() => notification.type === 'Message' ? handleNotificationClick(notification) : undefined}
                   >
                     <div className="flex items-start space-x-3">
                       <div className="flex-shrink-0">
@@ -396,8 +428,21 @@ export default function NotificationDropdown({
                           </div>
                         )}
 
+                        {/* Message notification actions */}
+                        {notification.type === 'Message' && notification.status === 'Unread' && (
+                          <div className="flex space-x-2 mt-3">
+                            <button
+                              onClick={() => handleNotificationClick(notification)}
+                              className="flex items-center px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                            >
+                              <ChatBubbleLeftIcon className="w-4 h-4 mr-1" />
+                              View Message
+                            </button>
+                          </div>
+                        )}
+
                         {/* Mark as read button */}
-                        {notification.status === 'Unread' && notification.type !== 'FriendRequest' && (
+                        {notification.status === 'Unread' && notification.type !== 'FriendRequest' && notification.type !== 'Message' && (
                           <button
                             onClick={() => handleMarkAsRead(notification.id)}
                             className="text-xs text-blue-500 hover:text-blue-600 mt-2 transition-colors"

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import MusicImage from '@/components/ui/MusicImage';
 import { userApi, identityApi, Chat, User } from '@/lib/api';
 import { notificationService } from '@/lib/notificationService';
+import { notificationHub } from '@/lib/notificationHub';
 
 interface ChatWithParticipants extends Chat {
   participantProfiles?: User[];
@@ -17,6 +18,29 @@ export default function ChatPage() {
   const [chats, setChats] = useState<ChatWithParticipants[]>([]);
   const [friends, setFriends] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
+
+  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, 5000);
+  }, []);
+
+  const removeToast = useCallback((id: string) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
+  const loadUnreadCounts = useCallback(async () => {
+    try {
+      const counts = await userApi.getUnreadMessageCounts();
+      setUnreadCounts(counts);
+    } catch (error) {
+      console.error('Failed to load unread counts:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -30,16 +54,48 @@ export default function ChatPage() {
         const userId = userProfile?.id || user.id;
         loadUserChats(userId);
         loadUserFriends(userId);
+        loadUnreadCounts();
       }
     };
     
     loadData();
-  }, []);
+  }, [loadUnreadCounts]);
 
   // Clear current chat ID when on main chat page
   useEffect(() => {
     notificationService.setCurrentChatId(null);
   }, []);
+
+  // Setup notification hub for message notifications
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    // Set up message notification handlers
+    notificationHub.setHandlers({
+      onNewNotification: (notification: { type?: string; data?: { chatId?: string; senderUsername?: string } }) => {
+        if ((notification.type === 'Message' || notification.type === 'message') && notification.data) {
+          const { senderUsername } = notification.data;
+
+          // Show toast notification
+          addToast(`New message from ${senderUsername}`, 'info');
+
+          // Reload unread counts to update the UI
+          loadUnreadCounts();
+        }
+      },
+      onChatUnreadCountUpdate: (data: { chatId: string, unreadCount: number }) => {
+        // Update the unread count for this specific chat
+        setUnreadCounts(prev => ({
+          ...prev,
+          [data.chatId]: data.unreadCount
+        }));
+      }
+    }, 'ChatPage');
+
+    return () => {
+      notificationHub.removeHandlers('ChatPage');
+    };
+  }, [currentUser?.id, addToast, loadUnreadCounts]);
 
   const loadUserChats = async (userId: string) => {
     try {
@@ -138,6 +194,22 @@ export default function ChatPage() {
 
   return (
     <>
+      {/* Toast notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`p-3 rounded-lg shadow-lg text-white max-w-sm cursor-pointer transition-opacity ${
+              toast.type === 'success' ? 'bg-green-600' :
+              toast.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+            }`}
+            onClick={() => removeToast(toast.id)}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-white">Messages</h1>
@@ -155,31 +227,61 @@ export default function ChatPage() {
                   <div className="space-y-3">
                     {chats.map((chat) => {
                       const otherParticipant = getOtherParticipant(chat);
+                      const unreadCount = unreadCounts[chat.chatId] || 0;
                       return (
                         <div
                           key={chat.chatId}
                           onClick={() => handleChatClick(chat.chatId)}
-                          className="flex items-center space-x-4 p-4 rounded-lg bg-gray-700/50 hover:bg-gray-700/80 cursor-pointer transition-colors"
+                          className={`flex items-center space-x-4 p-4 rounded-lg cursor-pointer transition-colors ${
+                            unreadCount > 0 
+                              ? 'bg-blue-900/30 hover:bg-blue-900/50 border-l-4 border-blue-500' 
+                              : 'bg-gray-700/50 hover:bg-gray-700/80'
+                          }`}
                         >
-                          <MusicImage
-                            src={otherParticipant?.avatarUrl}
-                            alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'User'}
-                            fallbackText={otherParticipant ? (otherParticipant.displayName || otherParticipant.username).charAt(0).toUpperCase() : '?'}
-                            type="circle"
-                            size="medium"
-                            className="w-12 h-12"
-                          />
+                          <div className="relative">
+                            <MusicImage
+                              src={otherParticipant?.avatarUrl}
+                              alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'User'}
+                              fallbackText={otherParticipant ? (otherParticipant.displayName || otherParticipant.username).charAt(0).toUpperCase() : '?'}
+                              type="circle"
+                              size="medium"
+                              className="w-12 h-12"
+                            />
+                            {unreadCount > 0 && (
+                              <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
-                              <h3 className="text-white font-medium truncate">
+                              <h3 className={`font-medium truncate ${unreadCount > 0 ? 'text-white' : 'text-white'}`}>
                                 {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown'}
                               </h3>
-                              <span className="text-gray-400 text-sm">
-                                {formatTime(chat.lastActivity)}
-                              </span>
+                              <div className="flex items-center space-x-2">
+                                <span className="text-gray-400 text-sm">
+                                  {formatTime(chat.lastActivity)}
+                                </span>
+                                {unreadCount > 0 && (
+                                  <div className="bg-blue-500 text-white text-xs rounded-full px-2 py-1 font-bold min-w-[20px] text-center">
+                                    {unreadCount > 99 ? '99+' : unreadCount}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <p className="text-gray-400 text-sm truncate">
-                              {chat.lastMessageId ? 'Last message available' : 'No messages yet'}
+                            <p className={`text-sm truncate ${unreadCount > 0 ? 'text-gray-300' : 'text-gray-400'}`}>
+                              {chat.lastMessageContent ? (
+                                chat.lastMessageSenderId === currentUser?.id
+                                  ? `You: ${chat.lastMessageContent}`
+                                  : chat.lastMessageContent
+                              ) : (
+                                'No messages yet'
+                              )}
+                              {unreadCount > 0 && (
+                                <span className="ml-2 text-blue-400 font-medium">
+                                  • {unreadCount} unread
+                                </span>
+                              )}
                             </p>
                           </div>
                         </div>
