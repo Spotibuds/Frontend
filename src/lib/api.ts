@@ -1338,15 +1338,17 @@ export function processArtists(artists: unknown): string[] {
   return ['Unknown Artist'];
 }
 
-// Admin API
+// Admin API  
 export const adminApi = {
 
   // SONGS
   async createSong(data: FormData): Promise<Song | null> {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
         method: 'POST',
         body: data,
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
         if (!res.ok) {
         const text = await res.text(); 
@@ -1362,9 +1364,11 @@ export const adminApi = {
 
   async updateSong(id: string, data: FormData): Promise<Song | null> {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
         method: 'PUT',
         body: data,
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
         if (!res.ok) {
         const text = await res.text(); 
@@ -1391,9 +1395,11 @@ export const adminApi = {
   // ALBUMS
   async createAlbum(data: FormData): Promise<Album | null> {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res = await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
         method: "POST",
         body: data, 
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
      
       if (!res.ok) {
@@ -1413,9 +1419,11 @@ export const adminApi = {
   async updateAlbum(id: string, data: FormData): Promise<Album | null> {
 
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
         method: 'PUT',
         body: data,
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
        if (!res.ok) {
         const text = await res.text(); 
@@ -1442,9 +1450,11 @@ export const adminApi = {
   // ARTISTS
   async createArtist(data: FormData): Promise<Artist | null> {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
         method: 'POST',
         body: data,
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
         if (!res.ok) {
         const text = await res.text(); 
@@ -1460,9 +1470,11 @@ export const adminApi = {
 
   async updateArtist(id: string, data: FormData): Promise<Artist | null> {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
         method: 'PUT',
         body: data,
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
         if (!res.ok) {
         const text = await res.text(); 
@@ -1602,8 +1614,10 @@ async getAllUsers(): Promise<UserAdmin[]> {
 
   async deleteUser(id: string): Promise<boolean> {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       await apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`, {
         method: "DELETE",
+        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
       return true;
     } catch (error) {
@@ -1614,10 +1628,12 @@ async getAllUsers(): Promise<UserAdmin[]> {
 
     createAdmin: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/create-admin`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+            "Authorization": token ? `Bearer ${token}` : "",
         },
         body: JSON.stringify(data),
       });
@@ -1632,13 +1648,15 @@ async getAllUsers(): Promise<UserAdmin[]> {
       return null;
     }
   },
-
+  
 promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
   try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
     const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/promote-to-admin`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": token ? `Bearer ${token}` : "",
       },
     });
 
@@ -1655,13 +1673,14 @@ promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
   }
 },
 
-
 demoteToUser: async (data: { id: string }): Promise<boolean> => {
   try {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
     const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/demote-to-user`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": token ? `Bearer ${token}` : "",
       },
     });
 
@@ -1679,10 +1698,12 @@ demoteToUser: async (data: { id: string }): Promise<boolean> => {
 },
     createUser: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
     try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+            "Authorization": token ? `Bearer ${token}` : "",
         },
         body: JSON.stringify(data),
       });
