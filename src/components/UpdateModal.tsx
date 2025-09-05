@@ -13,7 +13,7 @@ type UpdateType = "artist" | "album" | "song";
 
 interface UpdateModalProps {
   type: UpdateType;
-  data: Artist | Album | Song;
+  data: Artist | Album | Song | null;
   isOpen: boolean;
   onClose: () => void;
   onUpdate: (
@@ -37,9 +37,9 @@ export default function UpdateModal({
     name?: string;
     title?: string;
     bio?: string;
-    artist?: Artist | null;
-    artists?: Artist[];
-    album?: Album | null;
+    artist?: Artist | { id: string; name: string } | null;
+    artists?: (Artist | { id: string; name: string })[];
+    album?: Album | { id: string; title: string } | null;
     imageFile?: File;
     coverFile?: File;
     audioFile?: File;
@@ -73,24 +73,41 @@ export default function UpdateModal({
   // Initialize form state
   useEffect(() => {
     if (data) {
-      const artist = data.artist || data.artists?.[0];
-      const album = data.album;
+      let artist = null;
+      let album = null;
+
+      // Handle different data types
+      if (type === 'song' && 'artists' in data) {
+        artist = data.artists?.[0] || null;
+        album = data.album || null;
+      } else if (type === 'album' && 'artist' in data) {
+        artist = data.artist || null;
+      }
+
       setFormDataState({
         ...data,
-        artist: artist || null,
+        artist: artist,
         artists: artist ? [artist] : [],
-        album: album || null,
+        album: album,
       });
       setArtistQuery(artist?.name || "");
       setAlbumQuery(album?.title || "");
-      setCoverPreview(data.coverUrl || data.imageUrl || "");
+
+      // Handle cover preview for different data types
+      let coverUrl = "";
+      if ('coverUrl' in data && data.coverUrl) {
+        coverUrl = data.coverUrl;
+      } else if ('imageUrl' in data && data.imageUrl) {
+        coverUrl = data.imageUrl;
+      }
+      setCoverPreview(coverUrl);
     } else {
       setFormDataState({});
       setArtistQuery("");
       setAlbumQuery("");
       setCoverPreview("");
     }
-  }, [data]);
+  }, [data, type]);
 
   // Artist suggestions
   useEffect(() => {
@@ -335,8 +352,8 @@ export default function UpdateModal({
                           setFormDataState((prev) => ({
                             ...prev,
                             album: a,
-                            artists: [a.artist],
-                            artist: a.artist,
+                            artists: a.artist ? [a.artist] : [],
+                            artist: a.artist || null,
                           }));
                           setAlbumQuery(a.title);
                           setArtistQuery(a.artist?.name || "");

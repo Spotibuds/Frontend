@@ -9,7 +9,7 @@ export interface BaseNotification {
   type: 'friend_request_received' | 'friend_request_accepted' | 'friend_request_declined' | 'friend_removed' | 'message';
   title: string;
   message: string;
-  data: Record<string, unknown>;
+  data: Record<string, unknown> | FriendRequest;
   timestamp: Date;
   read: boolean;
 }
@@ -76,11 +76,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const addNotification = useCallback((notification: Omit<AppNotification, 'id' | 'timestamp'>) => {
-    const newNotification: AppNotification = {
+    const newNotification = {
       ...notification,
       id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       timestamp: new Date(),
-    };
+    } as AppNotification;
     
     setNotifications(prev => [newNotification, ...prev]);
   }, []);
@@ -153,11 +153,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const updateFriendRequestsList = useCallback((requests: FriendRequest[]) => {
     const formattedRequests = requests.map(req => ({
-      requestId: req.requestId || req.id,
-      requesterId: req.requesterId || req.senderId,
-      requesterUsername: req.requesterUsername || req.senderName || req.username,
-      requesterAvatar: req.requesterAvatar || req.senderAvatar || req.avatarUrl,
-      requestedAt: req.requestedAt || req.timestamp || req.createdAt || new Date().toISOString(),
+      requestId: req.requestId,
+      requesterId: req.senderId,
+      requesterUsername: req.senderName,
+      requesterAvatar: req.senderAvatar,
+      requestedAt: req.timestamp,
     }));
     
     setFriendRequests(formattedRequests);
