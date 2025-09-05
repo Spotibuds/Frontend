@@ -288,20 +288,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
-  const handleSeekClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!state.duration) return;
-    
-    const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * state.duration;
-    seekTo(newTime);
-  };
-
-  const handleVolumeClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    setVolume(Math.max(0, Math.min(1, percent)));
-  };
 
   // Close sidebar on mobile when navigating
   const handleNavClick = () => {

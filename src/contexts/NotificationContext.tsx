@@ -9,7 +9,7 @@ export interface BaseNotification {
   type: 'friend_request_received' | 'friend_request_accepted' | 'friend_request_declined' | 'friend_removed' | 'message';
   title: string;
   message: string;
-  data: any;
+  data: Record<string, unknown>;
   timestamp: Date;
   read: boolean;
 }
@@ -55,7 +55,7 @@ export interface NotificationContextType {
   addFriendRequest: (request: FriendRequest) => void;
   removeFriendRequest: (requestId: string) => void;
   clearFriendRequests: () => void;
-  updateFriendRequestsList: (requests: any[]) => void;
+  updateFriendRequestsList: (requests: FriendRequest[]) => void;
   
   // Message notification specific actions
   addMessageNotification: (notification: Omit<MessageNotification, 'id' | 'timestamp'>) => void;
@@ -151,7 +151,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setFriendRequests([]);
   }, []);
 
-  const updateFriendRequestsList = useCallback((requests: any[]) => {
+  const updateFriendRequestsList = useCallback((requests: FriendRequest[]) => {
     const formattedRequests = requests.map(req => ({
       requestId: req.requestId || req.id,
       requesterId: req.requesterId || req.senderId,

@@ -13,7 +13,7 @@ type UpdateType = "artist" | "album" | "song";
 
 interface UpdateModalProps {
   type: UpdateType;
-  data: any;
+  data: Artist | Album | Song;
   isOpen: boolean;
   onClose: () => void;
   onUpdate: (
@@ -32,7 +32,18 @@ export default function UpdateModal({
   onUpdate,
   onSuccess,
 }: UpdateModalProps) {
-  const [formDataState, setFormDataState] = useState<any>({});
+  const [formDataState, setFormDataState] = useState<{
+    id?: string;
+    name?: string;
+    title?: string;
+    bio?: string;
+    artist?: Artist | null;
+    artists?: Artist[];
+    album?: Album | null;
+    imageFile?: File;
+    coverFile?: File;
+    audioFile?: File;
+  }>({});
   const [allArtists, setAllArtists] = useState<Artist[]>([]);
   const [allAlbums, setAllAlbums] = useState<Album[]>([]);
   const [artistQuery, setArtistQuery] = useState("");
@@ -113,13 +124,13 @@ export default function UpdateModal({
     if (e.target instanceof HTMLInputElement && e.target.type === "file") {
       const file = e.target.files?.[0];
       if (file) {
-        setFormDataState((prev: any) => ({ ...prev, [name]: file }));
+        setFormDataState((prev) => ({ ...prev, [name]: file }));
         if (name === "coverFile" || name === "imageFile") {
           setCoverPreview(URL.createObjectURL(file));
         }
       }
     } else {
-      setFormDataState((prev: any) => ({ ...prev, [name]: value }));
+      setFormDataState((prev) => ({ ...prev, [name]: value }));
     }
   };
 
@@ -250,7 +261,7 @@ export default function UpdateModal({
                     key={a.id}
                     className="px-2 py-1 cursor-pointer hover:bg-gray-600"
                     onClick={() => {
-                      setFormDataState((prev: any) => ({ ...prev, artist: a, artists: [a] }));
+                      setFormDataState((prev) => ({ ...prev, artist: a, artists: [a] }));
                       setArtistQuery(a.name);
                       setArtistSuggestions([]);
                       setAlbumQuery("");
@@ -321,7 +332,7 @@ export default function UpdateModal({
                         className="px-2 py-1 cursor-pointer hover:bg-gray-600"
                         onClick={() => {
 
-                          setFormDataState((prev: any) => ({
+                          setFormDataState((prev) => ({
                             ...prev,
                             album: a,
                             artists: [a.artist],

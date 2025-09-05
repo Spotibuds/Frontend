@@ -544,7 +544,7 @@ export default function ChatPage() {
               </Button>
             </div>
             {!isConnected && (
-              <p className="text-xs text-red-400 mt-2">Disconnected - messages won't send</p>
+              <p className="text-xs text-red-400 mt-2">Disconnected - messages won&apos;t send</p>
             )}
           </div>
         </div>
