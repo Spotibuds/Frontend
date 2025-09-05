@@ -41,20 +41,20 @@ export default function PlaylistsPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
         {/* Simple Header */}
         <div className="bg-gray-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
             <div className="text-center">
-              <h1 className="text-4xl font-bold text-white mb-2">My Playlists</h1>
-              <p className="text-gray-400">Create and manage your music collections</p>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">My Playlists</h1>
+              <p className="text-gray-400 text-sm sm:text-base">Create and manage your music collections</p>
             </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="px-4 sm:px-6 lg:px-8 py-8">
+        <div className="px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
           <div className="max-w-7xl mx-auto">
             {/* Main Content Card */}
             <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-2xl overflow-hidden">
-              <div className="p-8">
+              <div className="p-4 sm:p-6 lg:p-8">
                 <PlaylistManager userId={currentUser.id} />
               </div>
             </div>

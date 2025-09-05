@@ -108,15 +108,15 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 px-6 pt-8 pb-12">
+      <div className="bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 px-4 sm:px-6 pt-6 sm:pt-8 pb-8 sm:pb-12">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
               {/* Welcome Message */}
               <div className="flex-1">
-                <h1 className="text-4xl font-bold text-white mb-2">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
                   {getGreeting()}, {safeString(user.username)}!
                 </h1>
-                <p className="text-gray-300 text-lg">
+                <p className="text-gray-300 text-base sm:text-lg">
                   {loading ? 'Loading your music...' : 'Welcome back to SpotiBuds'}
                 </p>
                 {error && (
@@ -125,10 +125,10 @@ export default function DashboardPage() {
               </div>
 
               {/* User Profile Card */}
-              <div className="hidden lg:block bg-black/20 backdrop-blur-sm rounded-lg p-6 min-w-[300px]">
-                <div className="flex items-center space-x-4">
+              <div className="lg:hidden bg-black/20 backdrop-blur-sm rounded-lg p-4 w-full sm:w-auto sm:min-w-[280px]">
+                <div className="flex items-center space-x-3">
                   {user.avatarUrl ? (
-                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
                       <MusicImage
                         src={user.avatarUrl}
                         alt={user.username || 'User'}
@@ -137,16 +137,16 @@ export default function DashboardPage() {
                       />
                     </div>
                   ) : (
-                    <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-bold text-xl">
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                      <span className="text-white font-bold text-lg sm:text-xl">
                         {safeString(user.username).charAt(0).toUpperCase()}
                       </span>
                     </div>
                   )}
-                  <div>
-                    <h3 className="text-white font-semibold text-lg">{safeString(user.displayName || user.username)}</h3>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-white font-semibold text-base sm:text-lg truncate">{safeString(user.displayName || user.username)}</h3>
                     <p className="text-gray-300 text-sm">SpotiBuds Member</p>
-                    <button 
+                    <button
                       onClick={() => router.push('/user')}
                       className="text-purple-400 hover:text-purple-300 text-sm font-medium mt-1"
                     >
@@ -160,28 +160,28 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Content */}
-        <div className="px-6 py-8 space-y-12">
+        <div className="px-4 sm:px-6 py-6 sm:py-8 space-y-8 sm:space-y-12">
           <div className="max-w-7xl mx-auto">
             {/* Featured Albums */}
             {albums.length > 0 && (
               <section>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">Featured Albums</h2>
-                  <button 
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white">Featured Albums</h2>
+                  <button
                     onClick={() => router.push('/music')}
                     className="text-purple-400 hover:text-purple-300 text-sm font-medium transition-colors"
                   >
                     View all →
                   </button>
                 </div>
-                
-                <Slider itemWidth="200px" gap="20px">
+
+                <Slider itemWidth="160px" gap="16px">
                   {albums.slice(0, 10).map((album, index) => (
-                    <div 
-                      key={album.id} 
-                      className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200 relative"
+                    <div
+                      key={album.id}
+                      className="group cursor-pointer p-3 sm:p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200 relative"
                     >
-                      <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
+                      <div className="mb-3 sm:mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
                         <MusicImage
                           src={album.coverUrl}
                           alt={safeString(album.title)}
@@ -193,9 +193,9 @@ export default function DashboardPage() {
                         />
                         {/* Play button overlay */}
                         <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                          <AlbumPlayButton 
-                            album={album} 
-                            size="large" 
+                          <AlbumPlayButton
+                            album={album}
+                            size="large"
                             showAddToQueue={true}
                           />
                         </div>
@@ -217,8 +217,8 @@ export default function DashboardPage() {
             {/* Featured Artists */}
             {artists.length > 0 && (
               <section>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">Featured Artists</h2>
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white">Featured Artists</h2>
                   <button 
                     onClick={() => router.push('/music')}
                     className="text-purple-400 hover:text-purple-300 text-sm font-medium transition-colors"
@@ -227,12 +227,12 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 
-                <Slider itemWidth="180px" gap="20px">
+                <Slider itemWidth="140px" gap="16px">
                   {artists.slice(0, 8).map((artist, index) => (
                     <div 
                       key={artist.id} 
                       onClick={() => handleArtistClick(artist.id)}
-                      className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
+                      className="group cursor-pointer p-3 sm:p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
                     >
                       <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
                         <MusicImage
@@ -258,20 +258,20 @@ export default function DashboardPage() {
             {/* Popular Songs */}
             {songs.length > 0 && (
               <section>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">Popular Right Now</h2>
-                  <button 
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white">Popular Right Now</h2>
+                  <button
                     onClick={() => router.push('/music')}
                     className="text-purple-400 hover:text-purple-300 text-sm font-medium transition-colors"
                   >
                     View all →
                   </button>
                 </div>
-                
+
                 <div className="space-y-2">
                   {songs.slice(0, 8).map((song) => (
-                    <SongCard 
-                      key={song.id} 
+                    <SongCard
+                      key={song.id}
                       song={song}
                       showDuration={true}
                       showAddToPlaylist={true}

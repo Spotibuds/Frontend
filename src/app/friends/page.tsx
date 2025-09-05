@@ -425,26 +425,6 @@ export default function FriendsPage() {
     }
   };
 
-  const resetAllFriendships = async () => {
-    try {
-      await userApi.resetAllFriendships();
-      addToast('All friendships reset', 'success');
-      setFriendRequests([]);
-      setFriends([]);
-      setSentRequests(new Set());
-    } catch {
-      addToast('Failed to reset friendships', 'error');
-    }
-  };
-
-  const syncUsers = async () => {
-    try {
-      await userApi.syncUsers();
-      addToast('Users synced successfully', 'success');
-    } catch {
-      addToast('Failed to sync users', 'error');
-    }
-  };
 
   if (loading) {
     return (
@@ -465,7 +445,7 @@ export default function FriendsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Friends</h1>
-                <p className="text-gray-400">Manage your friends and friend requests</p>
+                <p className="text-gray-400">Manage your friends, friend requests, and discover new people</p>
               </div>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -479,63 +459,47 @@ export default function FriendsPage() {
             </div>
           </div>
 
-          {/* Development Tools */}
-          <div className="mb-6 flex gap-4">
-            <Button
-              onClick={resetAllFriendships}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Reset All Friendships
-            </Button>
-            <Button
-              onClick={syncUsers}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              Sync Users
-            </Button>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Friend Requests - ONLY for requests you RECEIVE */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            {/* Friend Requests - Compact */}
             <div className="lg:col-span-1">
               <Card className="bg-white/10 backdrop-blur-sm border-white/20">
-                <div className="p-6">
-                  <h2 className="text-xl font-semibold text-white mb-4">Friend Requests ({friendRequests.length})</h2>
+                <div className="p-4">
+                  <h2 className="text-lg font-semibold text-white mb-3">Requests ({friendRequests.length})</h2>
                   {friendRequests.length === 0 ? (
-                    <p className="text-gray-400 text-center py-8">No pending requests</p>
+                    <p className="text-gray-400 text-sm text-center py-4">No pending requests</p>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {friendRequests.map((request) => (
-                        <div key={`request-${request.requestId}`} className="flex items-center gap-3 p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
+                        <div key={`request-${request.requestId}`} className="flex items-center gap-2 p-3 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors">
                           <MusicImage
                             src={request.requesterAvatar}
                             alt={request.requesterUsername || 'User'}
-                            className="w-12 h-12 rounded-full"
+                            className="w-10 h-10 rounded-full"
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="text-white font-medium truncate">{request.requesterUsername || 'Unknown User'}</p>
-                            <p className="text-gray-400 text-sm">
+                            <p className="text-white font-medium text-sm truncate">{request.requesterUsername || 'Unknown User'}</p>
+                            <p className="text-gray-400 text-xs">
                               {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString('en-US', {
-                                year: 'numeric',
                                 month: 'short',
                                 day: 'numeric'
-                              }) : 'Unknown date'}
+                              }) : 'Unknown'}
                             </p>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-col gap-1">
                             <Button
                               onClick={() => handleAcceptRequest(request.requestId)}
                               disabled={processingRequests.has(request.requestId)}
-                              className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              className="px-3 py-1 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                              {processingRequests.has(request.requestId) ? 'Accepting...' : 'Accept'}
+                              ✓
                             </Button>
                             <Button
                               onClick={() => handleDeclineRequest(request.requestId)}
                               disabled={processingRequests.has(request.requestId)}
-                              className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                              {processingRequests.has(request.requestId) ? 'Declining...' : 'Decline'}
+                              ✕
                             </Button>
                           </div>
                         </div>
@@ -546,11 +510,65 @@ export default function FriendsPage() {
               </Card>
             </div>
 
-            {/* Friends List */}
-            <div className="lg:col-span-2">
+            {/* Friends & Search Combined */}
+            <div className="lg:col-span-3">
               <Card className="bg-white/10 backdrop-blur-sm border-white/20">
                 <div className="p-6">
-                  <h2 className="text-xl font-semibold text-white mb-4">Your Friends ({friends.length})</h2>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-semibold text-white">Friends ({friends.length})</h2>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Input
+                        type="text"
+                        placeholder="Search users..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        className="w-full sm:w-48 bg-white/10 border-white/20 text-white placeholder-gray-400 text-sm"
+                      />
+                      <Button
+                        onClick={handleSearch}
+                        disabled={isSearching || !searchQuery.trim()}
+                        className="px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-sm w-full sm:w-auto"
+                      >
+                        {isSearching ? '...' : 'Search'}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Search Results */}
+                  {searchResults.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-lg font-medium text-white mb-3">Search Results</h3>
+                      <div className="space-y-2">
+                        {searchResults.map((user) => (
+                          <div key={`search-${user.id}`} className="flex items-center gap-3 p-3 bg-blue-900/20 rounded-lg border border-blue-500/20">
+                            <MusicImage
+                              src={user.avatarUrl}
+                              alt={user.username}
+                              className="w-10 h-10 rounded-full"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-white font-medium truncate">{user.username}</p>
+                              <p className="text-gray-400 text-sm truncate">{user.displayName || user.username}</p>
+                            </div>
+                            <Button
+                              onClick={() => handleSendFriendRequest(user.id)}
+                              disabled={sentRequests.has(user.id) || processingRequests.has(user.id)}
+                              className={`px-3 py-1 text-sm ${
+                                sentRequests.has(user.id) || processingRequests.has(user.id)
+                                  ? 'bg-gray-600 cursor-not-allowed'
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
+                            >
+                              {processingRequests.has(user.id) ? 'Sending...' : sentRequests.has(user.id) ? 'Sent' : 'Add'}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Friends List */}
                   {friends.length === 0 ? (
                     <div className="text-center py-12">
                       <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -559,10 +577,10 @@ export default function FriendsPage() {
                         </svg>
                       </div>
                       <p className="text-gray-400 mb-4">No friends yet</p>
-                      <p className="text-gray-500 text-sm">Search for users to add them as friends</p>
+                      <p className="text-gray-500 text-sm">Search for users above to add them as friends</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {friends.map((friend) => (
                         <div key={`friend-${friend.id}`} className="flex items-center gap-3 p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-colors">
                           <MusicImage
@@ -579,7 +597,7 @@ export default function FriendsPage() {
                             disabled={processingFriends.has(friend.id)}
                             className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {processingFriends.has(friend.id) ? 'Removing...' : 'Remove'}
+                            {processingFriends.has(friend.id) ? '...' : 'Remove'}
                           </Button>
                         </div>
                       ))}
@@ -588,62 +606,6 @@ export default function FriendsPage() {
                 </div>
               </Card>
             </div>
-          </div>
-
-          {/* Search Section - ONLY for sending requests */}
-          <div className="mt-8">
-            <Card className="bg-white/10 backdrop-blur-sm border-white/20">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold text-white mb-4">Find Friends</h2>
-                <div className="flex gap-4 mb-6">
-                  <Input
-                    type="text"
-                    placeholder="Search by username..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    className="flex-1 bg-white/10 border-white/20 text-white placeholder-gray-400"
-                  />
-                  <Button
-                    onClick={handleSearch}
-                    disabled={isSearching || !searchQuery.trim()}
-                    className="px-6 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {isSearching ? 'Searching...' : 'Search'}
-                  </Button>
-                </div>
-
-                {searchResults.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-medium text-white">Search Results ({searchResults.length})</h3>
-                    {searchResults.map((user) => (
-                      <div key={`search-${user.id}`} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg">
-                        <MusicImage
-                          src={user.avatarUrl}
-                          alt={user.username}
-                          className="w-10 h-10 rounded-full"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium truncate">{user.username}</p>
-                          <p className="text-gray-400 text-sm truncate">{user.displayName || user.username}</p>
-                        </div>
-                        <Button
-                          onClick={() => handleSendFriendRequest(user.id)}
-                          disabled={sentRequests.has(user.id) || processingRequests.has(user.id)}
-                          className={`px-4 py-2 ${
-                            sentRequests.has(user.id) || processingRequests.has(user.id)
-                              ? 'bg-gray-600 cursor-not-allowed'
-                              : 'bg-blue-600 hover:bg-blue-700'
-                          }`}
-                        >
-                          {processingRequests.has(user.id) ? 'Sending...' : sentRequests.has(user.id) ? 'Request Sent' : 'Add Friend'}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
           </div>
         </div>
         

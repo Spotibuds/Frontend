@@ -717,7 +717,7 @@ function FeedInner() {
 	UserHeader.displayName = 'UserHeader';
 
 		const Card = ({ children }: { children: React.ReactNode }) => (
-		<div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-4 shadow-md w-full max-w-2xl">
+		<div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-3 sm:p-4 shadow-md w-full max-w-2xl mx-auto overflow-hidden">
 			{children}
 		</div>
 	);
@@ -726,20 +726,20 @@ function FeedInner() {
 		const flash = reactionFlash[index];
 		const slideKey = keyOf(slide);
 		const existingReactions = reactionsBySlide[slideKey] || [];
-		
+
 		return (
-			<div className="pointer-events-none fixed right-6 top-1/2 -translate-y-1/2 flex flex-col gap-2 items-center z-20">
+			<div className="pointer-events-none fixed right-2 sm:right-6 top-1/2 -translate-y-1/2 flex flex-col gap-1 sm:gap-2 items-center z-20">
 				{["👍", "🔥", "😍", "😂", "👏", "😮"].map((em) => {
 					const hasReacted = existingReactions.some(r => r.emoji === em && r.fromIdentityUserId === me?.id);
 					return (
 						<button
 							key={em}
 							onClick={(e) => { e.stopPropagation(); handleReact(slide, em, index); }}
-							className={`pointer-events-auto w-10 h-10 rounded-full text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${
+							className={`pointer-events-auto w-8 h-8 sm:w-10 sm:h-10 rounded-full text-sm sm:text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${
 								flash?.emoji === em ? 'ring-2 ring-purple-400 animate-pulse' : ''
 							} ${
-								hasReacted 
-									? 'bg-purple-600/50 hover:bg-purple-600/70 text-white' 
+								hasReacted
+									? 'bg-purple-600/50 hover:bg-purple-600/70 text-white'
 									: 'bg-white/10 hover:bg-white/20 text-white/80'
 							}`}
 							style={{ willChange: 'transform' }}
@@ -831,9 +831,19 @@ function FeedInner() {
 							>
 								<MusicImage src={song?.coverUrl || slide.coverUrl} alt={slide.songTitle || "Song"} size="large" className="w-full h-full" />
 							</button>
-							<div className="min-w-0">
-								<div className="text-white text-xl font-semibold truncate">{slide.songTitle}</div>
-								<div className="text-gray-300 truncate">
+							<div className="min-w-0 flex-1">
+								<div className={`text-white font-semibold ${
+									slide.songTitle && slide.songTitle.length > 30
+										? 'text-lg sm:text-xl'
+										: slide.songTitle && slide.songTitle.length > 20
+										? 'text-xl sm:text-xl'
+										: 'text-xl'
+								} ${
+									slide.songTitle && slide.songTitle.length > 40
+										? 'leading-tight'
+										: ''
+								}`}>{slide.songTitle}</div>
+								<div className="text-gray-300 text-sm sm:text-base truncate">
 									{song?.artists?.length
 										? song.artists.map((a, i) => (
 											<Link key={a.id || `${a.name}-${i}`} href={a.id ? `/artist/${a.id}` : '#'} className="hover:underline">
@@ -1089,13 +1099,13 @@ function FeedInner() {
 					<>
 						<div
 							ref={containerRef}
-							className="h-[calc(100vh-12rem)] overflow-y-auto overscroll-contain snap-y snap-mandatory"
+							className="h-[calc(100vh-8rem)] overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
 						>
 							{slides.map((slide, idx) => (
 								<section
 									key={idx}
 									ref={(el) => { sectionsRef.current[idx] = el; }}
-									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-24"
+									className="relative snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24 w-full"
 								>
 									{slide.type === "recent_song" && <RecentSongCard slide={slide} song={songsById[slide.songId] || null} userMeta={userMetaById[slide.identityUserId]} />}
 									{(slide as any).type === "now_playing" && <NowPlayingCard slide={slide as any} song={songsById[(slide as any).songId] || null} userMeta={userMetaById[(slide as any).identityUserId]} />}
@@ -1110,8 +1120,8 @@ function FeedInner() {
 
 							{/* Loading card in its own snap section */}
 							{isLoadingMore && (
-								<section className="snap-start min-h-full flex items-center justify-center px-4">
-									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 animate-pulse w-full max-w-2xl">
+								<section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
+									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3 sm:p-4 animate-pulse w-full max-w-2xl">
 										<div className="h-4 bg-gray-800 rounded w-1/3"></div>
 										<div className="mt-4 h-28 bg-gray-800 rounded"></div>
 									</div>
@@ -1120,8 +1130,8 @@ function FeedInner() {
 
 							{/* End-of-feed section */}
 							{!hasMore && (
-								<section className="snap-start min-h-full flex items-center justify-center px-4">
-									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 text-center text-gray-300 w-full max-w-2xl">
+								<section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
+									<div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 text-center text-gray-300 w-full max-w-2xl">
 										You&apos;re all caught up. No more posts for now.
 									</div>
 								</section>
@@ -1129,14 +1139,14 @@ function FeedInner() {
 
 							{/* Sentinel at the bottom for preloading more */}
 							{hasMore && (
-								<section className="snap-start min-h-full flex items-center justify-center px-4">
+								<section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
 									<div ref={sentinelRef} className="h-1 w-full" />
 								</section>
 							)}
 						</div>
 
-						{/* Prev/Next controls */}
-						<div className="pointer-events-none absolute inset-y-0 left-4 flex flex-col justify-center gap-3">
+						{/* Prev/Next controls - Hidden on mobile */}
+						<div className="pointer-events-none absolute inset-y-0 left-4 flex flex-col justify-center gap-3 hidden md:flex">
 							<button
 								className="pointer-events-auto px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-40"
 								disabled={currentIndex <= 0}

@@ -430,22 +430,22 @@ export default function ChatPage() {
 
   return (
     <>
-  <div className="fixed inset-x-0 top-16 bottom-28 lg:left-64">
+  <div className="fixed inset-x-0 top-16 bottom-20 lg:left-0">
         <div className="flex flex-col h-full">
           {/* Chat Header */}
-          <div className="p-4">
+          <div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-800/50">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <MusicImage
                   src={otherParticipant?.avatarUrl}
                   alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
-                  className="w-10 h-10 rounded-full"
+                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
                 />
-                <div>
-                  <h1 className="text-lg font-semibold text-white">
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg font-semibold text-white truncate">
                     {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
                   </h1>
-                  <div className="flex items-center gap-2 text-sm">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
                     <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
                     <span className="text-gray-400">
                       {connectionState === 'Connected' ? 'Online' : connectionState}
@@ -453,13 +453,11 @@ export default function ChatPage() {
                   </div>
                 </div>
               </div>
-
-              
             </div>
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
           {chatMessages.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -487,27 +485,27 @@ export default function ChatPage() {
                   className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                    className={`max-w-xs sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-xl shadow-sm ${
                       isOwnMessage
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs sm:text-sm font-medium opacity-90">
                         {isOwnMessage ? 'You' : msg.senderName}
                       </span>
-                      <span className="text-xs opacity-70">
+                      <span className="text-xs opacity-60">
                         {new Date(msg.timestamp).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
                       </span>
                     </div>
-                    <p className="text-sm">{msg.content}</p>
+                    <p className="text-sm sm:text-base leading-relaxed">{msg.content}</p>
                     {isOwnMessage && (
-                      <div className="flex justify-end mt-1">
-                        <span className="text-xs opacity-70">
+                      <div className="flex justify-end mt-2">
+                        <span className="text-xs opacity-60">
                           {msg.isRead ? '✓✓' : '✓'}
                         </span>
                       </div>
@@ -521,27 +519,33 @@ export default function ChatPage() {
           </div>
 
           {/* Message Input */}
-          <div className="p-4">
-            <div className="flex gap-2">
-              <Input
-                ref={inputRef}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Type a message..."
-                className="flex-1 bg-gray-800/50 border-gray-600 text-white placeholder-gray-400"
-                disabled={!isConnected}
-              />
+          <div className="p-4 border-t border-gray-700 bg-gray-900/50">
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <Input
+                  ref={inputRef}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type a message..."
+                  className="w-full bg-gray-800 border-gray-600 text-white placeholder-gray-400 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={!isConnected}
+                />
+              </div>
               <Button
                 onClick={handleSendMessage}
                 disabled={!message.trim() || !isConnected}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                size="sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </Button>
             </div>
+            {!isConnected && (
+              <p className="text-xs text-red-400 mt-2">Disconnected - messages won't send</p>
+            )}
           </div>
         </div>
 

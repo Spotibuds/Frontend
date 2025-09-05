@@ -93,25 +93,25 @@ export default function MusicPage() {
   }
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-6 sm:space-y-8">
 
         {/* Albums Section */}
         {albums.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Albums</h2>
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Albums</h2>
               <button className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                 Show all
               </button>
             </div>
-            
-            <Slider itemWidth="180px" gap="16px">
+
+            <Slider itemWidth="160px" gap="12px">
               {albums.map((album, index) => (
-                <div 
-                  key={album.id} 
-                  className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200 relative"
+                <div
+                  key={album.id}
+                  className="group cursor-pointer p-3 sm:p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200 relative"
                 >
-                  <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
+                  <div className="mb-3 sm:mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
                     <MusicImage
                       src={album.coverUrl}
                       alt={safeString(album.title)}
@@ -123,9 +123,9 @@ export default function MusicPage() {
                     />
                     {/* Play button overlay */}
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                      <AlbumPlayButton 
-                        album={album} 
-                        size="large" 
+                      <AlbumPlayButton
+                        album={album}
+                        size="large"
                         showAddToQueue={true}
                       />
                     </div>
@@ -147,21 +147,21 @@ export default function MusicPage() {
         {/* Artists Section */}
         {artists.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Artists</h2>
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Artists</h2>
               <button className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                 Show all
               </button>
             </div>
-            
-            <Slider itemWidth="160px" gap="16px">
+
+            <Slider itemWidth="140px" gap="12px">
               {artists.map((artist, index) => (
-                <div 
-                  key={artist.id} 
+                <div
+                  key={artist.id}
                   onClick={() => handleArtistClick(artist)}
-                  className="group cursor-pointer p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
+                  className="group cursor-pointer p-3 sm:p-4 rounded-lg hover:bg-gray-800/30 transition-all duration-200"
                 >
-                  <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200">
+                  <div className="mb-3 sm:mb-4 group-hover:shadow-2xl transition-shadow duration-200">
                     <MusicImage
                       src={artist.imageUrl}
                       alt={safeString(artist.name)}
@@ -184,17 +184,17 @@ export default function MusicPage() {
         {/* Popular Songs Section */}
         {songs.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Popular Songs</h2>
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Popular Songs</h2>
               <button className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                 Show all
               </button>
             </div>
-            
+
             <div className="space-y-2">
               {songs.map((song) => (
-                <SongCard 
-                  key={song.id} 
+                <SongCard
+                  key={song.id}
                   song={song}
                   showDuration={true}
                   showAddToPlaylist={true}

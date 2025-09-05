@@ -8,7 +8,7 @@ import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
 import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon, HeartIcon } from '@heroicons/react/24/outline';
-import { userApi, identityApi, safeString, type Artist } from '@/lib/api';
+import { userApi, identityApi, safeString, type Artist, type User } from '@/lib/api';
 import { Playlist } from '@/lib/playlist';
 import { useFriendHub } from '@/hooks/useFriendHub';
 
@@ -23,10 +23,7 @@ interface UserProfile {
   email?: string;
   avatarUrl?: string;
   isPrivate?: boolean;
-  followerCount?: number;
-  followingCount?: number;
-  followers?: number;
-  following?: number;
+  friendCount?: number;
   playlists?: { id: string }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   topArtists?: any[];
@@ -58,6 +55,13 @@ export default function UserProfilePage() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [reactions, setReactions] = useState<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; postId?: string }>>([]);
   const [isLoadingReactions, setIsLoadingReactions] = useState(false);
+
+  // State for popup modals
+  const [showFriendsPopup, setShowFriendsPopup] = useState(false);
+  const [showPlaylistsPopup, setShowPlaylistsPopup] = useState(false);
+  const [friendsList, setFriendsList] = useState<User[]>([]);
+  const [playlistsList, setPlaylistsList] = useState<Playlist[]>([]);
+  const [isLoadingPopup, setIsLoadingPopup] = useState(false);
 
   // Initialize friend hub for real-time notifications
   useFriendHub({ 
@@ -119,8 +123,6 @@ export default function UserProfilePage() {
           email: userResult.email,
           avatarUrl: userResult.avatarUrl,
           isPrivate: userResult.isPrivate,
-          followers: userResult.followers,
-          following: userResult.following,
           playlists: undefined // We don't have playlist details from getUserProfile anymore
         };
       } catch {
@@ -140,8 +142,6 @@ export default function UserProfilePage() {
               email: userResult.email,
               avatarUrl: userResult.avatarUrl,
               isPrivate: userResult.isPrivate,
-              followers: userResult.followers,
-              following: userResult.following,
               playlists: undefined // We don't have playlist details from getUserProfile anymore
             };
           }
@@ -193,22 +193,13 @@ export default function UserProfilePage() {
       // Fetch user's playlists
       let userPlaylists: Playlist[] = [];
       try {
-        if (userData.playlists && Array.isArray(userData.playlists) && userData.playlists.length > 0) {
-          // Get playlist details from Music API
-          const { PlaylistService } = await import('@/lib/playlist');
-          const playlistPromises = userData.playlists.map(async (playlistRef: {id: string}) => {
-            try {
-              return await PlaylistService.getPlaylist(playlistRef.id);
-            } catch (error) {
-              console.warn('Failed to load playlist:', playlistRef.id, error);
-              return null;
-            }
-          });
-          const playlists = await Promise.all(playlistPromises);
-          userPlaylists = playlists.filter((playlist): playlist is Playlist => playlist !== null);
-        }
+        const { PlaylistService } = await import('@/lib/playlist');
+        userPlaylists = await PlaylistService.getUserPlaylists(userData.identityUserId);
+        // Filter to only public playlists (playlists that can be viewed by others)
+        userPlaylists = userPlaylists.filter(playlist => playlist.name && playlist.name.trim() !== '');
       } catch (error) {
         console.error('Failed to load user playlists:', error);
+        userPlaylists = [];
       }
 
       // Fetch weekly top artists (only for own profile as marked private)
@@ -229,8 +220,7 @@ export default function UserProfilePage() {
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
-        followerCount: userData.followers || 0,
-        followingCount: userData.following || 0,
+        friendCount: 0, // Will be set after fetching friends data
         playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
         topArtists,
         recentActivity: recentActivity,
@@ -240,6 +230,15 @@ export default function UserProfilePage() {
       // Load reactions for this user
       if (userData.identityUserId) {
         loadReactions(userData.identityUserId);
+      }
+
+      // Fetch friends count
+      try {
+        const friends = await userApi.getFriends(userData.identityUserId);
+        const friendsCount = Array.isArray(friends) ? friends.length : 0;
+        setProfileUser(prev => prev ? { ...prev, friendCount: friendsCount } : prev);
+      } catch (error) {
+        console.error('Failed to load friends count:', error);
       }
 
       if (activeUser && userData.identityUserId !== activeUser.id) {
@@ -443,6 +442,45 @@ export default function UserProfilePage() {
 
   const handleEditProfile = () => {
     router.push('/user/edit');
+  };
+
+  // Functions to handle popup modals
+  const handleShowFriends = async () => {
+    if (!profileUser) return;
+
+    setIsLoadingPopup(true);
+    setShowFriendsPopup(true);
+
+    try {
+      // Get friends list from friendships API
+      const friendsResponse = await userApi.getFriends(profileUser.identityUserId);
+      const friends = Array.isArray(friendsResponse) ? friendsResponse : [];
+
+      // Fetch user details for each friend
+      const friendDetails = await Promise.all(
+        friends.map(async (friendId: string) => {
+          try {
+            const userData = await userApi.getUserProfile(friendId);
+            return userData;
+          } catch {
+            return null;
+          }
+        })
+      );
+      setFriendsList(friendDetails.filter(user => user !== null));
+    } catch (error) {
+      console.error('Failed to load friends:', error);
+      setFriendsList([]);
+    } finally {
+      setIsLoadingPopup(false);
+    }
+  };
+
+  const handleShowPlaylists = async () => {
+    if (!profileUser?.publicPlaylists) return;
+
+    setPlaylistsList(profileUser.publicPlaylists);
+    setShowPlaylistsPopup(true);
   };
 
 
@@ -731,17 +769,19 @@ export default function UserProfilePage() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors">
-              <div className="text-3xl font-bold text-white mb-2">{profileUser.followerCount || 0}</div>
-              <div className="text-gray-400 text-sm font-medium">Followers</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div
+              className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors cursor-pointer"
+              onClick={handleShowFriends}
+            >
+              <div className="text-3xl font-bold text-white mb-2">{profileUser.friendCount || 0}</div>
+              <div className="text-gray-400 text-sm font-medium">Friends</div>
             </div>
-            <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors">
-              <div className="text-3xl font-bold text-white mb-2">{profileUser.followingCount || 0}</div>
-              <div className="text-gray-400 text-sm font-medium">Following</div>
-            </div>
-            <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors">
-              <div className="text-3xl font-bold text-white mb-2">{Array.isArray(profileUser.playlists) ? profileUser.playlists.length : 0}</div>
+            <div
+              className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors cursor-pointer"
+              onClick={handleShowPlaylists}
+            >
+              <div className="text-3xl font-bold text-white mb-2">{Array.isArray(profileUser.publicPlaylists) ? profileUser.publicPlaylists.length : 0}</div>
               <div className="text-gray-400 text-sm font-medium">Playlists</div>
             </div>
           </div>
@@ -988,7 +1028,110 @@ export default function UserProfilePage() {
       </div>
       
       {/* Toast notifications */}
-      
+
+      {/* Friends Popup Modal */}
+      {showFriendsPopup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-700">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Friends</h3>
+                <button
+                  onClick={() => setShowFriendsPopup(false)}
+                  className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 max-h-96 overflow-y-auto">
+              {isLoadingPopup ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-gray-400">Loading friends...</p>
+                </div>
+              ) : friendsList.length > 0 ? (
+                <div className="space-y-4">
+                  {friendsList.map((friend) => (
+                    <div
+                      key={friend.id}
+                      className="flex items-center space-x-4 p-3 hover:bg-gray-700/30 rounded-xl transition-colors cursor-pointer"
+                      onClick={() => {
+                        setShowFriendsPopup(false);
+                        router.push(`/user/${friend.id}`);
+                      }}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 flex items-center justify-center">
+                        <span className="text-white font-bold">
+                          {(friend.displayName || friend.username).charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium truncate">
+                          {friend.displayName || friend.username}
+                        </p>
+                        <p className="text-gray-400 text-sm truncate">@{friend.username}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-400">No friends yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Playlists Popup Modal */}
+      {showPlaylistsPopup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-700">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white">Public Playlists</h3>
+                <button
+                  onClick={() => setShowPlaylistsPopup(false)}
+                  className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  <XMarkIcon className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 max-h-96 overflow-y-auto">
+              {playlistsList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {playlistsList.map((playlist) => (
+                    <div
+                      key={playlist.id}
+                      className="group cursor-pointer"
+                      onClick={() => {
+                        setShowPlaylistsPopup(false);
+                        router.push(`/playlist/${playlist.id}`);
+                      }}
+                    >
+                      <div className="w-full aspect-square bg-gradient-to-br from-green-500 to-blue-500 rounded-xl mb-3 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                        <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <h3 className="text-white font-semibold text-sm truncate">{safeString(playlist.name)}</h3>
+                      <p className="text-gray-400 text-xs">By {safeString(profileUser.displayName || profileUser.username)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-400">No public playlists yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 } 

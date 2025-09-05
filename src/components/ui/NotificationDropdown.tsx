@@ -330,27 +330,28 @@ export default function NotificationDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+          <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-800 dark:text-white">
                 Notifications
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {notifications.length > 0 && (
                   <button
                     onClick={handleDeleteAllNotifications}
-                    className="text-sm text-red-500 hover:text-red-600 transition-colors flex items-center gap-1"
+                    className="text-xs sm:text-sm text-red-500 hover:text-red-600 transition-colors flex items-center gap-1"
                     title="Delete all notifications"
                   >
                     <TrashIcon className="w-3 h-3" />
-                    Delete all
+                    <span className="hidden sm:inline">Delete all</span>
+                    <span className="sm:hidden">Delete</span>
                   </button>
                 )}
                 {unreadCount > 0 && (
                   <button
                     onClick={handleMarkAllAsRead}
-                    className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
+                    className="text-xs sm:text-sm text-blue-500 hover:text-blue-600 transition-colors"
                   >
                     Mark all read
                   </button>
@@ -359,23 +360,23 @@ export default function NotificationDropdown({
             </div>
           </div>
 
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-80 sm:max-h-96 overflow-y-auto">
             {isLoading ? (
-              <div className="p-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">Loading notifications...</p>
+              <div className="p-3 sm:p-4 text-center">
+                <div className="animate-spin rounded-full h-6 w-6 sm:h-8 sm:w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm">Loading notifications...</p>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="p-8 text-center">
-                <BellIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500 dark:text-gray-400">No notifications yet</p>
+              <div className="p-6 sm:p-8 text-center">
+                <BellIcon className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500 dark:text-gray-400 text-sm sm:text-base">No notifications yet</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200 dark:divide-gray-700">
                 {notifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                    className={`p-3 sm:p-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                       notification.status === 'Unread' ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     } ${notification.type === 'Message' ? 'cursor-pointer' : ''}`}
                     onClick={() => notification.type === 'Message' ? handleNotificationClick(notification) : undefined}
@@ -410,17 +411,17 @@ export default function NotificationDropdown({
 
                         {/* Friend request actions */}
                         {notification.type === 'FriendRequest' && notification.status === 'Unread' && (
-                          <div className="flex space-x-2 mt-3">
+                          <div className="flex flex-col sm:flex-row gap-2 mt-3">
                             <button
                               onClick={() => handleFriendAction('accept', notification.data.requestId, notification.sourceUserId!)}
-                              className="flex items-center px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                              className="flex items-center justify-center px-3 py-2 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
                             >
                               <CheckIcon className="w-4 h-4 mr-1" />
                               Accept
                             </button>
                             <button
                               onClick={() => handleFriendAction('decline', notification.data.requestId, notification.sourceUserId!)}
-                              className="flex items-center px-3 py-1 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+                              className="flex items-center justify-center px-3 py-2 text-sm bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
                             >
                               <XMarkIcon className="w-4 h-4 mr-1" />
                               Decline

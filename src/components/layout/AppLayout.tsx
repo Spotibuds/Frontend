@@ -46,6 +46,7 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true); // Default open on desktop
   const [queueOpen, setQueueOpen] = useState(false);
+  const [musicPlayerPopupOpen, setMusicPlayerPopupOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<{ id: string; username: string; displayName?: string; avatarUrl?: string } | null>(null);
@@ -368,13 +369,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
         {/* Sidebar header */}
-        <div className="flex items-center justify-center h-16 px-6 border-b border-gray-800">
+        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
           <Link href="/dashboard" className="flex items-center space-x-3">
             <Image src="/logo.svg" alt="Spotibuds Logo" width={200} height={60} className="h-12 w-auto" priority />
             <span className="text-2xl font-bold text-white">Spotibuds</span>
           </Link>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            title="Close sidebar"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -409,35 +417,33 @@ export default function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Main content area */}
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'pl-64' : 'pl-0'}`}>
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'pl-64 sm:pl-72' : 'pl-0'}`}>
         {/* Top Navigation Bar */}
         <header className="sticky top-0 z-30 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               
-              {/* Sidebar toggle button (all screen sizes) */}
-              <button
-                className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-              >
-                {sidebarOpen ? (
-                  <XMarkIcon className="h-6 w-6" />
-                ) : (
+              {/* Sidebar toggle button (only when sidebar is closed) */}
+              {!sidebarOpen && (
+                <button
+                  className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  title="Open sidebar"
+                >
                   <Bars3Icon className="h-6 w-6" />
-                )}
-              </button>
+                </button>
+              )}
 
               {/* Search Bar */}
-              <div className="flex-1 max-w-lg mx-4">
+              <div className="flex-1 max-w-lg mx-2 sm:mx-4">
                 <form onSubmit={handleSearch} className="relative">
-                  <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <MagnifyingGlassIcon className="w-4 h-4 sm:w-5 sm:h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search for songs, artists, albums..."
-                    className="w-full bg-gray-700 text-white placeholder-gray-400 pl-10 pr-4 py-2 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 border border-gray-600 hover:border-gray-500 transition-colors"
+                    placeholder="Search..."
+                    className="w-full bg-gray-700 text-white placeholder-gray-400 pl-8 sm:pl-10 pr-4 py-2 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 border border-gray-600 hover:border-gray-500 transition-colors"
                   />
                 </form>
               </div>
@@ -463,7 +469,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <div className="relative">
                   <button 
                     onClick={() => router.push(`/user`)}
-                    className="flex items-center space-x-3 text-gray-300 hover:text-white transition-colors"
+                    className="flex items-center space-x-2 sm:space-x-3 text-gray-300 hover:text-white transition-colors"
                   >
                     {user?.avatarUrl ? (
                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
@@ -481,7 +487,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                         </span>
                       </div>
                     )}
-                    <span className="hidden sm:block font-medium">{safeString(user?.username)}</span>
+                    <span className="hidden md:block font-medium">{safeString(user?.username)}</span>
                   </button>
                 </div>
               </div>
@@ -490,7 +496,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         </header>
 
         {/* Page content */}
-        <main className="pb-24">
+        <main className="pb-20 px-2 sm:px-0">
           {children}
         </main>
 
@@ -571,12 +577,27 @@ export default function AppLayout({ children }: AppLayoutProps) {
         )}
 
         {/* Bottom Audio Player */}
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-3 lg:pl-64">
+        <div
+          className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-3 py-2 cursor-pointer hover:bg-gray-750 transition-colors"
+          onClick={(e) => {
+            // Don't open popup if clicking on buttons or interactive elements
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'BUTTON' ||
+                target.closest('button') ||
+                target.tagName === 'INPUT' ||
+                target.closest('input') ||
+                target.tagName === 'SELECT' ||
+                target.closest('select')) {
+              return;
+            }
+            setMusicPlayerPopupOpen(true);
+          }}
+        >
           <div className="max-w-screen-xl mx-auto">
             <div className="flex items-center justify-between">
               {/* Current Song Info */}
-              <div className="flex items-center space-x-3 flex-1 min-w-0 max-w-sm">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-md flex items-center justify-center overflow-hidden flex-shrink-0">
+              <div className="flex items-center space-x-3 flex-1 min-w-0 max-w-xs">
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
                   {state.currentSong?.coverUrl ? (
                     <MusicImage 
                       src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl} 
@@ -584,7 +605,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-white font-bold">
+                    <span className="text-white font-bold text-xs">
                       {safeString(state.currentSong?.title).charAt(0) || 'S'}
                     </span>
                   )}
@@ -601,49 +622,20 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
                 <button 
                   onClick={handleLikeSong}
-                  className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0"
+                  className="p-1 hover:bg-gray-700 rounded transition-colors flex-shrink-0 ml-1"
                   title="Add to Liked Songs"
                   disabled={!state.currentSong || isLiking}
                 >
                   {isLiking ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-500"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
                   ) : (
-                    <HeartIcon className={`w-5 h-5 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-white'}`} />
+                    <HeartIcon className={`w-4 h-4 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-white'}`} />
                   )}
                 </button>
               </div>
 
               {/* Playback Controls */}
-              <div className="flex flex-col items-center space-y-2 flex-1 max-w-2xl">
-                {/* Control buttons row 1 */}
-                <div className="flex items-center space-x-1 text-xs">
-                  <button 
-                    onClick={() => setShuffle(!shuffleMode)}
-                    className={`p-1 rounded transition-colors ${shuffleMode ? 'text-purple-400' : 'text-gray-400 hover:text-white'}`}
-                    title="Shuffle"
-                  >
-                    <ShuffleIcon className="w-3 h-3" />
-                  </button>
-                  <button 
-                    onClick={() => setRepeat(
-                      repeatMode === 'off' ? 'all' : 
-                      repeatMode === 'all' ? 'one' : 'off'
-                    )}
-                    className={`p-1 rounded transition-colors ${
-                      repeatMode !== 'off' ? 'text-purple-400' : 'text-gray-400 hover:text-white'
-                    }`}
-                    title={`Repeat ${repeatMode}`}
-                  >
-                    {repeatMode === 'one' ? (
-                      <span className="text-xs">1</span>
-                    ) : (
-                      <ArrowPathIcon className="w-3 h-3" />
-                    )}
-                  </button>
-                </div>
-
-                {/* Main control buttons row */}
-                <div className="flex items-center space-x-2">
+              <div className="flex items-center justify-center space-x-1 flex-shrink-0">
                   <button 
                     onClick={() => skipBackward(10)}
                     className="p-2 rounded-full hover:bg-gray-700 transition-colors"
@@ -657,14 +649,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     onClick={previousSong}
                     className="p-2 rounded-full hover:bg-gray-700 transition-colors"
                     disabled={!state.currentSong}
-                    title="Previous song (or restart if >3s)"
+                  title="Previous song"
                   >
                     <BackwardIcon className="w-5 h-5 text-gray-400 hover:text-white" />
                   </button>
                   
                   <button
                     onClick={togglePlayPause}
-                    className="p-3 bg-white rounded-full hover:scale-105 transition-transform"
+                  className="p-3 bg-white rounded-full hover:scale-105 transition-transform mx-1"
                     disabled={!state.currentSong}
                   >
                     {state.isPlaying ? (
@@ -692,28 +684,35 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   </button>
                 </div>
                 
-                {/* Progress bar */}
-                <div className="flex items-center space-x-2 w-full max-w-lg">
-                  <span className="text-xs text-gray-400 w-10 text-right">
-                    {Math.floor(state.currentTime / 60)}:{(Math.floor(state.currentTime) % 60).toString().padStart(2, '0')}
-                  </span>
-                  <div 
-                    className="flex-1 bg-gray-600 rounded-full h-1 cursor-pointer"
-                    onClick={handleSeekClick}
+              {/* Right side controls */}
+              <div className="flex items-center space-x-2">
+                {/* Shuffle/Repeat controls */}
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => setShuffle(!shuffleMode)}
+                    className={`p-1 rounded transition-colors ${shuffleMode ? 'text-purple-400' : 'text-gray-400 hover:text-white'}`}
+                    title="Shuffle"
                   >
-                    <div 
-                      className="bg-white rounded-full h-1 transition-all duration-100"
-                      style={{ width: `${state.duration ? (state.currentTime / state.duration) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-400 w-10">
-                    {state.duration ? `${Math.floor(state.duration / 60)}:${(Math.floor(state.duration) % 60).toString().padStart(2, '0')}` : '0:00'}
-                  </span>
-                </div>
+                    <ShuffleIcon className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setRepeat(
+                      repeatMode === 'off' ? 'all' :
+                      repeatMode === 'all' ? 'one' : 'off'
+                    )}
+                    className={`p-1 rounded transition-colors ${
+                      repeatMode !== 'off' ? 'text-purple-400' : 'text-gray-400 hover:text-white'
+                    }`}
+                    title={`Repeat ${repeatMode}`}
+                  >
+                    {repeatMode === 'one' ? (
+                      <span className="text-xs font-bold">1</span>
+                    ) : (
+                      <ArrowPathIcon className="w-4 h-4" />
+                    )}
+                  </button>
               </div>
 
-              {/* Volume Controls */}
-              <div className="flex items-center space-x-2 flex-1 justify-end max-w-sm">
                 <button 
                   onClick={() => setQueueOpen(!queueOpen)}
                   className={`relative p-2 rounded-full transition-colors ${queueOpen ? 'bg-gray-700 text-purple-400' : 'hover:bg-gray-700 text-gray-400 hover:text-white'}`}
@@ -726,10 +725,201 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     </span>
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Music Player Popup Modal */}
+        {musicPlayerPopupOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-2xl w-full max-w-md mx-auto overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                <h3 className="text-white font-semibold">Now Playing</h3>
                 <button 
-                  onClick={toggleMute}
-                  className="p-2 rounded-full hover:bg-gray-700 transition-colors"
-                  title={state.isMuted ? 'Unmute' : 'Mute'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMusicPlayerPopupOpen(false);
+                  }}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Song Info */}
+              <div className="p-6 text-center">
+                <div className="w-48 h-48 mx-auto mb-6 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center overflow-hidden">
+                  {state.currentSong?.coverUrl ? (
+                    <MusicImage
+                      src={getProxiedImageUrl(state.currentSong.coverUrl) || state.currentSong.coverUrl}
+                      alt={safeString(state.currentSong.title)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white text-6xl font-bold">
+                      {safeString(state.currentSong?.title).charAt(0) || '♪'}
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="text-white text-xl font-bold mb-2 truncate">
+                  {safeString(state.currentSong?.title) || 'No song playing'}
+                </h2>
+                <p className="text-gray-400 mb-6 truncate">
+                  {state.currentSong?.artists ?
+                    processArtists(state.currentSong.artists).join(', ') :
+                    'Unknown Artist'}
+                </p>
+
+                {/* Like Button */}
+                <div className="flex justify-center mb-6">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLikeSong();
+                    }}
+                    className="p-3 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong || isLiking}
+                  >
+                    {isLiking ? (
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
+                    ) : (
+                      <HeartIcon className={`w-6 h-6 ${isLiked ? 'text-red-500' : 'text-gray-400 hover:text-white'}`} />
+                    )}
+                  </button>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-6">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className="text-xs text-gray-400">
+                      {Math.floor(state.currentTime / 60)}:{(Math.floor(state.currentTime) % 60).toString().padStart(2, '0')}
+                    </span>
+                    <div
+                      className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const percent = (e.clientX - rect.left) / rect.width;
+                        const newTime = percent * (state.duration || 0);
+                        seekTo(newTime);
+                      }}
+                    >
+                      <div
+                        className="bg-white rounded-full h-2 transition-all duration-100"
+                        style={{ width: `${state.duration ? (state.currentTime / state.duration) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      {state.duration ? `${Math.floor(state.duration / 60)}:${(Math.floor(state.duration) % 60).toString().padStart(2, '0')}` : '0:00'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Playback Controls */}
+                <div className="flex items-center justify-center space-x-4 mb-6">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      skipBackward(10);
+                    }}
+                    className="p-3 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
+                    <ArrowUturnLeftIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      previousSong();
+                    }}
+                    className="p-3 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
+                    <BackwardIcon className="w-6 h-6 text-gray-400 hover:text-white" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePlayPause();
+                    }}
+                    className="p-4 bg-white rounded-full hover:scale-105 transition-transform"
+                    disabled={!state.currentSong}
+                  >
+                    {state.isPlaying ? (
+                      <PauseIcon className="w-7 h-7 text-black" />
+                    ) : (
+                      <PlayIcon className="w-7 h-7 text-black" />
+                    )}
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      nextSong();
+                    }}
+                    className="p-3 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
+                    <ForwardIcon className="w-6 h-6 text-gray-400 hover:text-white" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      skipForward(10);
+                    }}
+                    className="p-3 rounded-full hover:bg-gray-700 transition-colors"
+                    disabled={!state.currentSong}
+                  >
+                    <ArrowUturnRightIcon className="w-5 h-5 text-gray-400 hover:text-white" />
+                  </button>
+                </div>
+
+                {/* Secondary Controls */}
+                <div className="flex items-center justify-center space-x-6 mb-6">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShuffle(!shuffleMode);
+                    }}
+                    className={`p-2 rounded transition-colors ${shuffleMode ? 'text-purple-400' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    <ShuffleIcon className="w-5 h-5" />
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setRepeat(
+                        repeatMode === 'off' ? 'all' :
+                        repeatMode === 'all' ? 'one' : 'off'
+                      );
+                    }}
+                    className={`p-2 rounded transition-colors ${
+                      repeatMode !== 'off' ? 'text-purple-400' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {repeatMode === 'one' ? (
+                      <span className="text-sm font-bold">1</span>
+                    ) : (
+                      <ArrowPathIcon className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Volume Control */}
+                <div className="flex items-center space-x-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMute();
+                    }}
+                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
                 >
                   {state.isMuted || state.volume === 0 ? (
                     <SpeakerXMarkIcon className="w-5 h-5 text-gray-400 hover:text-white" />
@@ -738,11 +928,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   )}
                 </button>
                 <div 
-                  className="w-24 bg-gray-600 rounded-full h-1 cursor-pointer"
-                  onClick={handleVolumeClick}
+                    className="flex-1 bg-gray-600 rounded-full h-2 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const percent = (e.clientX - rect.left) / rect.width;
+                      setVolume(Math.max(0, Math.min(1, percent)));
+                    }}
                 >
                   <div 
-                    className="bg-white rounded-full h-1"
+                      className="bg-white rounded-full h-2"
                     style={{ width: `${state.volume * 100}%` }}
                   />
                 </div>
@@ -750,6 +945,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

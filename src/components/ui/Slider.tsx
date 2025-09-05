@@ -52,10 +52,10 @@ export default function Slider({
       {showArrows && canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:scale-105"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
           aria-label="Scroll left"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <svg width="12" height="12" className="sm:w-4 sm:h-4" viewBox="0 0 16 16" fill="currentColor">
             <path d="M10 3.5L6.5 7l3.5 3.5"/>
           </svg>
         </button>
@@ -65,10 +65,10 @@ export default function Slider({
       {showArrows && canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-12 h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:scale-105"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
           aria-label="Scroll right"
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <svg width="12" height="12" className="sm:w-4 sm:h-4" viewBox="0 0 16 16" fill="currentColor">
             <path d="M6 3.5L9.5 7 6 10.5"/>
           </svg>
         </button>
@@ -79,10 +79,11 @@ export default function Slider({
         ref={scrollRef}
         onScroll={checkScrollability}
         className="flex overflow-x-auto scrollbar-hide"
-        style={{ 
+        style={{
           gap,
           scrollSnapType: 'x mandatory',
-          WebkitOverflowScrolling: 'touch'
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth'
         }}
       >
         {children.map((child, index) => (
