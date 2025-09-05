@@ -40,13 +40,14 @@ interface ChatMessage {
 export default function ChatPage() {
   const params = useParams();
   const chatId = params.id as string;
-  
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [otherParticipant, setOtherParticipant] = useState<User | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
   
@@ -63,6 +64,28 @@ export default function ChatPage() {
 
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
+  }, []);
+
+  // Sidebar state management
+  useEffect(() => {
+    const handleSidebarChange = () => {
+      const savedSidebarState = localStorage.getItem('sidebarOpen');
+      if (savedSidebarState !== null) {
+        setSidebarOpen(JSON.parse(savedSidebarState));
+      }
+    };
+
+    // Initial load
+    handleSidebarChange();
+
+    // Listen for storage changes (cross-window) and custom events (same window)
+    window.addEventListener('storage', handleSidebarChange);
+    window.addEventListener('sidebarToggle', handleSidebarChange);
+
+    return () => {
+      window.removeEventListener('storage', handleSidebarChange);
+      window.removeEventListener('sidebarToggle', handleSidebarChange);
+    };
   }, []);
 
   const handleError = useCallback((error: string) => {
@@ -430,8 +453,8 @@ export default function ChatPage() {
 
   return (
     <>
-  <div className="fixed inset-x-0 top-16 bottom-20 lg:left-0">
-        <div className="flex flex-col h-full">
+  <div className={`fixed top-16 bottom-16 sm:bottom-20 transition-all duration-300 z-35 ${sidebarOpen ? 'left-64 sm:left-72' : 'left-0'} right-0`}>
+        <div className="flex flex-col h-full max-w-full">
           {/* Chat Header */}
           <div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-800/50">
             <div className="flex items-center justify-between">
@@ -457,7 +480,7 @@ export default function ChatPage() {
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2 sm:space-y-3 lg:space-y-4">
           {chatMessages.length === 0 ? (
             <div className="text-center py-12">
               <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -485,7 +508,7 @@ export default function ChatPage() {
                   className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-xs sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-xl shadow-sm ${
+                    className={`max-w-[280px] sm:max-w-xs lg:max-w-sm xl:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-xl shadow-sm ${
                       isOwnMessage
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-white'
@@ -519,8 +542,8 @@ export default function ChatPage() {
           </div>
 
           {/* Message Input */}
-          <div className="p-4 border-t border-gray-700 bg-gray-900/50">
-            <div className="flex gap-3 items-end">
+          <div className="p-3 sm:p-4 border-t border-gray-700 bg-gray-900/50">
+            <div className="flex gap-2 sm:gap-3 items-end">
               <div className="flex-1">
                 <Input
                   ref={inputRef}
@@ -528,14 +551,14 @@ export default function ChatPage() {
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
-                  className="w-full bg-gray-800 border-gray-600 text-white placeholder-gray-400 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full bg-gray-800 border-gray-600 text-white placeholder-gray-400 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                   disabled={!isConnected}
                 />
               </div>
               <Button
                 onClick={handleSendMessage}
                 disabled={!message.trim() || !isConnected}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                 size="sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

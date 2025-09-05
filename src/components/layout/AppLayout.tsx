@@ -67,6 +67,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
+      // Dispatch custom event for same-window listeners
+      window.dispatchEvent(new CustomEvent('sidebarToggle'));
     }
   }, [sidebarOpen]);
   const [isLiking, setIsLiking] = useState(false);
@@ -350,12 +352,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-25" onClick={() => setSidebarOpen(false)} />
         </div>
       )}
 
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
+      <div className={`fixed inset-y-0 left-0 z-45 w-64 sm:w-72 bg-black transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out flex flex-col`}>
         {/* Sidebar header */}
         <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
           <Link href="/dashboard" className="flex items-center space-x-3">
@@ -411,14 +413,14 @@ export default function AppLayout({ children }: AppLayoutProps) {
               
               {/* Sidebar toggle button (only when sidebar is closed) */}
               {!sidebarOpen && (
-                <button
-                  className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
+              <button
+                className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
                   title="Open sidebar"
-                >
+              >
                   <Bars3Icon className="h-6 w-6" />
                 </button>
-              )}
+                )}
 
               {/* Search Bar */}
               <div className="flex-1 max-w-lg mx-2 sm:mx-4">
@@ -564,7 +566,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
         {/* Bottom Audio Player */}
         <div
-          className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-3 py-2 cursor-pointer hover:bg-gray-750 transition-colors"
+          className={`fixed bottom-0 right-0 z-35 bg-gray-800 border-t border-gray-700 px-3 py-2 cursor-pointer hover:bg-gray-750 transition-all duration-300 ${sidebarOpen ? 'left-64 sm:left-72' : 'left-0'}`}
           onClick={(e) => {
             // Don't open popup if clicking on buttons or interactive elements
             const target = e.target as HTMLElement;
@@ -579,10 +581,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
             setMusicPlayerPopupOpen(true);
           }}
         >
-          <div className="max-w-screen-xl mx-auto">
-            <div className="flex items-center justify-between">
+          <div className="w-full px-2 sm:px-4">
+            <div className="flex items-center justify-between gap-2 sm:gap-4">
               {/* Current Song Info */}
-              <div className="flex items-center space-x-3 flex-1 min-w-0 max-w-xs">
+              <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 max-w-[120px] sm:max-w-xs flex-shrink">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
                   {state.currentSong?.coverUrl ? (
                     <MusicImage 
@@ -621,7 +623,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               {/* Playback Controls */}
-              <div className="flex items-center justify-center space-x-1 flex-shrink-0">
+              <div className="flex items-center justify-center space-x-0.5 sm:space-x-1 flex-shrink-0">
                   <button 
                     onClick={() => skipBackward(10)}
                     className="p-2 rounded-full hover:bg-gray-700 transition-colors"
@@ -642,7 +644,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   
                   <button
                     onClick={togglePlayPause}
-                  className="p-3 bg-white rounded-full hover:scale-105 transition-transform mx-1"
+                  className="p-2 sm:p-3 bg-white rounded-full hover:scale-105 transition-transform mx-0.5 sm:mx-1"
                     disabled={!state.currentSong}
                   >
                     {state.isPlaying ? (
@@ -671,7 +673,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
                 
               {/* Right side controls */}
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1 sm:space-x-2">
                 {/* Shuffle/Repeat controls */}
                 <div className="flex items-center space-x-1">
                   <button
@@ -905,7 +907,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       e.stopPropagation();
                       toggleMute();
                     }}
-                    className="p-2 rounded-full hover:bg-gray-700 transition-colors"
+                  className="p-2 rounded-full hover:bg-gray-700 transition-colors"
                 >
                   {state.isMuted || state.volume === 0 ? (
                     <SpeakerXMarkIcon className="w-5 h-5 text-gray-400 hover:text-white" />

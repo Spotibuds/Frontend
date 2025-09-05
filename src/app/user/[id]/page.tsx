@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import MusicImage from '@/components/ui/MusicImage';
 
 import { Button } from '@/components/ui/Button';
-import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon, HeartIcon } from '@heroicons/react/24/outline';
+import { UserPlusIcon, CheckIcon, XMarkIcon, PencilIcon, HeartIcon, MusicalNoteIcon } from '@heroicons/react/24/outline';
 import { userApi, identityApi, safeString, type Artist, type User } from '@/lib/api';
 import { Playlist } from '@/lib/playlist';
 import { useFriendHub } from '@/hooks/useFriendHub';
@@ -1000,10 +1000,19 @@ export default function UserProfilePage() {
                     className="group cursor-pointer"
                     onClick={() => router.push(`/playlist/${playlist.id}`)}
                   >
-                    <div className="w-full aspect-square bg-gradient-to-br from-green-500 to-blue-500 rounded-xl mb-3 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                      <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />
-                      </svg>
+                    <div className="w-full aspect-square rounded-xl mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                      {playlist.coverUrl ? (
+                        <MusicImage
+                          src={playlist.coverUrl}
+                          alt={playlist.name}
+                          size="large"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center">
+                          <MusicalNoteIcon className="w-12 h-12 text-white" />
+                        </div>
+                      )}
                     </div>
                     <h3 className="text-white font-semibold text-sm truncate">{safeString(playlist.name)}</h3>
                     <p className="text-gray-400 text-xs">By {safeString(profileUser.displayName || profileUser.username)}</p>
@@ -1112,10 +1121,19 @@ export default function UserProfilePage() {
                         router.push(`/playlist/${playlist.id}`);
                       }}
                     >
-                      <div className="w-full aspect-square bg-gradient-to-br from-green-500 to-blue-500 rounded-xl mb-3 flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                        <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z" clipRule="evenodd" />
-                        </svg>
+                      <div className="w-full aspect-square rounded-xl mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                        {playlist.coverUrl ? (
+                          <MusicImage
+                            src={playlist.coverUrl}
+                            alt={playlist.name}
+                            size="large"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center">
+                            <MusicalNoteIcon className="w-12 h-12 text-white" />
+                          </div>
+                        )}
                       </div>
                       <h3 className="text-white font-semibold text-sm truncate">{safeString(playlist.name)}</h3>
                       <p className="text-gray-400 text-xs">By {safeString(profileUser.displayName || profileUser.username)}</p>
