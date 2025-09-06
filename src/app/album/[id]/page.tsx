@@ -174,7 +174,7 @@ export default function AlbumPage() {
   if (loading) {
     return (
       <>
-        <div className="p-6 flex items-center justify-center min-h-96">
+        <div className="p-4 sm:p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">Loading album...</p>
@@ -187,7 +187,7 @@ export default function AlbumPage() {
   if (error || !album) {
     return (
       <>
-        <div className="p-6 flex items-center justify-center min-h-96">
+        <div className="p-4 sm:p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
             <p className="text-red-400 mb-4">{error || 'Album not found'}</p>
             <button 
@@ -204,29 +204,29 @@ export default function AlbumPage() {
 
   return (
     <>
-      <div className="p-6">
+      <div className="p-4 sm:p-6 max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-start space-x-6 mb-8">
+  <div className="flex flex-col sm:flex-row items-center sm:items-start justify-center sm:justify-start space-y-4 sm:space-y-0 sm:space-x-6 mb-8">
           {/* Album Cover */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 mx-auto sm:mx-0">
             <MusicImage
               src={album.coverUrl}
               alt={safeString(album.title)}
               fallbackText={safeString(album.title)}
-              size="xl"
+              size="large"
               type="square"
-              className="shadow-2xl"
+              className="shadow-2xl sm:w-48 sm:h-48 w-32 h-32"
               priority={true}
               lazy={false}
             />
           </div>
 
           {/* Album Info */}
-          <div className="flex-1 min-w-0 pt-4">
-            <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">Album</p>
-            <h1 className="text-4xl font-bold text-white mb-4 break-words">{safeString(album.title)}</h1>
+          <div className="w-full sm:flex-1 min-w-0 text-center sm:text-left">
+            <p className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2 text-center sm:text-left">Album</p>
+            <h1 className="text-2xl sm:text-4xl font-bold text-white mb-4 break-words text-center sm:text-left">{safeString(album.title)}</h1>
             
-            <div className="flex items-center space-x-2 text-gray-300 mb-4">
+            <div className="flex flex-wrap justify-center sm:justify-start items-center space-x-2 text-gray-300 mb-4 text-center sm:text-left">
               {album.artist && (
                 <>
                   <button 
@@ -255,27 +255,27 @@ export default function AlbumPage() {
 
             {/* Album Controls */}
             {songs.length > 0 && (
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center justify-center sm:justify-start space-x-4">
                 {/* Play/Pause Button */}
                 <button
                   onClick={handlePlayAlbum}
-                  className="bg-green-500 hover:bg-green-400 text-white rounded-full p-4 transition-all duration-200 hover:scale-105 flex items-center justify-center"
+                  className="bg-green-500 hover:bg-green-400 text-white rounded-full p-3 sm:p-4 transition-all duration-200 hover:scale-105 flex items-center justify-center"
                   title={isCurrentAlbumPlaying ? 'Pause album' : 'Play album'}
                 >
                   {isCurrentAlbumPlaying ? (
-                    <PauseIcon className="w-6 h-6" />
+                    <PauseIcon className="w-5 h-5 sm:w-6 sm:h-6" />
                   ) : (
-                    <PlayIcon className="w-6 h-6 ml-0.5" />
+                    <PlayIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-0.5" />
                   )}
                 </button>
 
                 {/* Add to Queue Button */}
                 <button
                   onClick={handleAddToQueue}
-                  className="border border-gray-400 hover:border-white text-gray-300 hover:text-white rounded-full p-3 transition-all duration-200 hover:scale-105 flex items-center justify-center"
+                  className="border border-gray-400 hover:border-white text-gray-300 hover:text-white rounded-full p-2 sm:p-3 transition-all duration-200 hover:scale-105 flex items-center justify-center"
                   title="Add album to queue"
                 >
-                  <QueueListIcon className="w-5 h-5" />
+                  <QueueListIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
 
                 {/* Add to Playlist Button */}
@@ -284,10 +284,10 @@ export default function AlbumPage() {
                     console.log('Add to playlist clicked, currentUser:', currentUser);
                     setShowAddToPlaylist(true);
                   }}
-                  className="border border-gray-400 hover:border-white text-gray-300 hover:text-white rounded-full p-3 transition-all duration-200 hover:scale-105 flex items-center justify-center"
+                  className="border border-gray-400 hover:border-white text-gray-300 hover:text-white rounded-full p-2 sm:p-3 transition-all duration-200 hover:scale-105 flex items-center justify-center"
                   title="Add album to playlist"
                 >
-                  <PlusIcon className="w-5 h-5" />
+                  <PlusIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
             )}
@@ -316,10 +316,10 @@ export default function AlbumPage() {
 
         {/* Add to Playlist Modal */}
         {showAddToPlaylist && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-4 sm:p-6 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-white">Add Album to Playlist</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-white">Add Album to Playlist</h3>
                 <button
                   onClick={() => setShowAddToPlaylist(false)}
                   className="text-gray-400 hover:text-white"
@@ -330,13 +330,13 @@ export default function AlbumPage() {
               
               {!currentUser ? (
                 <div className="p-4 text-center">
-                  <p className="text-red-400 mb-3">You need to be logged in to add songs to playlists</p>
+                  <p className="text-red-400 mb-3 text-sm sm:text-base">You need to be logged in to add songs to playlists</p>
                   <button
                     onClick={() => {
                       setShowAddToPlaylist(false);
                       router.push('/auth/login');
                     }}
-                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm sm:text-base"
                   >
                     Log In
                   </button>
@@ -345,7 +345,7 @@ export default function AlbumPage() {
                 <>
                   <div className="mb-4 p-3 bg-gray-700 rounded">
                     <p className="text-sm text-gray-300 mb-1">You&apos;re adding:</p>
-                    <p className="text-white font-semibold">{album?.title}</p>
+                    <p className="text-white font-semibold text-sm sm:text-base">{album?.title}</p>
                     <p className="text-gray-400 text-sm">{songs.length} songs</p>
                   </div>
 
@@ -356,7 +356,7 @@ export default function AlbumPage() {
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
                         </div>
                       ) : playlists.length === 0 ? (
-                        <div className="p-4 text-gray-400 text-center">
+                        <div className="p-4 text-gray-400 text-center text-sm sm:text-base">
                           <p>No playlists found</p>
                           <p className="text-sm">Create a playlist first</p>
                         </div>
@@ -372,7 +372,7 @@ export default function AlbumPage() {
                               className="w-full p-3 text-left hover:bg-gray-700 transition-colors flex items-center justify-between rounded-lg"
                             >
                               <div className="min-w-0 flex-1">
-                                <div className="text-white font-medium truncate">
+                                <div className="text-white font-medium truncate text-sm sm:text-base">
                                   {playlist.name}
                                 </div>
                                 <div className="text-gray-400 text-sm">

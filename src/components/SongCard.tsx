@@ -122,7 +122,7 @@ export default function SongCard({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center space-x-1 sm:space-x-2 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
+          <div className="flex items-center space-x-1 sm:space-x-2 opacity-100 transition-opacity">
             {showAddToQueue && (
               <Button
                 size="sm"
