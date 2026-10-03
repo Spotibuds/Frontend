@@ -1,0 +1,113 @@
+{
+  "date": "2026-10-03T20:17:14.396Z",
+  "scope": "Only four identified task-created playback test playlists; no database reset",
+  "databaseReset": false,
+  "removedFixtures": [
+    {
+      "id": "6ac15c7b711cfdc200440809",
+      "name": "Playback fixture 1791057019655"
+    },
+    {
+      "id": "6ac15aaf711cfdc2004404c6",
+      "name": "Playback fixture 1791056559960"
+    },
+    {
+      "id": "6ac1574b711cfdc2004400ca",
+      "name": "Playback fixture 1791055691395"
+    },
+    {
+      "id": "6ac15546711cfdc20043fd5e",
+      "name": "Playback fixture 1791055174883"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Cleanup uses the exact ordinary Alice owner",
+      "passed": true
+    },
+    {
+      "name": "Seeded playlist is uniquely identified",
+      "passed": true
+    },
+    {
+      "name": "Seed media remains on the local catalogue proxy",
+      "passed": true
+    },
+    {
+      "name": "Seed media returns complete successful content",
+      "passed": true
+    },
+    {
+      "name": "Seed media remains on the local catalogue proxy",
+      "passed": true
+    },
+    {
+      "name": "Seed media returns complete successful content",
+      "passed": true
+    },
+    {
+      "name": "Exactly the four previously observed task fixtures are selected",
+      "passed": true
+    },
+    {
+      "name": "Selected fixture matches its known one-song test invariant",
+      "passed": true
+    },
+    {
+      "name": "Deleted task fixture is absent from persisted detail",
+      "passed": true
+    },
+    {
+      "name": "Selected fixture matches its known one-song test invariant",
+      "passed": true
+    },
+    {
+      "name": "Deleted task fixture is absent from persisted detail",
+      "passed": true
+    },
+    {
+      "name": "Selected fixture matches its known one-song test invariant",
+      "passed": true
+    },
+    {
+      "name": "Deleted task fixture is absent from persisted detail",
+      "passed": true
+    },
+    {
+      "name": "Selected fixture matches its known one-song test invariant",
+      "passed": true
+    },
+    {
+      "name": "Deleted task fixture is absent from persisted detail",
+      "passed": true
+    },
+    {
+      "name": "All four removed task fixtures are absent from the owner list",
+      "passed": true
+    },
+    {
+      "name": "Seed media remains on the local catalogue proxy",
+      "passed": true
+    },
+    {
+      "name": "Seed media returns complete successful content",
+      "passed": true
+    },
+    {
+      "name": "Seed media remains on the local catalogue proxy",
+      "passed": true
+    },
+    {
+      "name": "Seed media returns complete successful content",
+      "passed": true
+    },
+    {
+      "name": "Seed playlist, catalogue metadata and both exact media hashes are unchanged",
+      "passed": true
+    },
+    {
+      "name": "Cleanup session is revoked",
+      "passed": true
+    }
+  ]
+}

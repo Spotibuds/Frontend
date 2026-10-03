@@ -1,4 +1,4 @@
-import { Song, API_CONFIG } from './api';
+import { Song, API_CONFIG, apiRequest } from "./api";
 
 // Use centralized API configuration instead of hardcoded URLs
 const MUSIC_API_URL = API_CONFIG.MUSIC_API;
@@ -16,6 +16,7 @@ export interface Playlist {
   createdBy?: string;
   coverUrl?: string;
   songs: PlaylistSong[];
+  songCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,111 +36,52 @@ export interface ListeningHistoryItem {
 }
 
 export class PlaylistService {
-  static async getUserPlaylists(userId: string): Promise<Playlist[]> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/user/${userId}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch user playlists');
-    }
-    return response.json();
+  static getUserPlaylists(userId: string): Promise<Playlist[]> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/user/${userId}`);
   }
-
-  static async getPlaylist(playlistId: string): Promise<Playlist> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch playlist');
-    }
-    return response.json();
+  static getPlaylist(id: string): Promise<Playlist> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}`);
   }
-
-  static async createPlaylist(userId: string, dto: CreatePlaylistDto): Promise<Playlist> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/user/${userId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  static createPlaylist(userId: string, dto: CreatePlaylistDto): Promise<Playlist> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/user/${userId}`, {
+      method: "POST",
       body: JSON.stringify(dto),
     });
-    if (!response.ok) {
-      throw new Error('Failed to create playlist');
-    }
-    return response.json();
   }
-
-  static async updatePlaylist(playlistId: string, dto: Partial<CreatePlaylistDto>): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  static updatePlaylist(id: string, dto: Partial<CreatePlaylistDto>): Promise<void> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}`, {
+      method: "PUT",
       body: JSON.stringify(dto),
     });
-    if (!response.ok) {
-      throw new Error('Failed to update playlist');
-    }
   }
-
-  static async deletePlaylist(playlistId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}`, {
-      method: 'DELETE',
+  static deletePlaylist(id: string): Promise<void> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}`, { method: "DELETE" });
+  }
+  static addSongToPlaylist(id: string, songId: string): Promise<void> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}/songs/${songId}`, { method: "POST" });
+  }
+  static removeSongFromPlaylist(id: string, songId: string): Promise<void> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}/songs/${songId}`, { method: "DELETE" });
+  }
+  static reorderSongs(id: string, songIds: string[]): Promise<void> {
+    return apiRequest(`${MUSIC_API_URL}/api/playlists/${id}/songs/reorder`, {
+      method: "PUT",
+      body: JSON.stringify({ songIds }),
     });
-    if (!response.ok) {
-      throw new Error('Failed to delete playlist');
-    }
   }
-
-  static async addSongToPlaylist(playlistId: string, songId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}/songs/${songId}`, {
-      method: 'POST',
+  static addToListeningHistory(userId: string, songId: string, duration: number): Promise<void> {
+    return apiRequest(`${USER_API_URL}/api/users/identity/${userId}/listening-history`, {
+      method: "POST",
+      body: JSON.stringify({ songId, duration }),
     });
-    if (!response.ok) {
-      throw new Error('Failed to add song to playlist');
-    }
   }
-
-  static async removeSongFromPlaylist(playlistId: string, songId: string): Promise<void> {
-    const response = await fetch(`${MUSIC_API_URL}/api/playlists/${playlistId}/songs/${songId}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      throw new Error('Failed to remove song from playlist');
-    }
-  }
-
-  static async addToListeningHistory(userId: string, songId: string, duration: number): Promise<void> {
-    try {
-      const response = await fetch(`${USER_API_URL}/api/users/${userId}/listening-history`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ songId, duration }),
-      });
-      // Don't throw on failure - listening history is not critical
-      if (!response.ok) {
-        console.warn('Failed to add to listening history');
-      }
-    } catch (error) {
-      console.warn('Failed to add to listening history:', error);
-    }
-  }
-
-  static async getListeningHistory(userId: string, limit = 50, skip = 0): Promise<ListeningHistoryItem[]> {
-    const token = localStorage.getItem('token');
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    const response = await fetch(`${USER_API_URL}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`, {
-      method: 'GET',
-      headers,
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch listening history');
-    }
-    return response.json();
+  static getListeningHistory(
+    userId: string,
+    limit = 50,
+    skip = 0
+  ): Promise<ListeningHistoryItem[]> {
+    return apiRequest(
+      `${USER_API_URL}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`
+    );
   }
 }

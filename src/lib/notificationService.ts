@@ -1,10 +1,11 @@
 // Global notification service for chat messages
-import { ChatMessage } from './friendHub';
+import { ChatMessage } from "./friendHub";
 
 type NotificationHandler = (message: ChatMessage) => void;
 
 class NotificationService {
   private handlers: Set<NotificationHandler> = new Set();
+  private seenMessages = new Map<string, number>();
   private currentChatId: string | null = null;
 
   // Register a notification handler (e.g., for showing toast notifications)
@@ -12,15 +13,15 @@ class NotificationService {
     this.handlers.add(handler);
     try {
       // Debug: log when handlers are registered
-      // eslint-disable-next-line no-console
-      console.debug('notificationService: handler added, totalHandlers=', this.handlers.size);
+
+      console.debug("notificationService: handler added, totalHandlers=", this.handlers.size);
     } catch {}
     return () => {
       this.handlers.delete(handler);
       try {
         // Debug: log when handlers are removed
-        // eslint-disable-next-line no-console
-        console.debug('notificationService: handler removed, totalHandlers=', this.handlers.size);
+
+        console.debug("notificationService: handler removed, totalHandlers=", this.handlers.size);
       } catch {}
     };
   }
@@ -32,23 +33,37 @@ class NotificationService {
 
   // Handle incoming message and decide whether to show notification
   handleMessage(message: ChatMessage): void {
+    const now = Date.now();
+    for (const [id, at] of this.seenMessages) if (now - at > 120000) this.seenMessages.delete(id);
+    if (this.seenMessages.has(message.messageId)) return;
+    this.seenMessages.set(message.messageId, now);
+
     try {
       // Debug: log incoming message and number of handlers
-      // eslint-disable-next-line no-console
-      console.debug('notificationService.handleMessage called', { chatId: message.chatId, messageId: message.messageId, senderId: message.senderId, handlers: this.handlers.size });
+
+      console.debug("notificationService.handleMessage called", {
+        chatId: message.chatId,
+        messageId: message.messageId,
+        senderId: message.senderId,
+        handlers: this.handlers.size,
+      });
     } catch {}
     // Don't show notification if user is currently in the chat where the message was sent
     if (this.currentChatId === message.chatId) {
       try {
-        // eslint-disable-next-line no-console
-        console.debug('notificationService: suppressed notification for current chat', this.currentChatId);
+        console.debug(
+          "notificationService: suppressed notification for current chat",
+          this.currentChatId
+        );
       } catch {}
       return;
     }
 
     // Don't show notification for own messages
-    const currentUser = typeof window !== 'undefined' ? 
-      JSON.parse(localStorage.getItem('user') || 'null') : null;
+    const currentUser =
+      typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("currentUser") || "null")
+        : null;
     if (currentUser && message.senderId === currentUser.id) {
       return;
     }
@@ -58,39 +73,39 @@ class NotificationService {
       try {
         handler(message);
       } catch (error) {
-        console.error('Error in notification handler:', error);
+        console.error("Error in notification handler:", error);
       }
     });
   }
 
   // Request notification permission (for browser notifications)
   async requestPermission(): Promise<boolean> {
-    if (!('Notification' in window)) {
+    if (!("Notification" in window)) {
       return false;
     }
 
-    if (Notification.permission === 'granted') {
+    if (Notification.permission === "granted") {
       return true;
     }
 
-    if (Notification.permission === 'denied') {
+    if (Notification.permission === "denied") {
       return false;
     }
 
     const permission = await Notification.requestPermission();
-    return permission === 'granted';
+    return permission === "granted";
   }
 
   // Show browser notification
   showBrowserNotification(message: ChatMessage, senderName?: string): void {
-    if (!('Notification' in window) || Notification.permission !== 'granted') {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
       return;
     }
 
-    const notification = new Notification(`New message from ${senderName || 'Unknown'}`, {
+    const notification = new Notification(`New message from ${senderName || "Unknown"}`, {
       body: message.content,
-      icon: '/logo.svg',
-      badge: '/logo.svg',
+      icon: "/logo.svg",
+      badge: "/logo.svg",
       tag: `chat-${message.chatId}`, // Prevents duplicate notifications for same chat
     });
 
@@ -100,7 +115,9 @@ class NotificationService {
     // Optional: Handle click to navigate to chat
     notification.onclick = () => {
       window.focus();
-      window.location.href = `/chat/${message.chatId}`;
+      window.dispatchEvent(
+        new CustomEvent("spotibuds:navigate", { detail: `/chat/${message.chatId}` })
+      );
       notification.close();
     };
   }

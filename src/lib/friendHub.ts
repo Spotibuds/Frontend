@@ -1,89 +1,6 @@
-import { HubConnection, HubConnectionBuilder, LogLevel, HubConnectionState, HttpTransportType } from '@microsoft/signalr';
-import { notificationService } from './notificationService';
-
-// Production-ready API configuration
-const getApiConfig = () => {
-  const nodeEnv = process.env.NODE_ENV;
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  
-  // Check if we're in production environment
-  const isProduction = nodeEnv === 'production' || 
-    (typeof window !== 'undefined' && !hostname.includes('localhost') && !hostname.includes('127.0.0.1'));
-
-  if (isProduction) {
-    // Use production URLs when deployed
-    return {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net',
-      USER_API: process.env.NEXT_PUBLIC_USER_API || 'https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net'
-    };
-  } else {
-    // Use localhost for development
-    return {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || 'http://localhost:5000',
-      USER_API: process.env.NEXT_PUBLIC_USER_API || 'http://localhost:5002'
-    };
-  }
-};
-
-const API_CONFIG = getApiConfig();
-
-// Debug logging for SignalR (always log for troubleshooting)
-if (typeof window !== 'undefined') {
-  console.log('🔗 SignalR Hub Configuration:', {
-    nodeEnv: process.env.NODE_ENV,
-    hostname: window.location.hostname,
-    isProduction: process.env.NODE_ENV === 'production' || (!window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')),
-    hubUrl: `${API_CONFIG.USER_API}/friend-hub`,
-    config: API_CONFIG
-  });
-}
-
-// Token refresh function for SignalR
-const refreshTokenForSignalR = async (): Promise<string | null> => {
-  const refreshTokenValue = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-  
-  if (!refreshTokenValue) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refreshToken: refreshTokenValue }),
-    });
-
-    if (!response.ok) {
-      // Refresh token is invalid or expired
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('currentUser');
-      }
-      return null;
-    }
-
-    const data = await response.json();
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('refreshToken', data.refreshToken);
-    }
-    
-    return data.token;
-  } catch (error) {
-    console.error('Token refresh failed for SignalR:', error);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('currentUser');
-    }
-    return null;
-  }
-};
-
+import { HubConnection } from "@microsoft/signalr";
+import { ManagedHub } from "./managedHub";
+import { notificationService } from "./notificationService";
 // Types for friend and chat functionality
 export interface FriendRequest {
   requestId: string;
@@ -144,7 +61,7 @@ class FriendHubManager {
   private onFriendRemoved: ((data: any) => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onFriendStatusChanged: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   private onMessageReceived: ((message: ChatMessage) => void) | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private onMessageSent: ((data: any) => void) | null = null;
@@ -155,350 +72,232 @@ class FriendHubManager {
   private onConnectionStateChanged: ((state: string) => void) | null = null;
   private onOnlineFriendsReceived: ((onlineFriends: string[]) => void) | null = null;
 
-  async connect(userId: string): Promise<void> {
-    if (this.isConnecting || this.connection?.state === HubConnectionState.Connected) {
-      return;
-    }
-
-    // CRITICAL: Check if we have a valid token before attempting connection
-    const token = localStorage.getItem('token');
-    if (!token) {
-      console.warn('🚫 No authentication token found - skipping SignalR connection');
-      this.onConnectionStateChanged?.('Disconnected');
-      return;
-    }
-
-    // CRITICAL: Limit reconnection attempts to prevent infinite loops
-    if (this.reconnectAttempts >= 3) {
-      console.warn('🚫 Maximum SignalR reconnection attempts reached - stopping');
-      return;
-    }
-
-    this.isConnecting = true;
-    this.currentUserId = userId;
-
-    try {
-      
-      // Reduced logging - only log critical info
-      // console.log('Connecting to SignalR Hub...');
-      
-      // Use the correct hub URL with access_token parameter for authentication
-      const hubUrl = `${API_CONFIG.USER_API}/friend-hub?access_token=${encodeURIComponent(token || '')}`;
-      
-      this.connection = new HubConnectionBuilder()
-        .withUrl(hubUrl, {
-          withCredentials: true,
-          skipNegotiation: false,
-          transport: HttpTransportType.LongPolling, // Use only LongPolling to avoid WebSocket/SSE auth issues
-          accessTokenFactory: async () => {
-            // Get JWT token from localStorage
-            let token = localStorage.getItem('token');
-            if (token) {
-              return token;
-            }
-            
-            // CRITICAL: Only try refresh ONCE to prevent infinite loops
-            console.warn('🔄 No token found, attempting ONE token refresh for SignalR');
-            token = await refreshTokenForSignalR();
-            if (!token) {
-              console.error('🚫 Token refresh failed - cannot provide authentication token');
-              throw new Error('Authentication failed');
-            }
-            return token;
-          }
-        })
-        .configureLogging(LogLevel.None) // Completely disable SignalR logging to reduce console noise
-        .withAutomaticReconnect({
-          nextRetryDelayInMilliseconds: (retryContext) => {
-            // CRITICAL: Limit retry attempts and use exponential backoff
-            if (retryContext.previousRetryCount >= 2) {
-              console.warn('🚫 SignalR max retries reached - stopping automatic reconnection');
-              return null; // Stop retrying
-            }
-            return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
-          }
-        })
-        .build();
-
+  private hub = new ManagedHub(
+    "friend-hub",
+    connection => {
+      this.connection = connection;
       this.setupEventHandlers();
-
-      // console.log('Starting SignalR connection...');
-      await this.connection.start();
-      console.log('✅ SignalR connected successfully');
-      this.reconnectAttempts = 0;
-      this.onConnectionStateChanged?.('Connected');
-    } catch (error) {
-      // Only log connection failures that aren't transport fallbacks
-      if (error instanceof Error && !error.message.includes('transport')) {
-        console.error('Failed to connect to Friend Hub:', error.message);
-      }
-      
-      // CRITICAL: Stop infinite retry loops on authentication failures
-      if (error instanceof Error && (
-        error.message.includes('Unauthorized') || 
-        error.message.includes('401') ||
-        error.message.includes('Authentication failed') ||
-        error.message.includes('negotiate')
-      )) {
-        console.error('🚫 SignalR authentication failed - stopping connection attempts');
-        this.reconnectAttempts = 999; // Prevent further attempts
-        this.onConnectionStateChanged?.('Disconnected');
-        this.onError?.('SignalR authentication failed. Please refresh the page.');
-        return;
-      }
-      
-      this.reconnectAttempts++;
-      
-      if (this.reconnectAttempts < this.maxReconnectAttempts && this.isConnecting) {
-        console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-        setTimeout(() => this.connect(userId), this.reconnectDelay);
-      } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-        this.onError?.('Failed to connect to friend service after multiple attempts');
-      }
-    } finally {
-      this.isConnecting = false;
-    }
+    },
+    () => undefined,
+    state => this.onConnectionStateChanged?.(state)
+  );
+  async connect(userId: string): Promise<void> {
+    if (this.currentUserId && this.currentUserId !== userId) await this.disconnect();
+    this.currentUserId = userId;
+    await this.hub.start();
+    this.connection = this.hub.connection;
   }
 
   private setupEventHandlers(): void {
     if (!this.connection) return;
 
     // Friend request events
-    this.connection.on('FriendRequestReceived', (request: FriendRequest) => {
+    this.connection.on("FriendRequestReceived", (request: FriendRequest) => {
       if (this.onFriendRequestReceived) {
         this.onFriendRequestReceived(request);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendRequestAccepted', (data: any) => {
+    this.connection.on("FriendRequestAccepted", (data: any) => {
       if (this.onFriendRequestAccepted) {
         this.onFriendRequestAccepted(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendRequestDeclined', (data: any) => {
+    this.connection.on("FriendRequestDeclined", (data: any) => {
       if (this.onFriendRequestDeclined) {
         this.onFriendRequestDeclined(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendRequestSent', (data: any) => {
+    this.connection.on("FriendRequestSent", (data: any) => {
       if (this.onFriendRequestSent) {
         this.onFriendRequestSent(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendAdded', (data: any) => {
+    this.connection.on("FriendAdded", (data: any) => {
       if (this.onFriendAdded) {
         this.onFriendAdded(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendRemoved', (data: any) => {
+    this.connection.on("FriendRemoved", (data: any) => {
       if (this.onFriendRemoved) {
         this.onFriendRemoved(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('FriendStatusChanged', (data: any) => {
+    this.connection.on("FriendStatusChanged", (data: any) => {
       if (this.onFriendStatusChanged) {
         this.onFriendStatusChanged(data);
       }
     });
 
     // Online friends event
-    this.connection.on('OnlineFriends', (onlineFriends: string[]) => {
+    this.connection.on("OnlineFriends", (onlineFriends: string[]) => {
       if (this.onOnlineFriendsReceived) {
         this.onOnlineFriendsReceived(onlineFriends);
       }
     });
 
     // Chat events
-    this.connection.on('MessageReceived', (message: ChatMessage) => {
-      console.log('MessageReceived event:', message);
-      
+    this.connection.on("MessageReceived", (message: ChatMessage) => {
       // Handle notifications through the notification service
       notificationService.handleMessage(message);
-      
+
       if (this.onMessageReceived) {
         this.onMessageReceived(message);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('MessageSent', (data: any) => {
-      console.log('MessageSent event:', data);
+    this.connection.on("MessageSent", (data: any) => {
       if (this.onMessageSent) {
         this.onMessageSent(data);
       }
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on('MessageRead', (data: any) => {
-      console.log('MessageRead event:', data);
+    this.connection.on("MessageRead", (data: any) => {
       if (this.onMessageRead) {
         this.onMessageRead(data);
       }
     });
 
-    this.connection.on('ChatCreated', (chat: Chat) => {
-      console.log('ChatCreated event:', chat);
+    this.connection.on("ChatCreated", (chat: Chat) => {
       if (this.onChatCreated) {
         this.onChatCreated(chat);
       }
     });
 
     // Connection events
-    this.connection.onclose((error) => {
-      this.onConnectionStateChanged?.('Disconnected');
+    this.connection.onclose(error => {
+      this.onConnectionStateChanged?.("Disconnected");
       if (error) {
-        console.error('Friend Hub connection closed with error:', error);
-        this.onError?.('Connection lost. Attempting to reconnect...');
+        console.error("Friend Hub connection closed with error:", error);
+        this.onError?.("Connection lost. Attempting to reconnect...");
       }
-    });
-
-    this.connection.onreconnecting((error) => {
-      this.onConnectionStateChanged?.('Reconnecting');
-      console.log('Reconnecting to Friend Hub...', error);
-    });
-
-    this.connection.onreconnected((connectionId) => {
-      this.onConnectionStateChanged?.('Connected');
-      console.log('Reconnected to Friend Hub with connection ID:', connectionId);
-    });
-
-    // Error handling
-    this.connection.on('Error', (error: string) => {
-      console.error('Friend Hub error:', error);
-      this.onError?.(error);
     });
   }
 
   // Friend Management Methods
   async sendFriendRequest(targetUserId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('SendFriendRequest', targetUserId);
+      await this.connection.invoke("SendFriendRequest", targetUserId);
     } catch (error) {
-      console.error('Error sending friend request:', error);
+      console.error("Error sending friend request:", error);
       throw error;
     }
   }
 
   async acceptFriendRequest(requestId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('AcceptFriendRequest', requestId);
+      await this.connection.invoke("AcceptFriendRequest", requestId);
     } catch (error) {
-      console.error('Error accepting friend request:', error);
+      console.error("Error accepting friend request:", error);
       throw error;
     }
   }
 
   async declineFriendRequest(requestId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('DeclineFriendRequest', requestId);
+      await this.connection.invoke("DeclineFriendRequest", requestId);
     } catch (error) {
-      console.error('Error declining friend request:', error);
+      console.error("Error declining friend request:", error);
       throw error;
     }
   }
 
   async removeFriend(friendId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('RemoveFriend', friendId);
+      await this.connection.invoke("RemoveFriend", friendId);
     } catch (error) {
-      console.error('Error removing friend:', error);
+      console.error("Error removing friend:", error);
       throw error;
     }
   }
 
   // Chat Methods
   async sendMessage(chatId: string, message: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('SendMessage', chatId, message);
+      await this.connection.invoke("SendMessage", chatId, message);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       throw error;
     }
   }
 
   async markMessageAsRead(messageId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('MarkMessageAsRead', messageId);
+      await this.connection.invoke("MarkMessageAsRead", messageId);
     } catch (error) {
-      console.error('Error marking message as read:', error);
+      console.error("Error marking message as read:", error);
       throw error;
     }
   }
 
   async createChat(friendId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      await this.connection.invoke('CreateChat', friendId);
+      await this.connection.invoke("CreateChat", friendId);
     } catch (error) {
-      console.error('Error creating chat:', error);
+      console.error("Error creating chat:", error);
       throw error;
     }
   }
 
   async getOnlineFriends(): Promise<void> {
-    if (!this.connection || this.connection.state !== 'Connected') {
-      throw new Error('Not connected to Friend Hub');
+    if (!this.connection || this.connection.state !== "Connected") {
+      throw new Error("Not connected to Friend Hub");
     }
 
     try {
-      this.connection.send('GetOnlineFriends'); // Changed from invoke to send
+      await this.connection.invoke("GetOnlineFriends"); // Changed from invoke to send
     } catch (error) {
-      console.error('Error getting online friends:', error);
+      console.error("Error getting online friends:", error);
       throw error;
     }
   }
 
   // Connection Management
   async disconnect(): Promise<void> {
-    if (this.connection && this.connection.state !== 'Disconnected') {
-      try {
-        await this.connection.stop();
-        this.currentUserId = null;
-        this.onConnectionStateChanged?.('Disconnected');
-      } catch (error) {
-        console.error('Error during disconnect:', error);
-      } finally {
-        this.connection = null;
-      }
-    }
+    this.currentUserId = null;
+    this.connection = null;
+    await this.hub.stop();
   }
 
   // Event Handler Setters
@@ -568,11 +367,11 @@ class FriendHubManager {
 
   // Utility Methods
   getConnectionState(): string {
-    return this.connection?.state || 'Disconnected';
+    return this.connection?.state || "Disconnected";
   }
 
   isConnected(): boolean {
-    return this.connection?.state === 'Connected';
+    return this.connection?.state === "Connected";
   }
 
   getCurrentUserId(): string | null {
@@ -581,4 +380,4 @@ class FriendHubManager {
 }
 
 // Create singleton instance
-export const friendHubManager = new FriendHubManager(); 
+export const friendHubManager = new FriendHubManager();

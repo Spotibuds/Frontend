@@ -45,7 +45,7 @@ const config: Config = {
           "Segoe UI",
           "Roboto",
           "Arial",
-          "sans-serif"
+          "sans-serif",
         ],
         mono: [
           "var(--font-geist-mono)",
@@ -56,7 +56,7 @@ const config: Config = {
           "Consolas",
           "Liberation Mono",
           "Courier New",
-          "monospace"
+          "monospace",
         ],
       },
       animation: {
@@ -78,4 +78,4 @@ const config: Config = {
   plugins: [],
 };
 
-export default config; 
+export default config;

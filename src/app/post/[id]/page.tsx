@@ -56,39 +56,40 @@ export default function PostDetailPage() {
       try {
         setIsLoading(true);
         setError(null);
-        
+
         // Load reactions and try to derive post context
         const [reactionsData] = await Promise.allSettled([
-          userApi.getReactionsByPost(postId, currentUser?.id)
+          userApi.getReactionsByPost(postId, currentUser?.id),
         ]);
-        
-        const reactions = reactionsData.status === 'fulfilled' && Array.isArray(reactionsData.value) 
-          ? reactionsData.value 
-          : [];
+
+        const reactions =
+          reactionsData.status === "fulfilled" && Array.isArray(reactionsData.value)
+            ? reactionsData.value
+            : [];
         setReactions(reactions);
-        
+
         // Derive post context from reactions or postId structure
         if (reactions.length > 0) {
           const firstReaction = reactions[0];
           const inferredPostData: PostData = {
             id: postId,
-            type: firstReaction.contextType || 'unknown',
+            type: firstReaction.contextType || "unknown",
             identityUserId: firstReaction.toIdentityUserId,
             songId: firstReaction.songId,
             songTitle: firstReaction.songTitle,
             artist: firstReaction.artist,
-            createdAt: firstReaction.createdAt
+            createdAt: firstReaction.createdAt,
           };
           setPostData(inferredPostData);
         } else {
           // Try to parse postId for context (format: type:userId:extra)
-          const parts = postId.split(':');
+          const parts = postId.split(":");
           if (parts.length >= 2) {
             setPostData({
               id: postId,
               type: parts[0],
               identityUserId: parts[1],
-              songId: parts.length > 3 ? parts[3] : undefined
+              songId: parts.length > 3 ? parts[3] : undefined,
             });
           }
         }
@@ -112,51 +113,59 @@ export default function PostDetailPage() {
   }, [reactions]);
 
   // Handle reactions on post page
-  const handleReact = useCallback(async (emoji: string) => {
-    if (!currentUser || !postData) return;
-    
-    setIsLoadingReaction(true);
-    try {
-      // Optimistic update
-      const hasExisting = reactions.some(r => r.emoji === emoji && r.fromIdentityUserId === currentUser.id);
-      const optimisticReactions = hasExisting
-        ? reactions.filter(r => !(r.emoji === emoji && r.fromIdentityUserId === currentUser.id))
-        : [...reactions, {
-            emoji,
-            fromIdentityUserId: currentUser.id,
-            fromUserName: currentUser.username,
-            toIdentityUserId: postData.identityUserId,
-            createdAt: new Date().toISOString(),
-            contextType: postData.type,
-            songId: postData.songId,
-            songTitle: postData.songTitle,
-            artist: postData.artist,
-            postId: postId
-          }];
-      
-      setReactions(optimisticReactions);
-      
-      // Send to server
-      await userApi.sendReaction({
-        toIdentityUserId: postData.identityUserId,
-        fromIdentityUserId: currentUser.id,
-        fromUserName: currentUser.username,
-        emoji,
-        contextType: postData.type,
-        songId: postData.songId,
-        songTitle: postData.songTitle,
-        artist: postData.artist,
-        postId: postId
-      });
-    } catch (error) {
-      console.error('Failed to send reaction:', error);
-      // Revert optimistic update on error
-      const data = await userApi.getReactionsByPost(postId, currentUser?.id);
-      setReactions(Array.isArray(data) ? data : []);
-    } finally {
-      setIsLoadingReaction(false);
-    }
-  }, [currentUser, postData, reactions, postId]);
+  const handleReact = useCallback(
+    async (emoji: string) => {
+      if (!currentUser || !postData) return;
+
+      setIsLoadingReaction(true);
+      try {
+        // Optimistic update
+        const hasExisting = reactions.some(
+          r => r.emoji === emoji && r.fromIdentityUserId === currentUser.id
+        );
+        const optimisticReactions = hasExisting
+          ? reactions.filter(r => !(r.emoji === emoji && r.fromIdentityUserId === currentUser.id))
+          : [
+              ...reactions,
+              {
+                emoji,
+                fromIdentityUserId: currentUser.id,
+                fromUserName: currentUser.username,
+                toIdentityUserId: postData.identityUserId,
+                createdAt: new Date().toISOString(),
+                contextType: postData.type,
+                songId: postData.songId,
+                songTitle: postData.songTitle,
+                artist: postData.artist,
+                postId: postId,
+              },
+            ];
+
+        setReactions(optimisticReactions);
+
+        // Send to server
+        await userApi.sendReaction({
+          toIdentityUserId: postData.identityUserId,
+          fromIdentityUserId: currentUser.id,
+          fromUserName: currentUser.username,
+          emoji,
+          contextType: postData.type,
+          songId: postData.songId,
+          songTitle: postData.songTitle,
+          artist: postData.artist,
+          postId: postId,
+        });
+      } catch (error) {
+        console.error("Failed to send reaction:", error);
+        // Revert optimistic update on error
+        const data = await userApi.getReactionsByPost(postId, currentUser?.id);
+        setReactions(Array.isArray(data) ? data : []);
+      } finally {
+        setIsLoadingReaction(false);
+      }
+    },
+    [currentUser, postData, reactions, postId]
+  );
 
   const feedHref = useMemo(() => {
     // Enhanced deep-link construction
@@ -166,15 +175,13 @@ export default function PostDetailPage() {
         to: postData.identityUserId,
       });
       if (postData.songId) {
-        search.set('songId', postData.songId);
+        search.set("songId", postData.songId);
       }
       return `/feed?${search.toString()}`;
     }
-    
+
     // Fallback for reactions
-    const r = reactions.find((x) =>
-      (x.contextType === "recent_song" || !x.contextType) && x.songId
-    );
+    const r = reactions.find(x => (x.contextType === "recent_song" || !x.contextType) && x.songId);
     if (r && r.songId && r.toIdentityUserId) {
       const search = new URLSearchParams({
         focusType: "recent_song",
@@ -198,8 +205,8 @@ export default function PostDetailPage() {
             <span>←</span> Back
           </button>
           <div className="flex items-center gap-3">
-            <Link 
-              href={feedHref} 
+            <Link
+              href={feedHref}
               className="text-sm text-purple-300 hover:text-purple-200 transition-colors"
             >
               Open in Feed
@@ -225,8 +232,8 @@ export default function PostDetailPage() {
           ) : error ? (
             <div className="bg-red-900/20 border border-red-800 rounded-2xl p-6 text-center">
               <div className="text-red-400 mb-2">{error}</div>
-              <button 
-                onClick={() => window.location.reload()} 
+              <button
+                onClick={() => window.location.reload()}
                 className="text-sm text-red-300 hover:text-red-200 underline"
               >
                 Retry
@@ -239,24 +246,26 @@ export default function PostDetailPage() {
                 <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6">
                   {/* Post Header */}
                   <div className="flex items-center gap-3 mb-4">
-                    <MusicImage 
+                    <MusicImage
                       src={`/api/placeholder/40/40`}
-                      alt={postData.displayName || postData.username || 'User'} 
-                      type="circle" 
-                      size="medium" 
-                      className="w-12 h-12" 
+                      alt={postData.displayName || postData.username || "User"}
+                      type="circle"
+                      size="medium"
+                      className="w-12 h-12"
                     />
                     <div className="flex-1">
-                      <Link 
+                      <Link
                         href={`/user/${postData.identityUserId}`}
                         className="text-white font-medium hover:underline"
                       >
-                        {postData.displayName || postData.username || 'Unknown User'}
+                        {postData.displayName || postData.username || "Unknown User"}
                       </Link>
                       <div className="text-gray-400 text-sm capitalize">
-                        {postData.type?.replace('_', ' ')} 
+                        {postData.type?.replace("_", " ")}
                         {postData.createdAt && (
-                          <span className="ml-2">• {new Date(postData.createdAt).toLocaleDateString()}</span>
+                          <span className="ml-2">
+                            • {new Date(postData.createdAt).toLocaleDateString()}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -267,19 +276,19 @@ export default function PostDetailPage() {
                     <div className="bg-white/5 rounded-xl p-4 mb-4">
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-800 flex-shrink-0">
-                          <MusicImage 
+                          <MusicImage
                             src={postData.coverUrl}
-                            alt={postData.songTitle || 'Song'} 
-                            size="large" 
-                            className="w-full h-full" 
+                            alt={postData.songTitle || "Song"}
+                            size="large"
+                            className="w-full h-full"
                           />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-white font-medium truncate">
-                            {postData.songTitle || 'Unknown Song'}
+                            {postData.songTitle || "Unknown Song"}
                           </div>
                           <div className="text-gray-300 text-sm truncate">
-                            {postData.artist || 'Unknown Artist'}
+                            {postData.artist || "Unknown Artist"}
                           </div>
                           <button
                             onClick={async () => {
@@ -288,7 +297,7 @@ export default function PostDetailPage() {
                                   const song = await musicApi.getSong(postData.songId);
                                   if (song) playSong(song);
                                 } catch (e) {
-                                  console.warn('Could not play song:', e);
+                                  console.warn("Could not play song:", e);
                                 }
                               }
                             }}
@@ -310,9 +319,7 @@ export default function PostDetailPage() {
                     Reactions ({reactions.length})
                   </h2>
                   {currentUser && postData && (
-                    <div className="text-xs text-gray-400">
-                      Click emoji to react
-                    </div>
+                    <div className="text-xs text-gray-400">Click emoji to react</div>
                   )}
                 </div>
 
@@ -320,7 +327,7 @@ export default function PostDetailPage() {
                 <div className="mb-6">
                   <div className="flex flex-wrap gap-2 mb-4">
                     {emojiCounts.length > 0 ? (
-                      emojiCounts.map((e) => (
+                      emojiCounts.map(e => (
                         <span
                           key={e.emoji}
                           className="px-3 py-2 rounded-full bg-white/10 text-white font-medium"
@@ -336,17 +343,19 @@ export default function PostDetailPage() {
                   {/* React Buttons */}
                   {currentUser && postData && (
                     <div className="flex gap-2 p-3 bg-white/5 rounded-xl">
-                      {['👍', '❤️', '😂', '😮', '🔥', '👏'].map((emoji) => {
-                        const hasReacted = reactions.some(r => r.emoji === emoji && r.fromIdentityUserId === currentUser.id);
+                      {["👍", "❤️", "😂", "😮", "🔥", "👏"].map(emoji => {
+                        const hasReacted = reactions.some(
+                          r => r.emoji === emoji && r.fromIdentityUserId === currentUser.id
+                        );
                         return (
                           <button
                             key={emoji}
                             onClick={() => handleReact(emoji)}
                             disabled={isLoadingReaction}
                             className={`w-10 h-10 rounded-full text-lg transition-all duration-200 ${
-                              hasReacted 
-                                ? 'bg-purple-600/50 hover:bg-purple-600/70' 
-                                : 'bg-white/10 hover:bg-white/20'
+                              hasReacted
+                                ? "bg-purple-600/50 hover:bg-purple-600/70"
+                                : "bg-white/10 hover:bg-white/20"
                             } disabled:opacity-50`}
                           >
                             {emoji}
@@ -375,9 +384,7 @@ export default function PostDetailPage() {
                               {r.fromUserName || "Unknown"}
                             </Link>
                             {r.songTitle && (
-                              <span className="text-gray-400 ml-1">
-                                reacted to {r.songTitle}
-                              </span>
+                              <span className="text-gray-400 ml-1">reacted to {r.songTitle}</span>
                             )}
                           </div>
                           <div className="text-xs text-gray-500">
@@ -396,6 +403,3 @@ export default function PostDetailPage() {
     </>
   );
 }
-
-
-

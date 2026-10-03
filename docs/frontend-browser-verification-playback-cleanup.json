@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-03T20:17:35.839735+00:00",
+  "scope": "Supplemental changed playback case only; no app source or runtime changes and no full-suite repeat.",
+  "command": "npx.cmd playwright test --grep 'real media plays and logout stops and clears the audio element' --reporter=list --output=demo/results-playback-cleanup",
+  "execution": {
+    "exitCode": 0,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "testDurationSeconds": 1.8,
+    "suiteDurationSeconds": 3.7
+  },
+  "checks": [
+    {
+      "name": "Real native media is ready and currentTime progresses before sign-out",
+      "passed": true
+    },
+    {
+      "name": "Browser logout returns to guest controls and pauses/clears native audio",
+      "passed": true
+    },
+    {
+      "name": "Fresh cleanup session uses independent API request fixture and matches playlist owner",
+      "passed": true
+    },
+    {
+      "name": "Task-created fixture deletion returns204",
+      "passed": true
+    },
+    {
+      "name": "Deleted fixture detail returns404 and owner list excludes exact playlist ID",
+      "passed": true
+    },
+    {
+      "name": "Cleanup session logout returns204",
+      "passed": true
+    },
+    {
+      "name": "Original final full21 browser-results JSON retained unchanged",
+      "passed": true
+    },
+    {
+      "name": "Type check and scoped ESLint pass after test-only change",
+      "passed": true
+    }
+  ],
+  "originalFullSuiteJsonSha256": "51D67898A03D79F33063F09B1E8203FD58456D7AB2232641D01A560B8FFA47B2",
+  "discovery": "Earlier successful playback runs leaked four task-created playlists because cleanup reused the bearer family revoked by the logout under test and ignored the delete response status. Root owns narrowly scoped removal of those four historical fixtures.",
+  "selectionCorrection": "An initially anchored grep selected no tests; the corrected exact-title substring ran only the intended playback case.",
+  "limitations": [
+    "The original full21 proof is preserved; this supplemental execution validates the changed playback case, not a repeated full suite."
+  ]
+}

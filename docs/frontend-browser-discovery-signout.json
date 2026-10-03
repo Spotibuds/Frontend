@@ -1,0 +1,23 @@
+{
+  "recordedAt": "2026-10-03",
+  "run": "root full rebuilt-stack run 62355",
+  "stats": {
+    "startTime": "2026-10-03T19:19:12.277Z",
+    "duration": 255911.097,
+    "expected": 20,
+    "unexpected": 1,
+    "skipped": 0,
+    "flaky": 0
+  },
+  "result": "20/21 passed; one regression-test selector failure",
+  "failedCase": "session survives reload; failed logout remains signed out across reload and cookie operations serialize",
+  "primaryFailure": {
+    "file": "tests/browser/demo.spec.ts",
+    "line": 140,
+    "assertion": "Sign In button disabled",
+    "observed": "The actual loading label was Signing in..., so the old accessible-name selector found no element."
+  },
+  "secondaryCleanupFailure": "Held response was released and route removed concurrently; fixed by awaiting handler completion before removing the route.",
+  "correction": "Use the actual loading accessible name and await held-handler completion without a sleep. App source and running image unchanged.",
+  "security": "No token, password, cookie, personal profile, or request header/body is retained here."
+}

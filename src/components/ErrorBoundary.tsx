@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React from "react";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -23,7 +23,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Error Boundary caught an error:', error, errorInfo);
+    console.error("Error Boundary caught an error:", error, errorInfo);
   }
 
   render() {
@@ -38,7 +38,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <div className="text-red-400 text-6xl mb-4">!</div>
             <h2 className="text-2xl font-bold text-white">Something went wrong</h2>
             <p className="text-gray-400 max-w-md">
-              We&apos;re sorry, but something unexpected happened. Please refresh the page or try again later.
+              We&apos;re sorry, but something unexpected happened. Please refresh the page or try
+              again later.
             </p>
             <div className="space-x-4">
               <button
@@ -56,7 +57,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
                 Try Again
               </button>
             </div>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {process.env.NODE_ENV === "development" && this.state.error && (
               <details className="mt-4 text-left bg-gray-800 p-4 rounded text-sm">
                 <summary className="cursor-pointer text-gray-300 font-medium">
                   Error Details (Development Only)
@@ -73,4 +74,4 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
     return this.props.children;
   }
-} 
+}

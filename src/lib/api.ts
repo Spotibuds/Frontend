@@ -1,363 +1,34 @@
-// Production-ready API configuration
-const getApiConfig = () => {
-  const nodeEnv = process.env.NODE_ENV;
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-  
-  // Check if we're in production environment
-  const isProduction = nodeEnv === 'production' || 
-    (typeof window !== 'undefined' && !hostname.includes('localhost') && !hostname.includes('127.0.0.1'));
-
-  // Production URLs (hardcoded as fallback)
-  const productionUrls = {
-    IDENTITY_API: 'https://identity-spotibuds-dta5hhc7gka0gnd3.eastasia-01.azurewebsites.net',
-    MUSIC_API: 'https://music-spotibuds-ehckeeb8b5cfedfv.eastasia-01.azurewebsites.net',
-    USER_API: 'https://user-spotibuds-h7abc7b2f4h4dqcg.eastasia-01.azurewebsites.net'
-  };
-
-  // Development URLs
-  const developmentUrls = {    
-    IDENTITY_API: 'http://localhost:5000',
-    MUSIC_API: 'http://localhost:5001',
-    USER_API: 'http://localhost:5002'
-  };
-
-  let config;
-  
-  if (isProduction) {
-    // In production, prefer environment variables but fall back to hardcoded URLs
-    config = {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || productionUrls.IDENTITY_API,
-      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || productionUrls.MUSIC_API,
-      USER_API: process.env.NEXT_PUBLIC_USER_API || productionUrls.USER_API
-    };
-  } else {
-    // In development, prefer environment variables but fall back to localhost
-    config = {
-      IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API || developmentUrls.IDENTITY_API,
-      MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API || developmentUrls.MUSIC_API,
-      USER_API: process.env.NEXT_PUBLIC_USER_API || developmentUrls.USER_API
-    };
-  }
-
-  // Debug logging (only once per session to reduce noise)
-  if (typeof window !== 'undefined' && !(window as any).__API_DEBUG_LOGGED) {
-    console.log('🔧 API Configuration Debug:', {
-      nodeEnv,
-      hostname,
-      isProduction,
-      envVars: {
-        NEXT_PUBLIC_IDENTITY_API: process.env.NEXT_PUBLIC_IDENTITY_API,
-        NEXT_PUBLIC_MUSIC_API: process.env.NEXT_PUBLIC_MUSIC_API,
-        NEXT_PUBLIC_USER_API: process.env.NEXT_PUBLIC_USER_API
-      },
-      finalConfig: config
-    });
-    (window as any).__API_DEBUG_LOGGED = true;
-  }
-
-  return config;
-};
-
-// Use runtime configuration
-export const API_CONFIG = getApiConfig();
-
-// Token management
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value?: string | null) => void;
-  reject: (error?: Error) => void;
-}> = [];
-
-const processQueue = (error: Error | null, token: string | null = null) => {
-  failedQueue.forEach(({ resolve, reject }) => {
-    if (error) {
-      reject(error);
-    } else {
-      resolve(token);
-    }
-  });
-  
-  failedQueue = [];
-};
-
-const refreshToken = async (): Promise<string | null> => {
-  const refreshTokenValue = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-  
-  if (!refreshTokenValue) {
-    return null;
-  }
-
-  try {
-    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refreshToken: refreshTokenValue }),
-    });
-
-    if (!response.ok) {
-      // Refresh token is invalid or expired
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-      }
-      return null;
-    }
-
-    const data = await response.json();
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('refreshToken', data.refreshToken);
-    }
-    
-    return data.token;
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-    }
-    return null;
-  }
-};
-
-async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const defaultHeaders: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`;
-  }
-  // Helper: redirect to login
-  const redirectToLogin = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('user');
-      window.location.href = '/';
-    }
-  };
-
-  // Debug logging for friend requests (disabled to reduce console noise)
-  // if (url.includes('/api/friends/')) {
-  //   console.log('API Request Debug:', {
-  //     url,
-  //     method: options?.method,
-  //     body: options?.body,
-  //     headers: { ...defaultHeaders, ...options?.headers }
-  //   });
-  // }
-
-  // Add timeout to prevent hanging - longer timeout for registration and chat endpoints
-  const controller = new AbortController();
-  const isRegistration = url.includes('/api/auth/register');
-  const isFeedEndpoint = url.includes('/api/feed/');
-  const isChatEndpoint = url.includes('/api/chats/');
-  const timeoutDuration = isRegistration ? 30000 : 
-                         isChatEndpoint ? 20000 : 
-                         isFeedEndpoint ? 15000 : 10000; // Longer timeout for chat endpoints
-  const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
-
-  try {
-    // Only include credentials for User service and Identity service
-    // Music service uses wildcard CORS which doesn't support credentials
-    const isMusicService = url.includes('music-spotibuds');
-    const needsCredentials = token && !isMusicService;
-    
-    const fetchOptions: RequestInit = {
-      ...options,
-      signal: controller.signal,
-      mode: 'cors', // Explicitly handle CORS
-      headers: {
-        ...defaultHeaders,
-        ...options?.headers,
-      },
-    };
-    
-    // Add credentials only for non-Music services
-    if (needsCredentials) {
-      fetchOptions.credentials = 'include';
-    }
-    
-    const response = await fetch(url, fetchOptions);
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      // Handle 401 Unauthorized - try to refresh token
-      if (response.status === 401 && !url.includes('/api/auth/refresh') && !url.includes('/api/auth/login')) {
-        if (isRefreshing) {
-          // If already refreshing, wait for the refresh to complete
-          return new Promise((resolve, reject) => {
-            failedQueue.push({ resolve, reject });
-          }).then(() => {
-            // Retry the original request with new token
-            return apiRequest<T>(url, options);
-          });
-        }
-
-        isRefreshing = true;
-
-        try {
-          const newToken = await refreshToken();
-          if (newToken) {
-            processQueue(null, newToken);
-            // Retry the original request with new token
-            return apiRequest<T>(url, options);
-          } else {
-            processQueue(new Error('Token refresh failed'));
-            redirectToLogin();
-            throw new Error('Authentication failed. Please log in again.');
-          }
-        } finally {
-          isRefreshing = false;
-        }
-      }
-
-      // Try to get the error response body for all failed requests
-      let errorMessage = `HTTP error! status: ${response.status}`;
-      try {
-        const errorText = await response.text();
-        if (errorText) {
-          // Try to parse as JSON first
-          try {
-            const errorJson = JSON.parse(errorText);
-            if (errorJson.message) {
-              errorMessage = errorJson.message;
-            } else if (errorJson.errors && Array.isArray(errorJson.errors)) {
-              errorMessage = JSON.stringify(errorJson);
-            } else {
-              errorMessage = errorText;
-            }
-          } catch {
-            // If not JSON, use the text as is
-            errorMessage = errorText;
-          }
-        }
-        
-        // Debug logging for failed requests
-        if (url.includes('/api/friends/')) {
-          console.error('Friend request failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            url,
-            errorMessage
-          });
-        }
-      } catch (e) {
-        // If we can't read the response body, use the generic error
-        console.error('Could not read error response body:', e);
-      }
-      
-      throw new Error(errorMessage);
-    }
-
-    // Safely handle empty or non-JSON responses
-    const contentType = response.headers.get('content-type')?.toLowerCase() || '';
-    if (response.status === 204) {
-      return undefined as unknown as T;
-    }
-    const responseText = await response.text();
-    if (!responseText) {
-      return undefined as unknown as T;
-    }
-    if (contentType.includes('application/json')) {
-      try {
-        return JSON.parse(responseText) as T;
-      } catch {
-        // If body isn't valid JSON despite header, return raw text
-        return responseText as unknown as T;
-      }
-    }
-    // For other content types, return raw text
-    return responseText as unknown as T;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      const isRegistration = url.includes('/api/auth/register');
-      const timeoutMessage = isRegistration 
-        ? 'Registration is taking longer than expected. This might be due to high server load. Please try again in a moment.'
-        : 'Request timeout - service unavailable';
-      throw new Error(timeoutMessage);
-    }
-    // Handle CORS and network errors in production
-    if (error instanceof TypeError && (
-      error.message.includes('NetworkError') || 
-      error.message.includes('Failed to fetch') ||
-      error.message.includes('CORS')
-    )) {
-      const isMusicService = url.includes('music-spotibuds');
-      const isUserService = url.includes('user-spotibuds');
-      const isIdentityService = url.includes('identity-spotibuds');
-      
-      console.warn('Network/CORS error detected:', {
-        message: error.message,
-        url: url,
-        service: isMusicService ? 'Music' : isUserService ? 'User' : isIdentityService ? 'Identity' : 'Unknown',
-        isProduction: typeof window !== 'undefined' && !window.location.hostname.includes('localhost')
-      });
-      
-      let errorMessage = 'Service unavailable - please try again later';
-      if (isMusicService) {
-        errorMessage = 'Music service temporarily unavailable';
-      } else if (isUserService) {
-        errorMessage = 'User service temporarily unavailable';
-      } else if (isIdentityService) {
-        errorMessage = 'Authentication service temporarily unavailable';
-      }
-      
-      throw new Error(errorMessage);
-    }
-    throw error;
-  }
-}
-
+import type { FeedPost } from "./feedTypes";
+import { API_CONFIG } from "./config";
+import { apiRequest } from "./request";
+import { getSessionUser, ensureAccessToken, loginSession, logoutSession } from "./session";
+export { API_CONFIG, apiRequest };
 export function getProxiedImageUrl(originalUrl: string): string {
-  if (!originalUrl) {
-    console.warn('No image URL provided');
-    return '';
-  }
-    
-  if (originalUrl.startsWith('/') || originalUrl.startsWith('./') || !originalUrl.includes('://')) {
-    console.log('Using local/relative URL:', originalUrl);
-    return originalUrl;
-  }
-  
-  // Check if URL is already proxied to prevent double-proxying
-  if (originalUrl.includes('/api/media/image?url=')) {
-    console.log('URL is already proxied:', originalUrl);
-    return originalUrl;
-  }
-  
-  if (originalUrl.includes('blob.core.windows.net')) {
-    const proxyUrl = `${API_CONFIG.MUSIC_API}/api/media/image?url=${encodeURIComponent(originalUrl)}`;
-    console.log('Proxying blob URL:', originalUrl, '->', proxyUrl);
-    return proxyUrl;
-  }
-  
-  if (originalUrl.startsWith('data:')) {
-    console.log('Using data URL');
-    return originalUrl;
-  }
-  
-  console.log('Using direct external URL:', originalUrl);
+  if (!originalUrl) return "";
+  if (originalUrl.startsWith("/") || !originalUrl.includes("://")) return originalUrl;
+  if (originalUrl.includes("/api/media/image?url=")) return originalUrl;
+  if (
+    originalUrl.includes("blob.core.windows.net") ||
+    /https?:\/\/(127\.0\.0\.1|localhost|azurite):10000\//.test(originalUrl)
+  )
+    return `${API_CONFIG.MUSIC_API}/api/media/image?url=${encodeURIComponent(originalUrl)}`;
   return originalUrl;
 }
 
-export function getImageFallback(title?: string, type: 'album' | 'artist' | 'song' | 'user' = 'album'): string {
-  const fallbackChar = title?.charAt(0)?.toUpperCase() || 
-                      (type === 'album' ? 'A' : type === 'artist' ? '♪' : type === 'song' ? '♫' : 'U');
+export function getImageFallback(
+  title?: string,
+  type: "album" | "artist" | "song" | "user" = "album"
+): string {
+  const fallbackChar =
+    title?.charAt(0)?.toUpperCase() ||
+    (type === "album" ? "A" : type === "artist" ? "♪" : type === "song" ? "♫" : "U");
   return fallbackChar;
 }
 
-export function getPlaceholderImageUrl(type: 'album' | 'artist' | 'song' | 'user', size: number = 400): string {
-
-  
+export function getPlaceholderImageUrl(
+  type: "album" | "artist" | "song" | "user",
+  size: number = 400
+): string {
   return `https://via.placeholder.com/${size}x${size}/1f2937/ffffff?text=${type.charAt(0).toUpperCase()}`;
 }
 
@@ -383,17 +54,6 @@ export interface Song {
   coverUrl?: string;
   createdAt?: string;
   releaseDate?: string;
-}
-
-export interface AdminStats {
-  TotalArtists: number;
-  TotalAlbums: number;
-  TotalSongs: number;
-  TotalPlaylists: number;
-  RecentArtists: number;
-  RecentAlbums: number;
-  RecentSongs: number;
-  RecentPlaylists: number;
 }
 
 export interface Album {
@@ -473,7 +133,6 @@ export interface RegisterRequest {
 export interface AuthResponse {
   message: string;
   token: string;
-  refreshToken?: string;
   user: {
     id: string;
     username: string;
@@ -509,7 +168,7 @@ export interface Friend {
 }
 
 export interface FriendshipStatus {
-  status: 'none' | 'pending' | 'accepted' | 'blocked' | 'declined';
+  status: "none" | "pending" | "accepted" | "blocked" | "declined";
   friendshipId?: string;
   requesterId?: string;
   addresseeId?: string;
@@ -544,6 +203,7 @@ export interface Message {
   isEdited: boolean;
   editedAt?: string;
   readBy: MessageRead[];
+  isRead?: boolean;
   replyToId?: string;
 }
 
@@ -551,166 +211,64 @@ export interface MessageRead {
   userId: string;
   readAt: string;
 }
-export interface UpdatePlaylistDto
-{
-    Name : string;
-    Description :string;
-} 
+export interface UpdatePlaylistDto {
+  Name: string;
+  Description: string;
+}
 
-// Token validation utilities
-const isTokenExpired = (token: string): boolean => {
-  try {
-    // JWT tokens have 3 parts separated by dots
-    const parts = token.split('.');
-    if (parts.length !== 3) return true;
-    
-    // Decode the payload (second part)
-    const payload = JSON.parse(atob(parts[1]));
-    
-    // Check expiration time (exp is in seconds, Date.now() is in milliseconds)
-    const now = Math.floor(Date.now() / 1000);
-    return payload.exp < now;
-  } catch (error) {
-    console.error('Error checking token expiration:', error);
-    return true; // Assume expired if we can't parse it
-  }
-};
-
-const validateTokenAndRefresh = async (): Promise<boolean> => {
-  if (typeof window === 'undefined') return false;
-  
-  const token = localStorage.getItem('token');
-  if (!token) {
-    console.log('No token found in localStorage');
-    return false;
-  }
-  
-  // If token is not expired, we're good
-  if (!isTokenExpired(token)) {
-    console.log('Token is still valid');
-    return true;
-  }
-  
-  // Token is expired, try to refresh it
-  console.log('Token expired, attempting refresh...');
-  try {
-    const newToken = await refreshToken();
-    if (newToken) {
-      console.log('Token refresh successful');
-      return true;
-    } else {
-      console.log('Token refresh failed - no new token received');
-      return false;
-    }
-  } catch (error) {
-    console.error('Token refresh error:', error);
-    return false;
-  }
-};
-
-// API Functions
 export const identityApi = {
-  register: async (data: RegisterRequest): Promise<RegisterResponse> => {
-    const response = await apiRequest<RegisterResponse>(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
-      method: 'POST',
-        body: JSON.stringify(data),
-    });
-    
-    // Note: Register doesn't return token/user data - that happens in the separate login call
-    return response;
-  },
-
+  register: (data: RegisterRequest) =>
+    apiRequest<RegisterResponse>(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await apiRequest<AuthResponse>(`${API_CONFIG.IDENTITY_API}/api/auth/login`, {
-      method: 'POST',
+    return loginSession(signal =>
+      apiRequest<AuthResponse>(`${API_CONFIG.IDENTITY_API}/api/auth/login`, {
+        method: "POST",
         body: JSON.stringify(data),
-    });
-
-    // Store token, refresh token, and user data in localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', response.token);
-      if (response.refreshToken) {
-        localStorage.setItem('refreshToken', response.refreshToken);
-      }
-      localStorage.setItem('currentUser', JSON.stringify(response.user));
-    }
-
-    return response;
+        signal,
+      })
+    );
   },
-
-  getCurrentUser: (): User | null => {
-    if (typeof window === 'undefined') return null;
-    
-    const userStr = localStorage.getItem('currentUser');
-    return userStr ? JSON.parse(userStr) : null;
+  getCurrentUser: getSessionUser,
+  getCurrentUserWithTokenCheck: async (): Promise<User | null> => {
+    const token = await ensureAccessToken();
+    if (!token) return null;
+    return getSessionUser();
   },
-
-  async getCurrentUserWithTokenCheck(): Promise<User | null> {
-    const user = this.getCurrentUser();
-    if (!user) return null;
-    
-    // Validate token and refresh if needed
-    const isValid = await validateTokenAndRefresh();
-    if (!isValid) {
-      // Token refresh failed, user needs to login again
-      this.logout();
-      return null;
-    }
-    
-    return user;
-  },
-
-
-
-  logout: () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('currentUser');
-    }
-  }
+  logout: logoutSession,
+  forgotPassword: (email: string) =>
+    apiRequest<{ message: string }>(`${API_CONFIG.IDENTITY_API}/api/auth/forgot-password`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (email: string, token: string, password: string) =>
+    apiRequest<{ message: string }>(`${API_CONFIG.IDENTITY_API}/api/auth/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ email, token, password }),
+    }),
 };
 
 export const musicApi = {
-  async testProxy(): Promise<unknown> {
-    try {
-              const response = await apiRequest<unknown>(`${API_CONFIG.MUSIC_API}/api/media/test`);
-      return response;
-    } catch (error) {
-      console.warn('Proxy test failed:', error);
-      return null;
-    }
+  updatePlaylist: async (id: string, dto: UpdatePlaylistDto): Promise<boolean> => {
+    await apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/playlists/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(dto),
+    });
+    return true;
   },
-
-  updatePlaylist: async (
-  id: string,
-  dto: UpdatePlaylistDto
-): Promise<boolean> => {
-  const res = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(dto),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text);
-  }
-
-  return true;
-},
-
 
   async getSongs(limit?: number): Promise<Song[]> {
     try {
-      const url = limit ? 
-        `${API_CONFIG.MUSIC_API}/api/songs?limit=${limit}` : 
-        `${API_CONFIG.MUSIC_API}/api/songs`;
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/songs?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/songs`;
       const response = await apiRequest<Song[]>(url);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch songs:', error);
-      return [];
+      console.warn("Failed to fetch songs:", error);
+      throw error;
     }
   },
 
@@ -719,34 +277,34 @@ export const musicApi = {
       const response = await apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/songs/${id}`);
       return response;
     } catch (error) {
-      console.warn('Failed to fetch song:', error);
-      return null;
+      console.warn("Failed to fetch song:", error);
+      throw error;
     }
   },
 
   async getAlbums(limit?: number): Promise<Album[]> {
     try {
-      const url = limit ? 
-        `${API_CONFIG.MUSIC_API}/api/albums?limit=${limit}` : 
-        `${API_CONFIG.MUSIC_API}/api/albums`;
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/albums?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/albums`;
       const response = await apiRequest<Album[]>(url);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch albums:', error);
-      return [];
+      console.warn("Failed to fetch albums:", error);
+      throw error;
     }
   },
 
   async getArtists(limit?: number): Promise<Artist[]> {
     try {
-      const url = limit ? 
-        `${API_CONFIG.MUSIC_API}/api/artists?limit=${limit}` : 
-        `${API_CONFIG.MUSIC_API}/api/artists`;
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/artists?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/artists`;
       const response = await apiRequest<Artist[]>(url);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch artists:', error);
-      return [];
+      console.warn("Failed to fetch artists:", error);
+      throw error;
     }
   },
 
@@ -755,7 +313,7 @@ export const musicApi = {
       const response = await apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/albums/${id}`);
       return response;
     } catch (error) {
-      console.error('Failed to fetch album:', error);
+      console.error("Failed to fetch album:", error);
       throw error;
     }
   },
@@ -765,209 +323,95 @@ export const musicApi = {
       const response = await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/artists/${id}`);
       return response;
     } catch (error) {
-      console.error('Failed to fetch artist:', error);
+      console.error("Failed to fetch artist:", error);
       throw error;
     }
   },
 
   async getArtistAlbums(artistId: string, limit?: number): Promise<Album[]> {
     try {
-      const url = limit ? 
-        `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums?limit=${limit}` : 
-        `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums`;
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums`;
       const response = await apiRequest<Album[]>(url);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch artist albums:', error);
-      return [];
+      console.warn("Failed to fetch artist albums:", error);
+      throw error;
     }
   },
 
   async getArtistSongs(artistId: string, limit?: number): Promise<Song[]> {
     try {
-      const url = limit ? 
-        `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs?limit=${limit}` : 
-        `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs`;
+      const url = limit
+        ? `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs?limit=${limit}`
+        : `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs`;
       const response = await apiRequest<Song[]>(url);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch artist songs:', error);
-      return [];
+      console.warn("Failed to fetch artist songs:", error);
+      throw error;
     }
   },
 
   async getAlbumSongs(albumId: string): Promise<Song[]> {
     try {
-      const response = await apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/albums/${albumId}/songs`);
+      const response = await apiRequest<Song[]>(
+        `${API_CONFIG.MUSIC_API}/api/albums/${albumId}/songs`
+      );
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.warn('Failed to fetch album songs:', error);
-      return [];
+      console.warn("Failed to fetch album songs:", error);
+      throw error;
     }
   },
 
-  async searchContent(query: string): Promise<{
-    songs: Song[];
-    albums: Album[];
-    artists: Artist[];
-  }> {
-    try {
-      // First try the dedicated search endpoint
-      const response = await apiRequest<{
-        songs: Song[];
-        albums: Album[];
-        artists: Artist[];
-      }>(`${API_CONFIG.MUSIC_API}/api/search?q=${encodeURIComponent(query)}`);
-      return {
-        songs: Array.isArray(response.songs) ? response.songs : [],
-        albums: Array.isArray(response.albums) ? response.albums : [],
-        artists: Array.isArray(response.artists) ? response.artists : [],
-      };
-    } catch (error) {
-      console.warn('Dedicated search failed, falling back to manual search:', error);
-      
-      // Fallback: search through all data manually with improved fuzzy matching
-      try {
-        // Try individual search endpoints first
-        const [songsSearchResult, albumsResult, artistsResult] = await Promise.allSettled([
-          apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/songs/search?q=${encodeURIComponent(query)}`).catch(() => []),
-          musicApi.getAlbums(),
-          musicApi.getArtists()
-        ]);
-
-        const queryLower = query.toLowerCase();
-        const queryWords = queryLower.split(' ').filter(word => word.length > 0);
-        
-        const songs = songsSearchResult.status === 'fulfilled' ? songsSearchResult.value : [];
-        const albums = albumsResult.status === 'fulfilled' ? albumsResult.value : [];
-        const artists = artistsResult.status === 'fulfilled' ? artistsResult.value : [];
-
-        // Improved fuzzy matching function
-        const fuzzyMatch = (text: string | undefined, searchTerms: string[]): boolean => {
-          if (!text || typeof text !== 'string') return false;
-          const textLower = text.toLowerCase();
-          
-          // Check if all search terms are found in the text
-          return searchTerms.every(term => textLower.includes(term));
-        };
-
-        // Filter albums with improved matching
-        const filteredAlbums = albums.filter(album => {
-          try {
-            return fuzzyMatch(album.title, queryWords) ||
-                   fuzzyMatch(album.artist?.name, queryWords);
-          } catch (e) {
-            console.warn('Error filtering album:', album, e);
-            return false;
-          }
-        });
-
-        // Filter artists with improved matching
-        const filteredArtists = artists.filter(artist => {
-          try {
-            return fuzzyMatch(artist.name, queryWords) ||
-                   fuzzyMatch(artist.bio, queryWords);
-          } catch (e) {
-            console.warn('Error filtering artist:', artist, e);
-            return false;
-          }
-        });
-
-        return {
-          songs: songs,
-          albums: filteredAlbums,
-          artists: filteredArtists
-        };
-      } catch (fallbackError) {
-        console.error('Fallback search also failed:', fallbackError);
-        return { songs: [], albums: [], artists: [] };
-      }
-    }
+  async searchContent(
+    query: string,
+    signal?: AbortSignal
+  ): Promise<{ songs: Song[]; albums: Album[]; artists: Artist[] }> {
+    return apiRequest(`${API_CONFIG.MUSIC_API}/api/search?q=${encodeURIComponent(query)}`, {
+      signal,
+    });
   },
 
   // Playlist cover image functions
   async uploadPlaylistCover(playlistId: string, file: File): Promise<{ coverUrl: string }> {
     const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
-      method: 'POST',
+    formData.append("file", file);
+    return apiRequest(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: "POST",
       body: formData,
     });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Upload failed' }));
-      throw new Error(error.message || 'Failed to upload playlist cover');
-    }
-
-    return response.json();
   },
-
-  async deletePlaylistCover(playlistId: string): Promise<void> {
-    const response = await fetch(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
-      method: 'DELETE',
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Delete failed' }));
-      throw new Error(error.message || 'Failed to delete playlist cover');
-    }
-  },
+  deletePlaylistCover: (playlistId: string) =>
+    apiRequest<void>(`${API_CONFIG.MUSIC_API}/api/playlists/${playlistId}/cover`, {
+      method: "DELETE",
+    }),
 };
 
 export const userApi = {
   // User profile methods
-  getUserProfile: async (userId: string): Promise<User> => {
-    try {
-      const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/${userId}`);
-      return {
-        id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
-        username: userData.userName,
-        displayName: userData.displayName,
-        bio: userData.bio,
-        avatarUrl: userData.avatarUrl,
-        followers: userData.followers.length,
-        following: userData.followedUsers.length,
-        playlists: userData.playlists.length, // Convert to count
-        isPrivate: userData.isPrivate
-      };
-    } catch (error) {
-      // Fallback to Identity service (basic info only)
-      try {
-        const identityUser = await apiRequest<{ id: string; userName: string; email?: string; isPrivate?: boolean; createdAt?: string }>(
-          `${API_CONFIG.IDENTITY_API}/api/auth/users/${userId}`
-        );
-        return {
-          id: identityUser.id,
-          username: identityUser.userName,
-          displayName: identityUser.userName,
-          bio: undefined,
-          avatarUrl: undefined,
-          followers: 0,
-          following: 0,
-          playlists: 0,
-          isPrivate: identityUser.isPrivate ?? false,
-        };
-  } catch {
-        throw error;
-      }
-    }
-  },
+  getUserProfile: (userId: string): Promise<User> => userApi.getUserProfileByIdentityId(userId),
 
-  getUserProfileByIdentityId: async (identityUserId: string): Promise<User & { createdAt?: string }> => {
+  getUserProfileByIdentityId: async (
+    identityUserId: string
+  ): Promise<User & { createdAt?: string }> => {
     try {
-      const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`);
+      const userData = await apiRequest<UserDto>(
+        `${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`
+      );
       return {
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
         username: userData.userName,
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
-        followers: userData.followers.length,
-        following: userData.followedUsers.length,
-        playlists: userData.playlists.length, // Convert to count
+        followers: userData.followers?.length || 0,
+        following: userData.followedUsers?.length || 0,
+        playlists: userData.playlists?.length || 0, // Convert to count
         isPrivate: userData.isPrivate,
-        createdAt: userData.createdAt
+        createdAt: userData.createdAt,
       };
     } catch (error) {
       throw error;
@@ -977,77 +421,91 @@ export const userApi = {
   getUserProfilesBatch: async (userIds: string[]): Promise<User[]> => {
     try {
       const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/batch`, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ userIds }),
       });
-      
+
       return userDtos.map(userData => ({
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
         username: userData.userName,
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
-        followers: userData.followers.length,
-        following: userData.followedUsers.length,
-        playlists: userData.playlists.length, // Convert to count
+        followers: userData.followers?.length || 0,
+        following: userData.followedUsers?.length || 0,
+        playlists: userData.playlists?.length || 0, // Convert to count
         isPrivate: userData.isPrivate,
-        createdAt: userData.createdAt
+        createdAt: userData.createdAt,
       }));
     } catch (error) {
       throw error;
     }
   },
 
-  getAllUsers: () =>
-    apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users`),
+  getAllUsers: () => apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users`),
 
   updateUserProfile: (userId: string, data: Partial<User>) =>
     apiRequest<User>(`${API_CONFIG.USER_API}/api/users/${userId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify(data),
     }),
 
-  updateUserProfileByIdentityId: (identityUserId: string, data: { username?: string; displayName?: string; bio?: string; avatarUrl?: string; isPrivate?: boolean }) =>
+  updateUserProfileByIdentityId: (
+    identityUserId: string,
+    data: {
+      username?: string;
+      displayName?: string;
+      bio?: string;
+      isPrivate?: boolean;
+    }
+  ) =>
     apiRequest<void>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`, {
-      method: 'PUT',
-    body: JSON.stringify(data),
-  }),
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 
   // Friend management
   sendFriendRequest: (requesterId: string, addresseeId: string) => {
     // Note: requesterId is ignored since backend gets user ID from JWT token
-    const requestBody = { toUserId: addresseeId };
-    return apiRequest<{ message: string; friendshipId: string }>(`${API_CONFIG.USER_API}/api/friends/request`, {
-      method: 'POST',
-      body: JSON.stringify(requestBody),
-    });
+    const requestBody = { targetUserId: addresseeId };
+    return apiRequest<{ message: string; friendshipId: string }>(
+      `${API_CONFIG.USER_API}/api/friends/request`,
+      {
+        method: "POST",
+        body: JSON.stringify(requestBody),
+      }
+    );
   },
 
   acceptFriendRequest: (friendshipId: string, addresseeId: string) => {
-    console.log('API: acceptFriendRequest called with:', { friendshipId, addresseeId });
-    return apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/friends/${friendshipId}/accept`, {
-      method: 'POST',
-      body: JSON.stringify({ userId: addresseeId }),
-    });
+    return apiRequest<{ message: string }>(
+      `${API_CONFIG.USER_API}/api/friends/${friendshipId}/accept`,
+      {
+        method: "POST",
+        body: JSON.stringify({ userId: addresseeId }),
+      }
+    );
   },
 
   declineFriendRequest: (friendshipId: string, addresseeId: string) => {
-    console.log('API: declineFriendRequest called with:', { friendshipId, addresseeId });
-    return apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/friends/${friendshipId}/decline`, {
-      method: 'POST',
-      body: JSON.stringify({ userId: addresseeId }),
-    });
+    return apiRequest<{ message: string }>(
+      `${API_CONFIG.USER_API}/api/friends/${friendshipId}/decline`,
+      {
+        method: "POST",
+        body: JSON.stringify({ userId: addresseeId }),
+      }
+    );
   },
 
   removeFriend: (friendshipId: string, userId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/friends/${friendshipId}`, {
-      method: 'DELETE',
+      method: "DELETE",
       body: JSON.stringify({ userId }),
     }),
 
   blockUser: (friendshipId: string, blockerId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/friends/${friendshipId}/block`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ blockerId }),
     }),
 
@@ -1058,38 +516,41 @@ export const userApi = {
     apiRequest<FriendRequest[]>(`${API_CONFIG.USER_API}/api/friends/pending/${userId}`),
 
   getFriendshipStatus: (userId1: string, userId2: string) =>
-    apiRequest<FriendshipStatus>(`${API_CONFIG.USER_API}/api/friends/status?userId1=${userId1}&userId2=${userId2}`),
+    apiRequest<FriendshipStatus>(
+      `${API_CONFIG.USER_API}/api/friends/status?userId1=${userId1}&userId2=${userId2}`
+    ),
 
   // Chat management
   createOrGetChat: (participantIds: string[], isGroup = false, name?: string) =>
     apiRequest<Chat>(`${API_CONFIG.USER_API}/api/chats/create-or-get`, {
-    method: 'POST',
+      method: "POST",
       body: JSON.stringify({ participantIds, isGroup, name }),
     }),
 
-  getChat: (chatId: string) =>
-    apiRequest<Chat>(`${API_CONFIG.USER_API}/api/chats/${chatId}`),
+  getChat: (chatId: string) => apiRequest<Chat>(`${API_CONFIG.USER_API}/api/chats/${chatId}`),
 
   getUserChats: (userId: string) =>
     apiRequest<Chat[]>(`${API_CONFIG.USER_API}/api/chats/user/${userId}`),
 
   getChatMessages: (chatId: string, page = 1, pageSize = 50) =>
-    apiRequest<Message[]>(`${API_CONFIG.USER_API}/api/chats/${chatId}/messages?page=${page}&pageSize=${pageSize}`),
+    apiRequest<Message[]>(
+      `${API_CONFIG.USER_API}/api/chats/${chatId}/messages?page=${page}&pageSize=${pageSize}`
+    ),
 
-  sendMessage: (chatId: string, content: string, type = 'Text', replyToId?: string) =>
+  sendMessage: (chatId: string, content: string, type = "Text", replyToId?: string) =>
     apiRequest<Message>(`${API_CONFIG.USER_API}/api/chats/${chatId}/messages`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ content, type, replyToId }),
     }),
 
   markMessageAsRead: (messageId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/chats/messages/${messageId}/read`, {
-      method: 'POST',
+      method: "POST",
     }),
 
   deleteChat: (chatId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/chats/${chatId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     }),
 
   // Unread message tracking
@@ -1101,31 +562,19 @@ export const userApi = {
 
   markAllMessagesAsRead: (chatId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/chats/${chatId}/mark-all-read`, {
-      method: 'POST',
-    }),
-
-  // Reset all friendships (for development/testing)
-  resetAllFriendships: () =>
-    apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/friends/reset`, {
-      method: 'DELETE',
-    }),
-
-  // Sync users from Identity service to User service
-  syncUsers: () =>
-    apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/users/sync-users`, {
-      method: 'POST',
+      method: "POST",
     }),
 
   // Legacy follow functionality (keeping for compatibility)
   followUser: (followerId: string, followedId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/follows`, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({ followerId, followedId }),
     }),
 
   unfollowUser: (followerId: string, followedId: string) =>
     apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/follows`, {
-      method: 'DELETE',
+      method: "DELETE",
       body: JSON.stringify({ followerId, followedId }),
     }),
 
@@ -1144,10 +593,13 @@ export const userApi = {
     apiRequest<FollowStats>(`${API_CONFIG.USER_API}/api/follows/${userId}/stats`),
 
   // Search functionality
-  searchUsers: async (query: string): Promise<User[]> => {
+  searchUsers: async (query: string, signal?: AbortSignal): Promise<User[]> => {
     try {
-      const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/search?q=${encodeURIComponent(query)}`);
-      
+      const userDtos = await apiRequest<UserDto[]>(
+        `${API_CONFIG.USER_API}/api/users/search?q=${encodeURIComponent(query)}`,
+        { signal }
+      );
+
       // Map UserDto to User interface - use IdentityUserId as the id for consistency
       return userDtos.map(dto => ({
         id: dto.identityUserId, // Use IdentityUserId instead of MongoDB _id
@@ -1161,8 +613,8 @@ export const userApi = {
         playlists: dto.playlists?.length || 0,
       }));
     } catch (error) {
-      console.warn('User search failed:', error);
-      return [];
+      console.warn("User search failed:", error);
+      throw error;
     }
   },
 
@@ -1171,129 +623,195 @@ export const userApi = {
     try {
       const currentUser = identityApi.getCurrentUser();
       if (!currentUser) return null;
-      
+
       // Get the full user profile which includes the MongoDB _id
       // Use the IdentityUserId to fetch the user profile
-      const userData = await apiRequest<UserDto>(`${API_CONFIG.USER_API}/api/users/identity/${currentUser.id}`);
+      const userData = await apiRequest<UserDto>(
+        `${API_CONFIG.USER_API}/api/users/identity/${currentUser.id}`
+      );
       return {
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
         username: userData.userName,
         displayName: userData.displayName,
         bio: userData.bio,
         avatarUrl: userData.avatarUrl,
-        followers: userData.followers.length,
-        following: userData.followedUsers.length,
-        playlists: userData.playlists.length,
-        isPrivate: userData.isPrivate
+        followers: userData.followers?.length || 0,
+        following: userData.followedUsers?.length || 0,
+        playlists: userData.playlists?.length || 0,
+        isPrivate: userData.isPrivate,
       };
     } catch (error) {
-      console.error('Failed to get current user profile:', error);
-      return null;
+      console.error("Failed to get current user profile:", error);
+      throw error;
     }
   },
 
   // Listening History methods
-  addToListeningHistory: (userId: string, songData: { songId: string; songTitle: string; artist: string; coverUrl?: string; duration?: number }) =>
-    apiRequest<{ message: string }>(`${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history`, {
-      method: 'POST',
-      body: JSON.stringify(songData),
-    }),
+  addToListeningHistory: (
+    userId: string,
+    songData: {
+      songId: string;
+      songTitle: string;
+      artist: string;
+      coverUrl?: string;
+      duration?: number;
+    }
+  ) =>
+    apiRequest<{ message: string }>(
+      `${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history`,
+      {
+        method: "POST",
+        body: JSON.stringify(songData),
+      }
+    ),
 
-  getListeningHistory: (userId: string, limit = 50, skip = 0) =>
-    apiRequest<Array<{ songId: string; songTitle: string; artist: string; duration?: number; playedAt: string }>>(`${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`),
+  getListeningHistory: (userId: string, limit = 50, skip = 0, signal?: AbortSignal) =>
+    apiRequest<
+      Array<{
+        songId: string;
+        songTitle: string;
+        artist: string;
+        duration?: number;
+        playedAt: string;
+      }>
+    >(
+      `${API_CONFIG.USER_API}/api/users/identity/${userId}/listening-history?limit=${limit}&skip=${skip}`,
+      { signal }
+    ),
 
   // Weekly Top Artists (current week, cached server-side)
   getWeeklyTopArtists: (identityUserId: string) =>
-    apiRequest<Array<{ name: string; count: number }>>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/top-artists/week/current`),
+    apiRequest<Array<{ name: string; count: number }>>(
+      `${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/top-artists/week/current`
+    ),
 
   // Feed slides
   getFeedSlides: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<Record<string, unknown>>>(`${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`),
+    apiRequest<Array<Record<string, unknown>>>(
+      `${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
+    ),
 
   // Reactions
-  sendReaction: (payload: { toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }) =>
-    apiRequest<{ success: boolean; message: string; action: "added" | "removed" }>(`${API_CONFIG.USER_API}/api/feed/reactions`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+  sendReaction: (payload: {
+    toIdentityUserId: string;
+    fromIdentityUserId: string;
+    fromUserName?: string;
+    emoji: string;
+    contextType?: string;
+    songId?: string;
+    songTitle?: string;
+    artist?: string;
+    postId?: string;
+  }) =>
+    apiRequest<{ success: boolean; message: string; action: "added" | "removed" }>(
+      `${API_CONFIG.USER_API}/api/feed/reactions`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
 
   getLatestReactions: (identityUserId: string, limit = 20, skip = 0) =>
-    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }>>(
+    apiRequest<
+      Array<{
+        toIdentityUserId: string;
+        fromIdentityUserId: string;
+        fromUserName?: string;
+        emoji: string;
+        createdAt: string;
+        contextType?: string;
+        songId?: string;
+        songTitle?: string;
+        artist?: string;
+        postId?: string;
+      }>
+    >(
       `${API_CONFIG.USER_API}/api/feed/reactions/latest?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
     ),
 
   getReactionsByPost: (postId: string, currentUserId?: string) =>
-    apiRequest<Array<{ toIdentityUserId: string; fromIdentityUserId: string; fromUserName?: string; emoji: string; createdAt: string; contextType?: string; songId?: string; songTitle?: string; artist?: string; postId?: string }>>(
-      `${API_CONFIG.USER_API}/api/feed/reactions/by-post?postId=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`
+    apiRequest<
+      Array<{
+        toIdentityUserId: string;
+        fromIdentityUserId: string;
+        fromUserName?: string;
+        emoji: string;
+        createdAt: string;
+        contextType?: string;
+        songId?: string;
+        songTitle?: string;
+        artist?: string;
+        postId?: string;
+      }>
+    >(
+      `${API_CONFIG.USER_API}/api/feed/reactions/by-post?postId=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ""}`
     ),
 
   getPostById: (postId: string, currentUserId?: string) =>
-    apiRequest<{ type: string; identityUserId: string; [key: string]: unknown }>(`${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ''}`),
+    apiRequest<FeedPost>(
+      `${API_CONFIG.USER_API}/api/feed/post?id=${encodeURIComponent(postId)}${currentUserId ? `&currentUserId=${encodeURIComponent(currentUserId)}` : ""}`
+    ),
 
   // Now Playing
-  setNowPlaying: (payload: { identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec?: number; isPlaying?: boolean }, ttlSec = 90) =>
-    apiRequest<{ success: boolean }>(`${API_CONFIG.USER_API}/api/feed/nowplaying?ttlSec=${ttlSec}`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  
-  getNowPlayingBatch: (userIds: string[]) =>
-    apiRequest<Array<{ identityUserId: string; songId: string; songTitle?: string; artist?: string; coverUrl?: string; positionSec?: number; isPlaying?: boolean; updatedAt: string }>>(
-      `${API_CONFIG.USER_API}/api/feed/nowplaying/batch`,
+  setNowPlaying: (
+    payload: {
+      identityUserId: string;
+      songId: string;
+      songTitle?: string;
+      artist?: string;
+      coverUrl?: string;
+      positionSec?: number;
+      isPlaying?: boolean;
+    },
+    ttlSec = 90
+  ) =>
+    apiRequest<{ success: boolean }>(
+      `${API_CONFIG.USER_API}/api/feed/nowplaying?ttlSec=${ttlSec}`,
       {
-        method: 'POST',
-        body: JSON.stringify({ userIds }),
+        method: "POST",
+        body: JSON.stringify(payload),
       }
     ),
 
-  clearNowPlaying: (identityUserId: string) =>
-    apiRequest<{ success: boolean }>(`${API_CONFIG.USER_API}/api/feed/nowplaying/${encodeURIComponent(identityUserId)}`, {
-      method: 'DELETE',
+  getNowPlayingBatch: (userIds: string[]) =>
+    apiRequest<
+      Array<{
+        identityUserId: string;
+        songId: string;
+        songTitle?: string;
+        artist?: string;
+        coverUrl?: string;
+        positionSec?: number;
+        isPlaying?: boolean;
+        updatedAt: string;
+      }>
+    >(`${API_CONFIG.USER_API}/api/feed/nowplaying/batch`, {
+      method: "POST",
+      body: JSON.stringify({ userIds }),
     }),
 
-  // Profile picture upload
-  uploadProfilePicture: async (userId: string, file: File): Promise<{ avatarUrl: string }> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await fetch(`${API_CONFIG.USER_API}/api/users/${userId}/profile-picture`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        // Don't set Content-Type for FormData, let the browser set it with boundary
-        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
+  clearNowPlaying: (identityUserId: string) =>
+    apiRequest<{ success: boolean }>(
+      `${API_CONFIG.USER_API}/api/feed/nowplaying/${encodeURIComponent(identityUserId)}`,
+      {
+        method: "DELETE",
       }
-    });
+    ),
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
-  },
-
-  uploadProfilePictureByIdentityId: async (identityUserId: string, file: File): Promise<{ avatarUrl: string }> => {
+  uploadProfilePicture: (userId: string, file: File): Promise<{ avatarUrl: string }> =>
+    userApi.uploadProfilePictureByIdentityId(userId, file),
+  uploadProfilePictureByIdentityId: (
+    identityUserId: string,
+    file: File
+  ): Promise<{ avatarUrl: string }> => {
     const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await fetch(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/profile-picture`, {
-      method: 'POST',
-      body: formData,
-      headers: {
-        // Don't set Content-Type for FormData, let the browser set it with boundary
-        'Authorization': localStorage.getItem('token') ? `Bearer ${localStorage.getItem('token')}` : '',
-      }
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    return response.json();
+    formData.append("file", file);
+    return apiRequest(
+      `${API_CONFIG.USER_API}/api/users/identity/${identityUserId}/profile-picture`,
+      { method: "POST", body: formData }
+    );
   },
-}; 
+};
 
 export interface FollowStats {
   userId: string;
@@ -1302,13 +820,13 @@ export interface FollowStats {
 }
 
 export function safeString(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'object' && value !== null) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, unknown>;
-    if ('name' in obj && typeof obj.name === 'string') return obj.name;
-    if ('title' in obj && typeof obj.title === 'string') return obj.title;
+    if ("name" in obj && typeof obj.name === "string") return obj.name;
+    if ("title" in obj && typeof obj.title === "string") return obj.title;
   }
   return String(value);
 }
@@ -1319,187 +837,104 @@ export function safeArray<T>(value: unknown): T[] {
 }
 
 export function processArtists(artists: unknown): string[] {
-  if (!artists) return ['Unknown Artist'];
+  if (!artists) return ["Unknown Artist"];
   if (Array.isArray(artists)) {
     return artists.map((artist: unknown) => {
-      if (typeof artist === 'string') return artist;
-      if (typeof artist === 'object' && artist !== null) {
+      if (typeof artist === "string") return artist;
+      if (typeof artist === "object" && artist !== null) {
         const obj = artist as Record<string, unknown>;
-        if ('name' in obj && typeof obj.name === 'string') return obj.name;
+        if ("name" in obj && typeof obj.name === "string") return obj.name;
       }
-      return 'Unknown Artist';
+      return "Unknown Artist";
     });
   }
-  if (typeof artists === 'string') return [artists];
-  if (typeof artists === 'object' && artists !== null) {
+  if (typeof artists === "string") return [artists];
+  if (typeof artists === "object" && artists !== null) {
     const obj = artists as Record<string, unknown>;
-    if ('name' in obj && typeof obj.name === 'string') return [obj.name];
+    if ("name" in obj && typeof obj.name === "string") return [obj.name];
   }
-  return ['Unknown Artist'];
+  return ["Unknown Artist"];
 }
 
-// Admin API  
+// Admin API
 export const adminApi = {
-
   // SONGS
   async createSong(data: FormData): Promise<Song | null> {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
-        method: 'POST',
-        body: data,
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-        if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const song: Song = await res.json();
-    return song;
-    } catch (error) {
-      console.error('Failed to create song:', error);
-      return null;
-    }
+    return apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs`, {
+      method: "POST",
+      body: data,
+    });
   },
 
   async updateSong(id: string, data: FormData): Promise<Song | null> {
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
-        method: 'PUT',
-        body: data,
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-        if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const song: Song = await res.json();
-    return song;
-    } catch (error) {
-      console.error('Failed to update song:', error);
-      return null;
-    }
+    return apiRequest<Song>(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, {
+      method: "PUT",
+      body: data,
+    });
   },
 
   async deleteSong(id: string): Promise<boolean> {
     try {
-      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, { method: 'DELETE' });
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/songs/${id}`, { method: "DELETE" });
       return true;
     } catch (error) {
-      console.error('Failed to delete song:', error);
-      return false;
+      console.error("Failed to delete song:", error);
+      throw error;
     }
   },
 
   // ALBUMS
   async createAlbum(data: FormData): Promise<Album | null> {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res = await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
-        method: "POST",
-        body: data, 
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-     
-      if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const album: Album = await res.json();
-    return album;
-
-  } catch (error) {
-    console.error("Failed to create album:", error);
-    return null;
-  }
-},
-
+    return apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums`, {
+      method: "POST",
+      body: data,
+    });
+  },
 
   async updateAlbum(id: string, data: FormData): Promise<Album | null> {
-
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
-        method: 'PUT',
-        body: data,
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-       if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const album: Album = await res.json();
-    return album;
-    } catch (error) {
-      console.error('Failed to update album:', error);
-      return null;
-    }
+    return apiRequest<Album>(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, {
+      method: "PUT",
+      body: data,
+    });
   },
 
   async deleteAlbum(id: string): Promise<boolean> {
     try {
-      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, { method: 'DELETE' });
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/albums/${id}`, { method: "DELETE" });
       return true;
     } catch (error) {
-      console.error('Failed to delete album:', error);
-      return false;
+      console.error("Failed to delete album:", error);
+      throw error;
     }
   },
 
   // ARTISTS
   async createArtist(data: FormData): Promise<Artist | null> {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
-        method: 'POST',
-        body: data,
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-        if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const artist: Artist = await res.json();
-    return artist;
-    } catch (error) {
-      console.error('Failed to create artist:', error);
-      return null;
-    }
+    return apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists`, {
+      method: "POST",
+      body: data,
+    });
   },
 
   async updateArtist(id: string, data: FormData): Promise<Artist | null> {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res =  await fetch(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
-        method: 'PUT',
-        body: data,
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
-      });
-        if (!res.ok) {
-        const text = await res.text(); 
-        throw new Error(text);
-      }
-      const artist: Artist = await res.json();
-    return artist;
-    } catch (error) {
-      console.error('Failed to update artist:', error);
-      return null;
-    }
+    return apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, {
+      method: "PUT",
+      body: data,
+    });
   },
 
   async deleteArtist(id: string): Promise<boolean> {
     try {
-      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, { method: 'DELETE' });
+      await apiRequest(`${API_CONFIG.MUSIC_API}/api/admin/artists/${id}`, { method: "DELETE" });
       return true;
     } catch (error) {
-      console.error('Failed to delete artist:', error);
-      return false;
+      console.error("Failed to delete artist:", error);
+      throw error;
     }
   },
 
   // PLAYLISTS
-   async createPlaylist(description: string, name: string): Promise<Playlist | null> {
+  async createPlaylist(description: string, name: string): Promise<Playlist | null> {
     try {
       return await apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/admin/playlists`, {
         method: "POST",
@@ -1507,7 +942,7 @@ export const adminApi = {
       });
     } catch (error) {
       console.error("Failed to create playlist:", error);
-      return null;
+      throw error;
     }
   },
 
@@ -1519,7 +954,7 @@ export const adminApi = {
       return true;
     } catch (error) {
       console.error("Failed to delete playlist:", error);
-      return false;
+      throw error;
     }
   },
 
@@ -1532,7 +967,7 @@ export const adminApi = {
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch playlists:", error);
-      return [];
+      throw error;
     }
   },
 
@@ -1541,185 +976,112 @@ export const adminApi = {
       return await apiRequest<Playlist>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${id}`);
     } catch (error) {
       console.warn("Failed to fetch playlist:", error);
-      return null;
+      throw error;
     }
   },
 
   async getPlaylistSongs(playlistId: string): Promise<Song[]> {
     try {
-      const response = await apiRequest<Song[]>(`${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`);
+      const response = await apiRequest<Song[]>(
+        `${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs`
+      );
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch playlist songs:", error);
-      return [];
-    }
-  },
-
-  async getStatistics(): Promise<AdminStats | null> {
-    try {
-      return await apiRequest<AdminStats>(`${API_CONFIG.MUSIC_API}/api/admin/statistics`);
-    } catch (error) {
-      console.error("Failed to fetch admin statistics:", error);
-      return null;
+      throw error;
     }
   },
 
   async removeSongFromPlaylist(playlistId: string, songId: string): Promise<boolean> {
-  try {
-    await apiRequest<void>(
-      `${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs/${songId}`,
-      {
-        method: "DELETE",
-      }
-    );
-    return true;
-  } catch (error) {
-    console.error("Failed to remove song from playlist:", error);
-    return false;
-  }
-},
-
-async getAllUsers(): Promise<UserAdmin[]> {
     try {
-      const response = await apiRequest<UserAdmin[]>(`${API_CONFIG.IDENTITY_API}/api/auth/users`);
-      return Array.isArray(response) ? response : [];
+      await apiRequest<void>(
+        `${API_CONFIG.MUSIC_API}/api/admin/playlists/${playlistId}/songs/${songId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      return true;
     } catch (error) {
-      console.error("Failed to fetch all users:", error);
-      return [];
+      console.error("Failed to remove song from playlist:", error);
+      throw error;
     }
   },
 
+  async getAllUsers(): Promise<UserAdmin[]> {
+    const response = await apiRequest<{
+      users: Array<User & { userName?: string }>;
+      totalCount: number;
+    }>(`${API_CONFIG.IDENTITY_API}/api/auth/users?page=1&pageSize=100`);
+    return response.users.map(user => ({
+      ...user,
+      userName: user.username || user.userName || "",
+    }));
+  },
   async getAllAdmins(): Promise<UserAdmin[]> {
-    try {
-      const response = await apiRequest<UserAdmin[]>(`${API_CONFIG.IDENTITY_API}/api/auth/admins`);
-      return Array.isArray(response) ? response : [];
-    } catch (error) {
-      console.error("Failed to fetch all admins:", error);
-      return [];
-    }
+    const response = await apiRequest<{
+      users: Array<User & { userName?: string }>;
+      totalCount: number;
+    }>(`${API_CONFIG.IDENTITY_API}/api/auth/admins?page=1&pageSize=100`);
+    return response.users.map(user => ({
+      ...user,
+      userName: user.username || user.userName || "",
+    }));
   },
 
-  async updateUser(id: string, data: { userName: string; email: string; }): Promise<User | null> {
+  async updateUser(id: string, data: { userName: string; email: string }): Promise<User | null> {
     try {
-      const updatedUser = await apiRequest<User>(`${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-      });
+      const updatedUser = await apiRequest<User>(
+        `${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(data),
+        }
+      );
       return updatedUser;
     } catch (error) {
       console.error(`Failed to update user ${id}:`, error);
-      return null;
+      throw error;
     }
   },
 
   async deleteUser(id: string): Promise<boolean> {
     try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       await apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/users/${id}`, {
         method: "DELETE",
-        headers: {"Authorization": token ? `Bearer ${token}` : "",}
       });
       return true;
     } catch (error) {
       console.error(`Failed to delete user ${id}:`, error);
-      return false;
+      throw error;
     }
   },
 
-    createAdmin: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/create-admin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-            "Authorization": token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Failed to create admin:", text);
-        return null;
-      }
-      return await res.json();
-    } catch (error) {
-      console.error("Error creating admin:", error);
-      return null;
-    }
-  },
-  
-promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/promote-to-admin`, {
+  createAdmin: (data: {
+    userName: string;
+    email: string;
+    password: string;
+  }): Promise<User | null> =>
+    apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/create-admin`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": token ? `Bearer ${token}` : "",
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Failed to promote user:", errorData);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error("Error promoting user:", error);
-    return false;
-  }
-},
-
-demoteToUser: async (data: { id: string }): Promise<boolean> => {
-  try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    const response = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/demote-to-user`, {
+      body: JSON.stringify(data),
+    }),
+  promoteUserToAdmin: async (data: { id: string }): Promise<boolean> => {
+    await apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/promote-to-admin`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": token ? `Bearer ${token}` : "",
-      },
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error("Failed to demote admin:", errorData);
-      return false;
-    }
-
     return true;
-  } catch (error) {
-    console.error("Error demoting admin:", error);
-    return false;
-  }
-},
-    createUser: async (data: { userName: string; email: string; password: string }): Promise<User | null> => {
-    try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const res = await fetch(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-            "Authorization": token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Failed to create user:", text);
-        return null;
-      }
-
-      return await res.json();
-    } catch (error) {
-      console.error("Error creating user:", error);
-      return null;
-    }
   },
+  demoteToUser: async (data: { id: string }): Promise<boolean> => {
+    await apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/users/${data.id}/demote-to-user`, {
+      method: "POST",
+    });
+    return true;
+  },
+  createUser: (data: { userName: string; email: string; password: string }): Promise<User | null> =>
+    apiRequest(`${API_CONFIG.IDENTITY_API}/api/auth/register`, {
+      method: "POST",
+      body: JSON.stringify({ username: data.userName, email: data.email, password: data.password }),
+    }),
 };
 
 // Notification types
@@ -1727,11 +1089,17 @@ export interface Notification {
   id: string;
   targetUserId: string;
   sourceUserId?: string;
-  type: 'FriendRequest' | 'FriendRequestAccepted' | 'FriendRequestDeclined' | 'FriendRemoved' | 'Message' | 'Other';
-  status: 'Unread' | 'Read' | 'Handled';
+  type:
+    | "FriendRequest"
+    | "FriendRequestAccepted"
+    | "FriendRequestDeclined"
+    | "FriendRemoved"
+    | "Message"
+    | "Other";
+  status: "Unread" | "Read" | "Handled";
   title: string;
   message: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   actionUrl?: string;
   expiresAt?: string;
   createdAt: string;
@@ -1753,55 +1121,48 @@ export const notificationsApi = {
         `${API_CONFIG.USER_API}/api/notifications/${userId}?limit=${limit}&skip=${skip}`
       );
     } catch (error) {
-      console.error('Failed to get notifications:', error);
-      return { notifications: [], totalCount: 0, unreadCount: 0 };
+      console.error("Failed to get notifications:", error);
+      throw error;
     }
   },
 
   async markAsRead(notificationId: string, userId: string): Promise<boolean> {
     try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${notificationId}/read`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId })
-        }
-      );
+      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
       return true;
     } catch (error) {
-      console.error('Failed to mark notification as read:', error);
-      return false;
+      console.error("Failed to mark notification as read:", error);
+      throw error;
     }
   },
 
   async markAsHandled(notificationId: string, userId: string): Promise<boolean> {
     try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${notificationId}/handle`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId })
-        }
-      );
+      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/handle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
       return true;
     } catch (error) {
-      console.error('Failed to mark notification as handled:', error);
-      return false;
+      console.error("Failed to mark notification as handled:", error);
+      throw error;
     }
   },
 
   async markAllAsRead(userId: string): Promise<boolean> {
     try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${userId}/read-all`,
-        { method: 'POST' }
-      );
+      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/read-all`, {
+        method: "POST",
+      });
       return true;
     } catch (error) {
-      console.error('Failed to mark all notifications as read:', error);
-      return false;
+      console.error("Failed to mark all notifications as read:", error);
+      throw error;
     }
   },
 
@@ -1809,12 +1170,12 @@ export const notificationsApi = {
     try {
       await apiRequest(
         `${API_CONFIG.USER_API}/api/notifications/${userId}/cleanup?daysOld=${daysOld}`,
-        { method: 'DELETE' }
+        { method: "DELETE" }
       );
       return true;
     } catch (error) {
-      console.error('Failed to cleanup notifications:', error);
-      return false;
+      console.error("Failed to cleanup notifications:", error);
+      throw error;
     }
   },
 
@@ -1822,25 +1183,24 @@ export const notificationsApi = {
     try {
       await apiRequest(
         `${API_CONFIG.USER_API}/api/notifications/${notificationId}?userId=${userId}`,
-        { method: 'DELETE' }
+        { method: "DELETE" }
       );
       return true;
     } catch (error) {
-      console.error('Failed to delete notification:', error);
-      return false;
+      console.error("Failed to delete notification:", error);
+      throw error;
     }
   },
 
   async deleteAllNotifications(userId: string): Promise<boolean> {
     try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${userId}/all`,
-        { method: 'DELETE' }
-      );
+      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/all`, {
+        method: "DELETE",
+      });
       return true;
     } catch (error) {
-      console.error('Failed to delete all notifications:', error);
-      return false;
+      console.error("Failed to delete all notifications:", error);
+      throw error;
     }
-  }
+  },
 };

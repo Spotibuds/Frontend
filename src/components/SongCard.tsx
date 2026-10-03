@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { PlayIcon, PlusIcon, QueueListIcon } from '@heroicons/react/24/outline';
-import MusicImage from '@/components/ui/MusicImage';
-import { Button } from '@/components/ui/Button';
-import AddToPlaylist from '@/components/AddToPlaylist';
-import { Song, safeString, processArtists } from '@/lib/api';
-import { identityApi } from '@/lib/api';
-import { useAudio } from '@/lib/audio';
+import React, { useState } from "react";
+import { PlayIcon, PlusIcon, QueueListIcon } from "@heroicons/react/24/outline";
+import MusicImage from "@/components/ui/MusicImage";
+import { Button } from "@/components/ui/Button";
+import AddToPlaylist from "@/components/AddToPlaylist";
+import { Song, safeString, processArtists } from "@/lib/api";
+import { identityApi } from "@/lib/api";
+import { useAudio } from "@/lib/audio";
 
 interface SongCardProps {
   song: Song;
@@ -19,14 +19,14 @@ interface SongCardProps {
   onClick?: () => void;
 }
 
-export default function SongCard({ 
-  song, 
-  showDuration = true, 
+export default function SongCard({
+  song,
+  showDuration = true,
   showAddToPlaylist = true,
   showAddToQueue = true,
-  className = '',
+  className = "",
   index,
-  onClick 
+  onClick,
 }: SongCardProps) {
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const { playSong, addToQueue, state } = useAudio();
@@ -36,7 +36,7 @@ export default function SongCard({
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
   };
 
   const handlePlay = (e: React.MouseEvent) => {
@@ -71,16 +71,18 @@ export default function SongCard({
       <div
         onClick={handleClick}
         className={`group cursor-pointer p-3 sm:p-4 rounded-lg hover:bg-gray-800/50 transition-all duration-200 ${
-          isCurrentSong ? 'bg-purple-900/30' : ''
+          isCurrentSong ? "bg-purple-900/30" : ""
         } ${className}`}
       >
         <div className="flex items-center space-x-2 sm:space-x-3">
           {/* Song Number or Play Button */}
           {index !== undefined && (
             <div className="w-6 sm:w-8 flex items-center justify-center">
-              <span className={`text-xs sm:text-sm group-hover:hidden ${
-                isCurrentSong ? 'text-purple-400' : 'text-gray-400'
-              }`}>
+              <span
+                className={`text-xs sm:text-sm group-hover:hidden ${
+                  isCurrentSong ? "text-purple-400" : "text-gray-400"
+                }`}
+              >
                 {index + 1}
               </span>
               <button
@@ -106,18 +108,18 @@ export default function SongCard({
 
           {/* Song Info */}
           <div className="flex-1 min-w-0">
-            <h3 className={`font-medium text-sm sm:text-base truncate group-hover:underline ${
-              isCurrentSong ? 'text-purple-400' : 'text-white'
-            }`}>
+            <h3
+              className={`font-medium text-sm sm:text-base truncate group-hover:underline ${
+                isCurrentSong ? "text-purple-400" : "text-white"
+              }`}
+            >
               {safeString(song.title)}
             </h3>
             <p className="text-gray-400 text-xs sm:text-sm truncate">
-              {processArtists(song.artists).join(', ')}
+              {processArtists(song.artists).join(", ")}
             </p>
             {song.genre && (
-              <p className="text-gray-500 text-xs truncate">
-                {safeString(song.genre)}
-              </p>
+              <p className="text-gray-500 text-xs truncate">{safeString(song.genre)}</p>
             )}
           </div>
 

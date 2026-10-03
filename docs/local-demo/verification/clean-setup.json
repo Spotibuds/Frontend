@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-03T19:01:22.0028563Z",
+  "completed": true,
+  "project": "spotibuds-local-demo",
+  "steps": [
+    "named reset",
+    "documented clean start/build",
+    "first seed",
+    "second idempotent seed",
+    "persistence capture",
+    "ordinary full stack stop",
+    "ordinary full stack restart",
+    "persistence verify",
+    "ready status"
+  ],
+  "repeatedSeedIdsUnchanged": true,
+  "generatedCredentialsPreserved": true,
+  "fullStackRestartDurableFingerprintMatched": true
+}

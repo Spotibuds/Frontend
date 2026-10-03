@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { friendHubManager, FriendRequest, Friend, ChatMessage, Chat } from '../lib/friendHub';
-import { eventBus } from '../lib/eventBus';
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { friendHubManager, FriendRequest, Friend, ChatMessage, Chat } from "../lib/friendHub";
+import { eventBus } from "../lib/eventBus";
 
 interface UseFriendHubOptions {
   userId?: string;
@@ -21,7 +22,12 @@ interface FriendHubState {
   onlineFriends: string[];
   error: string | null;
   lastFriendRequestReceived?: FriendRequest;
-  lastFriendRequestAccepted?: { requestId: string; friendId: string; friendName: string; friendAvatar?: string };
+  lastFriendRequestAccepted?: {
+    requestId: string;
+    friendId: string;
+    friendName: string;
+    friendAvatar?: string;
+  };
   lastFriendRequestDeclined?: { requestId: string };
   lastFriendRequestSent?: { requestId: string; targetUserId: string; timestamp: string };
   lastFriendAdded?: { friendId: string; friendName: string; friendAvatar?: string };
@@ -29,11 +35,18 @@ interface FriendHubState {
 }
 
 export const useFriendHub = (options: UseFriendHubOptions = {}) => {
-  const { userId, autoConnect = true, onError, onMessageReceived, onMessageSent, onMessageRead } = options;
-  
+  const {
+    userId,
+    autoConnect = true,
+    onError,
+    onMessageReceived,
+    onMessageSent,
+    onMessageRead,
+  } = options;
+
   const [state, setState] = useState<FriendHubState>({
     isConnected: false,
-    connectionState: 'Disconnected',
+    connectionState: "Disconnected",
     friends: [],
     friendRequests: [],
     chats: [],
@@ -45,32 +58,44 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     lastFriendRequestDeclined: undefined,
     lastFriendRequestSent: undefined,
     lastFriendAdded: undefined,
-    lastFriendRemoved: undefined
+    lastFriendRemoved: undefined,
   });
 
   const connectionTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-  
+
   // Stabilize callback functions to prevent infinite loops
-  const stableOnError = useCallback((error: string) => {
-    onError?.(error);
-  }, [onError]);
-  
-  const stableOnMessageReceived = useCallback((message: ChatMessage) => {
-    onMessageReceived?.(message);
-  }, [onMessageReceived]);
-  
-  const stableOnMessageSent = useCallback((message: ChatMessage) => {
-    onMessageSent?.(message);
-  }, [onMessageSent]);
-  
-  const stableOnMessageRead = useCallback((messageId: string) => {
-    onMessageRead?.(messageId);
-  }, [onMessageRead]);
+  const stableOnError = useCallback(
+    (error: string) => {
+      onError?.(error);
+    },
+    [onError]
+  );
+
+  const stableOnMessageReceived = useCallback(
+    (message: ChatMessage) => {
+      onMessageReceived?.(message);
+    },
+    [onMessageReceived]
+  );
+
+  const stableOnMessageSent = useCallback(
+    (message: ChatMessage) => {
+      onMessageSent?.(message);
+    },
+    [onMessageSent]
+  );
+
+  const stableOnMessageRead = useCallback(
+    (messageId: string) => {
+      onMessageRead?.(messageId);
+    },
+    [onMessageRead]
+  );
 
   // Connection Management
   const connect = useCallback(async () => {
     if (!userId) {
-      setState(prev => ({ ...prev, error: 'User ID is required to connect' }));
+      setState(prev => ({ ...prev, error: "User ID is required to connect" }));
       return;
     }
 
@@ -78,7 +103,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       setState(prev => ({ ...prev, error: null }));
       await friendHubManager.connect(userId);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to connect';
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect";
       setState(prev => ({ ...prev, error: errorMessage }));
       stableOnError(errorMessage);
     }
@@ -86,96 +111,121 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
 
   const disconnect = useCallback(async () => {
     try {
-    await friendHubManager.disconnect();
+      await friendHubManager.disconnect();
     } catch (error) {
-      console.error('Error disconnecting:', error);
+      console.error("Error disconnecting:", error);
     }
   }, []);
 
   // Friend Management
-  const sendFriendRequest = useCallback(async (targetUserId: string) => {
-    try {
-      await friendHubManager.sendFriendRequest(targetUserId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send friend request';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const sendFriendRequest = useCallback(
+    async (targetUserId: string) => {
+      try {
+        await friendHubManager.sendFriendRequest(targetUserId);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to send friend request";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
-  const acceptFriendRequest = useCallback(async (requestId: string) => {
-    try {
-      await friendHubManager.acceptFriendRequest(requestId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to accept friend request';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const acceptFriendRequest = useCallback(
+    async (requestId: string) => {
+      try {
+        await friendHubManager.acceptFriendRequest(requestId);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to accept friend request";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
-  const declineFriendRequest = useCallback(async (requestId: string) => {
-    try {
-      await friendHubManager.declineFriendRequest(requestId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to decline friend request';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const declineFriendRequest = useCallback(
+    async (requestId: string) => {
+      try {
+        await friendHubManager.declineFriendRequest(requestId);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to decline friend request";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
-  const removeFriend = useCallback(async (friendId: string) => {
-    try {
-      await friendHubManager.removeFriend(friendId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to remove friend';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const removeFriend = useCallback(
+    async (friendId: string) => {
+      try {
+        await friendHubManager.removeFriend(friendId);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to remove friend";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
   // Chat Management
-  const sendMessage = useCallback(async (chatId: string, message: string) => {
-    try {
-      await friendHubManager.sendMessage(chatId, message);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const sendMessage = useCallback(
+    async (chatId: string, message: string) => {
+      try {
+        await friendHubManager.sendMessage(chatId, message);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to send message";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
-  const markMessageAsRead = useCallback(async (messageId: string) => {
-    try {
-      await friendHubManager.markMessageAsRead(messageId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to mark message as read';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const markMessageAsRead = useCallback(
+    async (messageId: string) => {
+      try {
+        await friendHubManager.markMessageAsRead(messageId);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Failed to mark message as read";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
-  const createChat = useCallback(async (friendId: string) => {
-    try {
-      await friendHubManager.createChat(friendId);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to create chat';
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-      throw error;
-    }
-  }, [stableOnError]);
+  const createChat = useCallback(
+    async (friendId: string) => {
+      try {
+        await friendHubManager.createChat(friendId);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Failed to create chat";
+        setState(prev => ({ ...prev, error: errorMessage }));
+        stableOnError(errorMessage);
+        throw error;
+      }
+    },
+    [stableOnError]
+  );
 
   const getOnlineFriends = useCallback(async () => {
     try {
       await friendHubManager.getOnlineFriends();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to get online friends';
+      const errorMessage = error instanceof Error ? error.message : "Failed to get online friends";
       setState(prev => ({ ...prev, error: errorMessage }));
       stableOnError(errorMessage);
       throw error;
@@ -188,17 +238,26 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
   }, []);
 
   // Utility Functions
-  const getChatMessages = useCallback((chatId: string): ChatMessage[] => {
-    return state.messages[chatId] || [];
-  }, [state.messages]);
+  const getChatMessages = useCallback(
+    (chatId: string): ChatMessage[] => {
+      return state.messages[chatId] || [];
+    },
+    [state.messages]
+  );
 
-  const getChat = useCallback((chatId: string): Chat | undefined => {
-    return state.chats.find(chat => chat.id === chatId);
-  }, [state.chats]);
+  const getChat = useCallback(
+    (chatId: string): Chat | undefined => {
+      return state.chats.find(chat => chat.id === chatId);
+    },
+    [state.chats]
+  );
 
-  const getFriend = useCallback((friendId: string): Friend | undefined => {
-    return state.friends.find(friend => friend.id === friendId);
-  }, [state.friends]);
+  const getFriend = useCallback(
+    (friendId: string): Friend | undefined => {
+      return state.friends.find(friend => friend.id === friendId);
+    },
+    [state.friends]
+  );
 
   const clearError = useCallback(() => {
     setState(prev => ({ ...prev, error: null }));
@@ -211,30 +270,30 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       lastFriendRequestAccepted: undefined,
       lastFriendRequestDeclined: undefined,
       lastFriendRequestSent: undefined,
-      lastFriendRemoved: undefined
+      lastFriendRemoved: undefined,
     }));
   }, []);
 
   // Setup event handlers
   useEffect(() => {
     // Set up online friends event handler FIRST
-    friendHubManager.setOnOnlineFriendsReceived((onlineFriends) => {
+    friendHubManager.setOnOnlineFriendsReceived(onlineFriends => {
       setState(prev => ({
         ...prev,
-        onlineFriends
+        onlineFriends,
       }));
     });
 
     // Connection state changes
-    friendHubManager.setOnConnectionStateChanged((connectionState) => {
+    friendHubManager.setOnConnectionStateChanged(connectionState => {
       setState(prev => ({
         ...prev,
         connectionState,
-        isConnected: connectionState === 'Connected'
+        isConnected: connectionState === "Connected",
       }));
-      
+
       // Get online friends when connected with a small delay to ensure handlers are set up
-      if (connectionState === 'Connected') {
+      if (connectionState === "Connected") {
         setTimeout(() => {
           stableGetOnlineFriends();
         }, 100);
@@ -242,147 +301,136 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     });
 
     // Friend request events
-    friendHubManager.setOnFriendRequestReceived((request) => {
+    friendHubManager.setOnFriendRequestReceived(request => {
       setState(prev => ({
         ...prev,
         friendRequests: [...prev.friendRequests, request],
-        lastFriendRequestReceived: request
+        lastFriendRequestReceived: request,
       }));
     });
 
-    friendHubManager.setOnFriendRequestAccepted((data) => {
-      console.log('🔥 useFriendHub: FriendRequestAccepted received:', data);
-      console.log('🔥 useFriendHub: Current userId:', userId);
-      console.log('🔥 useFriendHub: data.friendId:', data.friendId);
-      console.log('🔥 useFriendHub: data.FriendId:', data.FriendId);
+    friendHubManager.setOnFriendRequestAccepted(data => {
       setState(prev => ({
         ...prev,
         friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
-        friends: [...prev.friends, {
-          id: data.friendId || data.FriendId,
-          username: data.friendName || data.FriendName,
-          avatarUrl: data.friendAvatar || data.FriendAvatar,
-          isOnline: false
-        }],
+        friends: [
+          ...prev.friends,
+          {
+            id: data.friendId || data.FriendId,
+            username: data.friendName || data.FriendName,
+            avatarUrl: data.friendAvatar || data.FriendAvatar,
+            isOnline: false,
+          },
+        ],
         lastFriendRequestAccepted: {
           requestId: data.requestId || data.RequestId,
           friendId: data.friendId || data.FriendId,
           friendName: data.friendName || data.FriendName,
-          friendAvatar: data.friendAvatar || data.FriendAvatar
-        }
+          friendAvatar: data.friendAvatar || data.FriendAvatar,
+        },
       }));
-      
+
       // Emit friendship status changed event for user profile page updates
       const friendId = data.friendId || data.FriendId;
       if (userId && friendId) {
-        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged event:', userId, friendId);
-        eventBus.emit('friendshipStatusChanged', userId, friendId);
+        eventBus.emit("friendshipStatusChanged", userId, friendId);
       } else {
-        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged - userId:', userId, 'friendId:', friendId);
       }
     });
 
-    friendHubManager.setOnFriendRequestDeclined((data) => {
+    friendHubManager.setOnFriendRequestDeclined(data => {
       setState(prev => {
         // Get the declined request before removing it
         const declinedRequest = prev.friendRequests.find(req => req.requestId === data.requestId);
-        
+
         // Emit friendship status changed event for user profile page updates
         if (userId && declinedRequest) {
-          eventBus.emit('friendshipStatusChanged', userId, declinedRequest.senderId);
+          eventBus.emit("friendshipStatusChanged", userId, declinedRequest.senderId);
         }
-        
+
         return {
           ...prev,
           friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
-          lastFriendRequestDeclined: { requestId: data.requestId }
+          lastFriendRequestDeclined: { requestId: data.requestId },
         };
       });
     });
 
-    friendHubManager.setOnFriendAdded((data) => {
-      console.log('🔥 useFriendHub: FriendAdded received:', data);
-      console.log('🔥 useFriendHub: Current userId:', userId);
-      console.log('🔥 useFriendHub: data.friendId:', data.friendId);
-      console.log('🔥 useFriendHub: data.FriendId:', data.FriendId);
+    friendHubManager.setOnFriendAdded(data => {
       setState(prev => ({
         ...prev,
-        friends: [...prev.friends, {
-          id: data.friendId || data.FriendId,
-          username: data.friendName || data.FriendName,
-          avatarUrl: data.friendAvatar || data.FriendAvatar,
-          isOnline: false
-        }],
+        friends: [
+          ...prev.friends,
+          {
+            id: data.friendId || data.FriendId,
+            username: data.friendName || data.FriendName,
+            avatarUrl: data.friendAvatar || data.FriendAvatar,
+            isOnline: false,
+          },
+        ],
         lastFriendAdded: {
           friendId: data.friendId || data.FriendId,
           friendName: data.friendName || data.FriendName,
-          friendAvatar: data.friendAvatar || data.FriendAvatar
-        }
+          friendAvatar: data.friendAvatar || data.FriendAvatar,
+        },
       }));
-      
+
       // Emit friendship status changed event for user profile page updates
       const friendId = data.friendId || data.FriendId;
       if (userId && friendId) {
-        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged for FriendAdded:', userId, friendId);
-        eventBus.emit('friendshipStatusChanged', userId, friendId);
+        eventBus.emit("friendshipStatusChanged", userId, friendId);
       } else {
-        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged for FriendAdded - userId:', userId, 'friendId:', friendId);
       }
     });
 
-    friendHubManager.setOnFriendRequestSent((data) => {
+    friendHubManager.setOnFriendRequestSent(data => {
       setState(prev => ({
         ...prev,
         lastFriendRequestSent: {
           requestId: data.requestId,
           targetUserId: data.targetUserId,
-          timestamp: data.timestamp
-        }
+          timestamp: data.timestamp,
+        },
       }));
-      
+
       // Emit friendship status changed event for user profile page updates
       if (userId && data.targetUserId) {
-        eventBus.emit('friendshipStatusChanged', userId, data.targetUserId);
+        eventBus.emit("friendshipStatusChanged", userId, data.targetUserId);
       }
     });
 
-    friendHubManager.setOnFriendRemoved((data) => {
-      console.log('🔥 useFriendHub: FriendRemoved received:', data);
+    friendHubManager.setOnFriendRemoved(data => {
       const removedFriendId = data.RemovedFriendId || data.removedFriendId; // Handle both cases
       setState(prev => ({
         ...prev,
         friends: prev.friends.filter(friend => friend.id !== removedFriendId),
         chats: prev.chats.filter(chat => !chat.participants.includes(removedFriendId)),
-        lastFriendRemoved: { friendId: removedFriendId }
+        lastFriendRemoved: { friendId: removedFriendId },
       }));
-      
+
       // Emit friendship status changed event for user profile page updates
       if (userId && removedFriendId) {
-        console.log('🔥 useFriendHub: Emitting friendshipStatusChanged for friend removal:', userId, removedFriendId);
-        eventBus.emit('friendshipStatusChanged', userId, removedFriendId);
+        eventBus.emit("friendshipStatusChanged", userId, removedFriendId);
       } else {
-        console.log('🔥 useFriendHub: NOT emitting friendshipStatusChanged for removal - userId:', userId, 'removedFriendId:', removedFriendId);
       }
     });
 
-    friendHubManager.setOnFriendStatusChanged((data) => {
+    friendHubManager.setOnFriendStatusChanged(data => {
       setState(prev => ({
         ...prev,
         friends: prev.friends.map(friend =>
-          friend.id === data.friendId
-            ? { ...friend, isOnline: data.isOnline }
-            : friend
-        )
+          friend.id === data.friendId ? { ...friend, isOnline: data.isOnline } : friend
+        ),
       }));
     });
 
     // Chat events
-    friendHubManager.setOnMessageReceived((message) => {
+    friendHubManager.setOnMessageReceived(message => {
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
-          [message.chatId]: [...(prev.messages[message.chatId] || []), message]
+          [message.chatId]: [...(prev.messages[message.chatId] || []), message],
         },
         chats: prev.chats.map(chat =>
           chat.id === message.chatId
@@ -390,70 +438,64 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
                 ...chat,
                 lastMessage: message.content,
                 lastMessageAt: message.timestamp,
-                unreadCount: chat.unreadCount + 1
+                unreadCount: chat.unreadCount + 1,
               }
             : chat
-        )
+        ),
       }));
-      
+
       // Call the callback if provided
       stableOnMessageReceived(message);
     });
 
-    friendHubManager.setOnMessageSent((data) => {
-      console.log('useFriendHub: MessageSent data received:', data);
-      
+    friendHubManager.setOnMessageSent(data => {
       // Create a properly formatted message object
       const sentMessage: ChatMessage = {
         chatId: data.chatId,
         messageId: data.messageId,
-        senderId: data.senderId || userId || '', // Use senderId from data
-        senderName: data.senderName || 'You',   // Use senderName from data
+        senderId: data.senderId || userId || "", // Use senderId from data
+        senderName: data.senderName || "You", // Use senderName from data
         content: data.content,
         timestamp: data.timestamp,
-        isRead: false
+        isRead: false,
       };
-      
-      console.log('useFriendHub: Created sentMessage:', sentMessage);
-      
+
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
-          [data.chatId]: [...(prev.messages[data.chatId] || []), sentMessage]
-        }
+          [data.chatId]: [...(prev.messages[data.chatId] || []), sentMessage],
+        },
       }));
-      
+
       // Call the callback if provided
       stableOnMessageSent(sentMessage);
     });
 
-    friendHubManager.setOnMessageRead((data) => {
+    friendHubManager.setOnMessageRead(data => {
       setState(prev => ({
         ...prev,
         messages: {
           ...prev.messages,
           [data.chatId]: (prev.messages[data.chatId] || []).map(msg =>
-            msg.messageId === data.messageId
-              ? { ...msg, isRead: true }
-              : msg
-          )
-        }
+            msg.messageId === data.messageId ? { ...msg, isRead: true } : msg
+          ),
+        },
       }));
-      
+
       // Call the callback if provided
       stableOnMessageRead(data.messageId);
     });
 
-    friendHubManager.setOnChatCreated((chat) => {
+    friendHubManager.setOnChatCreated(chat => {
       setState(prev => ({
         ...prev,
-        chats: [...prev.chats, { ...chat, unreadCount: 0 }]
+        chats: [...prev.chats, { ...chat, unreadCount: 0 }],
       }));
     });
 
     // Error handling
-    friendHubManager.setOnError((error) => {
+    friendHubManager.setOnError(error => {
       setState(prev => ({ ...prev, error }));
       stableOnError(error);
     });
@@ -473,10 +515,17 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
       friendHubManager.setOnError(null);
       friendHubManager.setOnConnectionStateChanged(null);
     };
-  }, [userId, stableOnError, stableOnMessageReceived, stableOnMessageSent, stableOnMessageRead, stableGetOnlineFriends]);
+  }, [
+    userId,
+    stableOnError,
+    stableOnMessageReceived,
+    stableOnMessageSent,
+    stableOnMessageRead,
+    stableGetOnlineFriends,
+  ]);
 
   // Auto-connect on mount
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (autoConnect && userId) {
       connect();
     }
@@ -490,7 +539,7 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
     };
   }, [autoConnect, userId, connect]);
 
-    // Cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       disconnect();
@@ -500,28 +549,28 @@ export const useFriendHub = (options: UseFriendHubOptions = {}) => {
   return {
     // State
     ...state,
-    
+
     // Connection Management
     connect,
     disconnect,
-    
+
     // Friend Management
     sendFriendRequest,
     acceptFriendRequest,
     declineFriendRequest,
     removeFriend,
-    
+
     // Chat Management
     sendMessage,
     markMessageAsRead,
     createChat,
     getOnlineFriends,
-    
+
     // Utility Functions
     getChatMessages,
     getChat,
     getFriend,
     clearError,
-    clearLastEvents
+    clearLastEvents,
   };
-}; 
+};

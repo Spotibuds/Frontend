@@ -1,12 +1,13 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import SidebarNavigation from "../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Album, type Song, type Artist } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import Image from "next/image";
+import { useDialog } from "@/hooks/useDialog";
 
 const MySwal = withReactContent(Swal);
 
@@ -38,6 +39,11 @@ export default function AdminPageForAlbums() {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dialogRef = useDialog(isCreateModalOpen || isUpdateModalOpen, () => {
+    setIsCreateModalOpen(false);
+    setIsUpdateModalOpen(false);
+  });
   const [modalData, setModalData] = useState<{
     id?: string;
     title: string;
@@ -59,15 +65,15 @@ export default function AdminPageForAlbums() {
       const data = await musicApi.getAlbums();
       setAlbums(data);
 
-      const songsPromises = data.map((album) =>
+      const songsPromises = data.map(album =>
         musicApi
           .getAlbumSongs(album.id)
-          .then((songs) => ({ id: album.id, songs }))
+          .then(songs => ({ id: album.id, songs }))
           .catch(() => ({ id: album.id, songs: [] }))
       );
       const songsResults = await Promise.all(songsPromises);
       const songsObj: Record<string, Song[]> = {};
-      songsResults.forEach((res) => {
+      songsResults.forEach(res => {
         songsObj[res.id] = res.songs;
       });
       setSongsMap(songsObj);
@@ -88,22 +94,18 @@ export default function AdminPageForAlbums() {
     }
   };
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     fetchAlbums();
     fetchArtists();
   }, []);
 
-
-
   // Filter artists dynamically
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (artistSearch.trim() === "") {
       setFilteredArtists([]);
       return;
     }
-    const results = artists.filter((a) =>
-      a.name.toLowerCase().includes(artistSearch.toLowerCase())
-    );
+    const results = artists.filter(a => a.name.toLowerCase().includes(artistSearch.toLowerCase()));
     setFilteredArtists(results);
   }, [artistSearch, artists]);
 
@@ -123,7 +125,7 @@ export default function AdminPageForAlbums() {
     try {
       const success = await adminApi.deleteAlbum(id);
       if (success) {
-        setAlbums((prev) => prev.filter((a) => a.id !== id));
+        setAlbums(prev => prev.filter(a => a.id !== id));
         const newSongsMap = { ...songsMap };
         delete newSongsMap[id];
         setSongsMap(newSongsMap);
@@ -133,7 +135,11 @@ export default function AdminPageForAlbums() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
     }
   };
 
@@ -162,21 +168,23 @@ export default function AdminPageForAlbums() {
     const { name, value, files } = e.target as HTMLInputElement;
     if (name === "coverFile") {
       const file = files?.[0] || null;
-      setModalData((prev) => ({ ...prev, coverFile: file }));
+      setModalData(prev => ({ ...prev, coverFile: file }));
       if (file) {
         setCoverPreview(URL.createObjectURL(file));
       }
     } else {
-      setModalData((prev) => ({ ...prev, [name]: value }));
+      setModalData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleCreateSubmit = async () => {
+    if (saving) return;
     if (!modalData.title || !modalData.artistId) {
       MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
       return;
     }
 
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
@@ -187,7 +195,7 @@ export default function AdminPageForAlbums() {
       const newAlbum = await adminApi.createAlbum(formData);
 
       if (newAlbum) {
-        setAlbums((prev) => [...prev, newAlbum]);
+        setAlbums(prev => [...prev, newAlbum]);
         setIsCreateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Album created successfully" });
       } else {
@@ -195,16 +203,24 @@ export default function AdminPageForAlbums() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleUpdateSubmit = async () => {
+    if (saving) return;
     if (!modalData.title || !modalData.artistId) {
       MySwal.fire({ icon: "warning", title: "Title and Artist are required" });
       return;
     }
 
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
@@ -215,7 +231,7 @@ export default function AdminPageForAlbums() {
       const updatedAlbum = await adminApi.updateAlbum(modalData.id!, formData);
 
       if (updatedAlbum) {
-        setAlbums((prev) => prev.map((a) => (a.id === modalData.id ? updatedAlbum : a)));
+        setAlbums(prev => prev.map(a => (a.id === modalData.id ? updatedAlbum : a)));
         setIsUpdateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Album updated successfully" });
       } else {
@@ -223,7 +239,13 @@ export default function AdminPageForAlbums() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -244,14 +266,19 @@ export default function AdminPageForAlbums() {
         {loading ? (
           <p className="text-gray-400">Loading albums...</p>
         ) : error ? (
-          <p className="text-red-400">{error}</p>
+          <p role="alert" className="text-red-400">
+            {error} <button onClick={fetchAlbums}>Retry</button>
+          </p>
         ) : albums.length === 0 ? (
           <p className="text-gray-400">No albums found</p>
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {currentAlbums.map((album) => (
-                <div key={album.id} className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4">
+              {currentAlbums.map(album => (
+                <div
+                  key={album.id}
+                  className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
+                >
                   <MusicImage
                     src={album.coverUrl}
                     alt={album.title}
@@ -263,7 +290,8 @@ export default function AdminPageForAlbums() {
                   <div className="flex-1">
                     <p className="text-white font-semibold">{album.title}</p>
                     <p className="text-gray-400 text-sm">
-                      {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0} songs
+                      {album.artist?.name ?? "Unknown Artist"} • {songsMap[album.id]?.length ?? 0}{" "}
+                      songs
                     </p>
                     <div className="mt-2 space-x-2">
                       <button
@@ -310,12 +338,20 @@ export default function AdminPageForAlbums() {
         {/* Create & Update Modals */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50 p-4">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-full max-w-sm">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Album editor"
+              tabIndex={-1}
+              className="bg-gray-900 p-6 rounded shadow-lg w-full max-w-sm max-h-[90vh] overflow-y-auto"
+            >
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Album" : "Update Album"}
               </h2>
 
               <input
+                aria-label="Title"
                 type="text"
                 name="title"
                 placeholder="Title"
@@ -327,17 +363,18 @@ export default function AdminPageForAlbums() {
               {/* Searchable Artist Dropdown */}
               <div className="relative mb-2">
                 <input
+                  aria-label="Search Artist"
                   type="text"
                   name="artistSearch"
                   placeholder="Search Artist"
                   className="w-full p-2 rounded bg-gray-800 text-white"
                   value={
                     modalData.artistId
-                      ? artists.find((a) => a.id === modalData.artistId)?.name || ""
+                      ? artists.find(a => a.id === modalData.artistId)?.name || ""
                       : artistSearch
                   }
-                  onChange={(e) => {
-                    setModalData((prev) => ({ ...prev, artistId: "" }));
+                  onChange={e => {
+                    setModalData(prev => ({ ...prev, artistId: "" }));
                     setArtistSearch(e.target.value);
                     setShowArtistDropdown(true);
                   }}
@@ -346,12 +383,20 @@ export default function AdminPageForAlbums() {
 
                 {showArtistDropdown && filteredArtists.length > 0 && (
                   <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
-                    {filteredArtists.map((artist) => (
+                    {filteredArtists.map(artist => (
                       <li
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.currentTarget.click();
+                          }
+                        }}
                         key={artist.id}
                         className="p-2 hover:bg-gray-700 cursor-pointer text-white"
                         onClick={() => {
-                          setModalData((prev) => ({ ...prev, artistId: artist.id }));
+                          setModalData(prev => ({ ...prev, artistId: artist.id }));
                           setArtistSearch("");
                           setShowArtistDropdown(false);
                         }}
@@ -369,6 +414,7 @@ export default function AdminPageForAlbums() {
 
               <label className="text-gray-400 text-sm mb-1">Release Date:</label>
               <input
+                aria-label="release Date"
                 type="date"
                 name="releaseDate"
                 className="w-full mb-2 p-2 rounded bg-gray-800 text-white"
@@ -376,11 +422,10 @@ export default function AdminPageForAlbums() {
                 onChange={handleModalChange}
               />
 
-              <label
-                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto"
-              >
+              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
                 Upload Cover
                 <input
+                  aria-label="cover File"
                   type="file"
                   name="coverFile"
                   accept="image/*"
@@ -393,11 +438,10 @@ export default function AdminPageForAlbums() {
               {coverPreview && (
                 <div className="mt-3">
                   <p className="text-gray-400 text-sm mb-1">Cover Preview:</p>
-                  <Image
+                  <MusicImage
                     src={coverPreview}
                     alt="Cover Preview"
-                    width={128} 
-                    height={128} 
+                    size="large"
                     className="object-cover rounded shadow-md mx-auto"
                   />
                 </div>
@@ -415,9 +459,12 @@ export default function AdminPageForAlbums() {
                   Cancel
                 </button>
                 <button
-                  className={`${isCreateModalOpen ? "bg-purple-600 hover:bg-purple-700" : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded disabled:opacity-50`}
-                  disabled={!modalData.artistId}
+                  className={`${
+                    isCreateModalOpen
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded disabled:opacity-50`}
+                  disabled={saving || !modalData.artistId}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

@@ -1,271 +1,20 @@
-'use client';
-
-// Internal augmentation for our audio element to track direct/proxy URLs
-type ExtendedHTMLAudioElement = HTMLAudioElement & {
-  _directUrl?: string;
-  _proxyUrl?: string;
-  _proxyTried?: boolean;
-};
-
-import { createContext, useContext, useReducer, useRef, useEffect, useCallback, ReactNode } from 'react';
-import { Song, API_CONFIG, userApi, identityApi } from './api';
-
-interface AudioState {
-  currentSong: Song | null;
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  volume: number;
-  isMuted: boolean;
-  previousVolume: number; // Store volume before muting
-  isLoading: boolean;
-  isSeeking: boolean;
-  playlist: Song[];
-  currentIndex: number;
-  shuffleMode: boolean;
-  repeatMode: 'off' | 'one' | 'all';
-  queue: Song[];
-  playHistory: Song[]; // Track previously played songs for back navigation
-}
-
-type AudioAction =
-  | { type: 'SET_SONG'; payload: Song }
-  | { type: 'SET_PLAYLIST'; payload: { songs: Song[]; index: number } }
-  | { type: 'PLAY' }
-  | { type: 'PAUSE' }
-  | { type: 'NEXT_SONG' }
-  | { type: 'PREVIOUS_SONG' }
-  | { type: 'SET_CURRENT_TIME'; payload: number; force?: boolean }
-  | { type: 'SET_DURATION'; payload: number }
-  | { type: 'SET_VOLUME'; payload: number }
-  | { type: 'TOGGLE_MUTE' }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_SEEKING'; payload: boolean }
-  | { type: 'SET_SHUFFLE'; payload: boolean }
-  | { type: 'SET_REPEAT'; payload: 'off' | 'one' | 'all' }
-  | { type: 'ADD_TO_QUEUE'; payload: Song | Song[] }
-  | { type: 'REMOVE_FROM_QUEUE'; payload: number }
-  | { type: 'CLEAR_QUEUE' }
-  | { type: 'RESTORE_STATE'; payload: Partial<AudioState> }
-  | { type: 'ADD_TO_HISTORY'; payload: Song }
-  | { type: 'GO_BACK_IN_HISTORY' };
-
-const initialState: AudioState = {
-  currentSong: null,
-  isPlaying: false,
-  currentTime: 0,
-  duration: 0,
-  volume: 0.7,
-  isMuted: false,
-  previousVolume: 0.7,
-  isLoading: false,
-  isSeeking: false,
-  playlist: [],
-  currentIndex: -1,
-  shuffleMode: false,
-  repeatMode: 'off',
-  queue: [],
-  playHistory: [],
-};
-
-function audioReducer(state: AudioState, action: AudioAction): AudioState {
-  switch (action.type) {
-    case 'SET_SONG':
-      return { 
-        ...state, 
-        currentSong: action.payload, 
-        currentTime: 0, 
-        isSeeking: false,
-        playlist: [action.payload],
-        currentIndex: 0
-      };
-    case 'SET_PLAYLIST':
-      return {
-        ...state,
-        playlist: action.payload.songs,
-        currentIndex: action.payload.index,
-        currentSong: action.payload.songs[action.payload.index] || null,
-        currentTime: 0,
-        isSeeking: false
-      };
-    case 'PLAY':
-      return { ...state, isPlaying: true };
-    case 'PAUSE':
-      return { ...state, isPlaying: false };
-    case 'NEXT_SONG': {
-      // Check if there are songs in the queue first
-      if (state.queue.length > 0) {
-        const nextSong = state.queue[0];
-        return {
-          ...state,
-          currentSong: nextSong,
-          queue: state.queue.slice(1),
-          currentTime: 0,
-          isSeeking: false
-        };
-  }
-      
-      // Otherwise, use regular playlist navigation
-      const nextIndex = getNextIndex(state.currentIndex, state.playlist.length, state.shuffleMode, state.repeatMode);
-      return {
-        ...state,
-        currentIndex: nextIndex,
-        currentSong: state.playlist[nextIndex] || null,
-        currentTime: 0,
-        isSeeking: false
-      };
-    }
-    case 'PREVIOUS_SONG': {
-      const prevIndex = getPreviousIndex(state.currentIndex, state.playlist.length, state.shuffleMode, state.repeatMode);
-      return {
-        ...state,
-        currentIndex: prevIndex,
-        currentSong: state.playlist[prevIndex] || null,
-        currentTime: 0,
-        isSeeking: false
-      };
-    }
-    case 'SET_CURRENT_TIME':
-      // Only update currentTime if not currently seeking, unless forced
-      return (state.isSeeking && !action.force) ? state : { ...state, currentTime: action.payload };
-    case 'SET_DURATION':
-      return { ...state, duration: action.payload };
-    case 'SET_VOLUME':
-      return { 
-        ...state, 
-        volume: action.payload,
-        // If we're setting a non-zero volume, unmute
-        isMuted: action.payload === 0 ? state.isMuted : false,
-        // Update previousVolume only if it's not zero (to preserve last non-zero volume)
-        previousVolume: action.payload > 0 ? action.payload : state.previousVolume
-      };
-    case 'TOGGLE_MUTE':
-      return {
-        ...state,
-        isMuted: !state.isMuted,
-        // If muting, save current volume and set to 0
-        // If unmuting, restore previous volume
-        volume: !state.isMuted ? 0 : state.previousVolume,
-        // Update previousVolume when muting (but not when unmuting)
-        previousVolume: !state.isMuted ? state.volume : state.previousVolume
-      };
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'SET_SEEKING':
-      return { ...state, isSeeking: action.payload };
-    case 'SET_SHUFFLE':
-      return { 
-        ...state, 
-        shuffleMode: action.payload,
-        // Re-shuffle the current queue when shuffle mode is toggled
-        queue: action.payload && state.queue.length > 0 ? shuffleArray(state.queue) : state.queue
-      };
-    case 'SET_REPEAT':
-      return { ...state, repeatMode: action.payload };
-    case 'ADD_TO_QUEUE': {
-      const songsToAdd = Array.isArray(action.payload) ? action.payload : [action.payload];
-      // If shuffle mode is on, shuffle the songs being added to queue
-      const queueSongs = state.shuffleMode ? shuffleArray(songsToAdd) : songsToAdd;
-      return { ...state, queue: [...state.queue, ...queueSongs] };
-    }
-    case 'REMOVE_FROM_QUEUE':
-      return { 
-        ...state, 
-        queue: state.queue.filter((_, index) => index !== action.payload) 
-      };
-    case 'CLEAR_QUEUE':
-      return { ...state, queue: [] };
-    case 'RESTORE_STATE':
-      return { 
-        ...state, 
-        ...action.payload,
-        // Don't restore playback state to avoid auto-playing
-        isPlaying: false,
-        currentTime: 0,
-        duration: 0,
-        isLoading: false,
-        isSeeking: false
-      };
-    case 'ADD_TO_HISTORY':
-      // Add song to history, keep max 50 songs to prevent memory issues
-      const newHistory = [action.payload, ...state.playHistory.filter(song => song.id !== action.payload.id)];
-      return {
-        ...state,
-        playHistory: newHistory.slice(0, 50)
-      };
-    case 'GO_BACK_IN_HISTORY': {
-      if (state.playHistory.length === 0) return state;
-      
-      const previousSong = state.playHistory[0];
-      const newHistory = state.playHistory.slice(1);
-      
-      // Add current song to history if it exists
-      const updatedHistory = state.currentSong 
-        ? [state.currentSong, ...newHistory.filter(song => song.id !== state.currentSong!.id)]
-        : newHistory;
-      
-      return {
-        ...state,
-        currentSong: previousSong,
-        currentTime: 0,
-        playHistory: updatedHistory,
-        isSeeking: false
-      };
-    }
-    default:
-      return state;
-  }
-}
-
-// Helper functions for playlist navigation
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-function getNextIndex(currentIndex: number, playlistLength: number, shuffleMode: boolean, repeatMode: 'off' | 'one' | 'all'): number {
-  if (playlistLength === 0) return -1;
-  
-  if (repeatMode === 'one') {
-    return currentIndex;
-  }
-  
-  if (shuffleMode) {
-    return Math.floor(Math.random() * playlistLength);
-  }
-  
-  const nextIndex = currentIndex + 1;
-  if (nextIndex >= playlistLength) {
-    return repeatMode === 'all' ? 0 : currentIndex;
-  }
-  return nextIndex;
-}
-
-function getPreviousIndex(currentIndex: number, playlistLength: number, shuffleMode: boolean, repeatMode: 'off' | 'one' | 'all'): number {
-  if (playlistLength === 0) return -1;
-  
-  if (repeatMode === 'one') {
-    return currentIndex;
-  }
-  
-  if (shuffleMode) {
-    return Math.floor(Math.random() * playlistLength);
-  }
-  
-  const prevIndex = currentIndex - 1;
-  if (prevIndex < 0) {
-    return repeatMode === 'all' ? playlistLength - 1 : currentIndex;
-  }
-  return prevIndex;
-}
-
+"use client";
+import {
+  createContext,
+  useContext,
+  useReducer,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  ReactNode,
+} from "react";
+import { Song, API_CONFIG, userApi } from "./api";
+import { audioReducer, initialState, AudioState } from "./audioState";
+import { getSessionUser, SESSION_EVENT } from "./session";
 interface AudioContextType {
   state: AudioState;
-  playSong: (song: Song, playlist?: Song[]) => void;
+  playSong: (song: Song, songs?: Song[]) => void;
   playPlaylist: (songs: Song[], startIndex?: number) => void;
   togglePlayPause: () => void;
   nextSong: () => void;
@@ -276,12 +25,11 @@ interface AudioContextType {
   setVolume: (volume: number) => void;
   toggleMute: () => void;
   setShuffle: (shuffle: boolean) => void;
-  setRepeat: (repeat: 'off' | 'one' | 'all') => void;
+  setRepeat: (repeat: "off" | "one" | "all") => void;
   addToQueue: (songs: Song | Song[]) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
   formatTime: (seconds: number) => string;
-  // Convenience properties for easier access
   currentSong: Song | null;
   isPlaying: boolean;
   currentTime: number;
@@ -293,727 +41,306 @@ interface AudioContextType {
   playlist: Song[];
   queue: Song[];
   shuffleMode: boolean;
-  repeatMode: 'off' | 'one' | 'all';
+  repeatMode: "off" | "one" | "all";
   playHistory: Song[];
 }
-
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
-
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(audioReducer, initialState);
+  const latest = useRef(state);
+  useLayoutEffect(() => {
+    latest.current = state;
+  }, [state]);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const isSeekingRef = useRef(false);
-  const nowPlayingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitialized = useRef(false);
-
-  // Load audio state from localStorage on mount
+  const owner = useRef<string | null>(null);
+  const listeningSeconds = useRef(0);
+  const historyAdded = useRef(false);
+  const historyAttempts = useRef(0);
+  const nextHistoryAttempt = useRef(30);
   useEffect(() => {
-    if (typeof window !== 'undefined' && !isInitialized.current) {
-      try {
-        const savedState = localStorage.getItem('audioState');
-        if (savedState) {
-          const parsedState = JSON.parse(savedState);
-          // Restore essential state but not playback state (don't auto-play)
-          dispatch({
-            type: 'RESTORE_STATE',
-            payload: {
-              playlist: parsedState.playlist || [],
-              queue: parsedState.queue || [],
-              currentSong: parsedState.currentSong || null,
-              currentIndex: parsedState.currentIndex ?? 0,
-              shuffleMode: parsedState.shuffleMode || false,
-              repeatMode: parsedState.repeatMode || 'off',
-              volume: parsedState.volume ?? 1,
-              isMuted: parsedState.isMuted || false,
-              playHistory: parsedState.playHistory || [],
-            }
-          });
+    const restore = () => {
+      const id = getSessionUser()?.id || null;
+      if (owner.current === id) return;
+      audioRef.current?.pause();
+      audioRef.current?.removeAttribute("src");
+      audioRef.current?.load();
+      if (owner.current) {
+        try {
+          localStorage.removeItem(`audioState:${owner.current}`);
+        } catch {
+          /* Teardown must always reset memory. */
         }
-      } catch (error) {
-        console.warn('Failed to restore audio state from localStorage:', error);
-      } finally {
-        isInitialized.current = true;
       }
-    }
+      owner.current = id;
+      dispatch({ type: "RESET" });
+      if (id) {
+        try {
+          const saved = JSON.parse(localStorage.getItem(`audioState:${id}`) || "null");
+          if (saved)
+            dispatch({
+              type: "PATCH",
+              payload: {
+                ...saved,
+                isPlaying: false,
+                isLoading: false,
+                isSeeking: false,
+                error: null,
+              },
+            });
+        } catch {
+          try {
+            localStorage.removeItem(`audioState:${id}`);
+          } catch {
+            /* Invalid saved state is ignored. */
+          }
+        }
+      }
+    };
+    restore();
+    window.addEventListener(SESSION_EVENT, restore);
+    return () => window.removeEventListener(SESSION_EVENT, restore);
   }, []);
-
-  // Save audio state to localStorage whenever relevant state changes
   useEffect(() => {
-    if (typeof window !== 'undefined' && isInitialized.current) {
+    if (owner.current) {
       try {
-        const stateToSave = {
-          playlist: state.playlist,
-          queue: state.queue,
-          currentSong: state.currentSong,
-          currentIndex: state.currentIndex,
-          shuffleMode: state.shuffleMode,
-          repeatMode: state.repeatMode,
-          volume: state.volume,
-          isMuted: state.isMuted,
-          playHistory: state.playHistory,
-        };
-        localStorage.setItem('audioState', JSON.stringify(stateToSave));
-      } catch (error) {
-        console.warn('Failed to save audio state to localStorage:', error);
+        localStorage.setItem(
+          `audioState:${owner.current}`,
+          JSON.stringify({
+            currentSong: state.currentSong,
+            playlist: state.playlist,
+            queue: state.queue,
+            currentIndex: state.currentIndex,
+            shuffleMode: state.shuffleMode,
+            repeatMode: state.repeatMode,
+            volume: state.volume,
+            isMuted: state.isMuted,
+            playHistory: state.playHistory,
+          })
+        );
+      } catch {
+        /* Playback remains available without persistence. */
       }
     }
   }, [
+    state.currentSong,
     state.playlist,
     state.queue,
-    state.currentSong,
     state.currentIndex,
     state.shuffleMode,
     state.repeatMode,
     state.volume,
     state.isMuted,
-    state.playHistory
+    state.playHistory,
   ]);
-
+  const tryPlay = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && latest.current.isPlaying)
+      void audio.play().catch(() =>
+        dispatch({
+          type: "PATCH",
+          payload: {
+            isPlaying: false,
+            isLoading: false,
+            error:
+              "Playback could not start. Check the local media service and press Play to retry.",
+          },
+        })
+      );
+  }, []);
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    const handleTimeUpdate = () => {
-      // Only update if we're not currently seeking to avoid conflicts
-      if (!audio.seeking && !isSeekingRef.current && !state.isSeeking) {
-        dispatch({ type: 'SET_CURRENT_TIME', payload: audio.currentTime });
-      }
-    };
-
-    const handleDurationChange = () => {
-      dispatch({ type: 'SET_DURATION', payload: audio.duration });
-    };
-
-    const handleEnded = () => {
-      // Auto-advance to next song
-      if (state.repeatMode === 'one') {
-        // Replay current song
-        audio.currentTime = 0;
-        audio.play().catch(console.error);
-      } else {
-        // Add current song to history before advancing
-        if (state.currentSong) {
-          dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
-        }
-        
-        // For repeat all or off, use NEXT_SONG which handles the logic
-        dispatch({ type: 'NEXT_SONG' });
-        // Only start playing if we actually have a next song or repeat all is enabled
-        const nextIndex = getNextIndex(state.currentIndex, state.playlist.length, state.shuffleMode, state.repeatMode);
-        if (nextIndex !== state.currentIndex || state.repeatMode === 'all') {
-          dispatch({ type: 'PLAY' });
-        }
-      }
-    };
-
-    const handleLoadStart = () => {
-      dispatch({ type: 'SET_LOADING', payload: true });
-    };
-
-    const handleCanPlay = () => {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    };
-
-    const handleError = (error: Event) => {
-      console.error('Audio error:', error);
-      console.error('Audio error details:', {
-        error: audio.error,
-        networkState: audio.networkState,
-        readyState: audio.readyState,
-        src: audio.src
-      });
-      // On first error with direct URL, fallback to proxy endpoint and retry once
-      const ext = audio as ExtendedHTMLAudioElement;
-      const direct = ext._directUrl;
-      const proxy = ext._proxyUrl;
-      if (direct && proxy && audio.src === direct && !ext._proxyTried) {
-        ext._proxyTried = true;
-        console.warn('Falling back to proxied audio endpoint');
-        audio.src = proxy;
-        audio.load();
-        if (state.isPlaying) {
-          audio.play().catch(console.error);
-        }
-        return;
-      }
-      dispatch({ type: 'SET_LOADING', payload: false });
-      dispatch({ type: 'PAUSE' });
-    };
-
-    const handleStalled = () => {
-      console.warn('Audio stalled - network issues or slow server response');
-      dispatch({ type: 'SET_LOADING', payload: true });
-      
-      // Try to recover by reloading the audio source after a brief delay
-      setTimeout(() => {
-        if (audio && audio.readyState < 2) { // Not enough data loaded
-          console.log('Attempting to recover from stalled audio...');
-          const currentTime = audio.currentTime;
-          const wasPlaying = state.isPlaying;
-          
-          // Reload the audio element
-          audio.load();
-          
-          // Restore position and playback state once ready
-          const handleCanPlayAfterStall = () => {
-            audio.currentTime = currentTime;
-            if (wasPlaying) {
-              audio.play().catch(console.error);
-            }
-            dispatch({ type: 'SET_LOADING', payload: false });
-            audio.removeEventListener('canplay', handleCanPlayAfterStall);
-          };
-          
-          audio.addEventListener('canplay', handleCanPlayAfterStall);
-        } else {
-          dispatch({ type: 'SET_LOADING', payload: false });
-        }
-      }, 1000); // Wait 1 second before attempting recovery
-    };
-
-    const handleWaiting = () => {
-      dispatch({ type: 'SET_LOADING', payload: true });
-    };
-
-    const handlePlaying = () => {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    };
-
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('durationchange', handleDurationChange);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('loadstart', handleLoadStart);
-    audio.addEventListener('canplay', handleCanPlay);
-    audio.addEventListener('error', handleError);
-    audio.addEventListener('stalled', handleStalled);
-    audio.addEventListener('waiting', handleWaiting);
-    audio.addEventListener('playing', handlePlaying);
-
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('durationchange', handleDurationChange);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('loadstart', handleLoadStart);
-      audio.removeEventListener('canplay', handleCanPlay);
-      audio.removeEventListener('error', handleError);
-      audio.removeEventListener('stalled', handleStalled);
-      audio.removeEventListener('waiting', handleWaiting);
-      audio.removeEventListener('playing', handlePlaying);
-    };
-  }, [state.isSeeking, state.repeatMode, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode, state.currentSong]); // Include all missing dependencies
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    audio.volume = state.volume;
-  }, [state.volume]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (state.isPlaying) {
-      // Only play if the audio is ready
-      if (audio.readyState >= 2) { // HAVE_CURRENT_DATA or higher
-        audio.play().catch(console.error);
-      } else {
-        // Wait for canplay event before playing
-        const handleCanPlay = () => {
-          if (state.isPlaying) {
-            audio.play().catch(console.error);
-          }
-          audio.removeEventListener('canplay', handleCanPlay);
-        };
-        audio.addEventListener('canplay', handleCanPlay);
-      }
-    } else {
-      audio.pause();
-    }
-  }, [state.isPlaying]);
-
-  // Effect to handle song changes from playlist navigation
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !state.currentSong) return;
-
-    // Check if the song has actually changed by comparing URLs
-    const currentSrc = audio.src;
-    const newDirectUrl = state.currentSong.fileUrl || '';
-    const isAzureBlob = newDirectUrl.includes('blob.core.windows.net');
-    const hasSasToken = /[?&](sig|sp|se|sr|skoid|sktid|skt|ske|sks|skv)=/i.test(newDirectUrl);
-    const newProxyUrl = newDirectUrl.includes('/api/media/audio')
-      ? newDirectUrl
-      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(newDirectUrl)}`;
-    const shouldUseDirect = !!newDirectUrl && (!isAzureBlob || hasSasToken);
-    const newSrc = shouldUseDirect ? newDirectUrl : newProxyUrl;
-
-    // If the source hasn't changed, don't reload the audio
-    if (currentSrc === newSrc) {
-      // Just ensure playback state is correct
-      if (state.isPlaying && audio.paused) {
-        audio.play().catch(console.error);
-      } else if (!state.isPlaying && !audio.paused) {
-        audio.pause();
-      }
+    const url = state.currentSong?.fileUrl;
+    listeningSeconds.current = 0;
+    historyAdded.current = false;
+    historyAttempts.current = 0;
+    nextHistoryAttempt.current = 30;
+    audio.pause();
+    if (!url) {
+      audio.removeAttribute("src");
+      audio.load();
       return;
     }
-
-    // Load the new song: prefer direct blob URL; fallback to proxy on error
-    const ext = audio as ExtendedHTMLAudioElement;
-    ext._directUrl = shouldUseDirect ? newDirectUrl : undefined;
-    ext._proxyUrl = newProxyUrl;
-    ext._proxyTried = !shouldUseDirect; // if we start with proxy, mark as tried to suppress fallback
-    audio.crossOrigin = 'anonymous';
-    audio.src = newSrc;
+    // Public playback is always mediated by Music's catalogue allowlist.
+    audio.src = url.startsWith(`${API_CONFIG.MUSIC_API}/api/media/`)
+      ? url
+      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(url)}`;
     audio.load();
-
-    // If we were already in playing state, ensure the new source actually starts
-    if (state.isPlaying) {
-      const tryPlay = () => {
-        if (state.isPlaying) {
-          audio.play().catch(console.error);
-        }
-        audio.removeEventListener('canplay', tryPlay);
-      };
-      if (audio.readyState >= 2) {
-        audio.play().catch(console.error);
-      } else {
-        audio.addEventListener('canplay', tryPlay);
-      }
-    }
-
-    // Reset playing state temporarily while loading
-    if (state.isPlaying) {
-      dispatch({ type: 'SET_LOADING', payload: true });
-    }
-
-    // Reset listening time tracking for new song
-    listeningStartTimeRef.current = null;
-    hasAddedToHistoryRef.current = false;
-  }, [state.currentSong, state.isPlaying, state.currentIndex, state.playlist.length, state.shuffleMode]);
-
-  // Listening time tracking refs
-  const listeningStartTimeRef = useRef<number | null>(null);
-  const hasAddedToHistoryRef = useRef<boolean>(false);
-
-  // Function to add songs to listening history
-  const addToListeningHistory = useCallback(async (userId: string, songId: string, actualListenTime?: number) => {
-    try {
-      if (!state.currentSong) return;
-      
-      console.log(`Adding song "${state.currentSong.title}" to listening history after ${actualListenTime || 0} seconds`);
-      
-      await userApi.addToListeningHistory(userId, {
-        songId,
-        songTitle: state.currentSong.title || 'Unknown Song',
-        artist: state.currentSong.artists ? state.currentSong.artists.map(a => a.name).join(', ') : 'Unknown Artist',
-        coverUrl: state.currentSong.coverUrl,
-        duration: actualListenTime || Math.round(state.duration)
-      });
-    } catch (error) {
-      console.warn('Error adding to listening history:', error);
-    }
-  }, [state.currentSong, state.duration]);
-
-  // Effect to track listening time and add to history after 30 seconds
+    tryPlay();
+  }, [state.currentSong?.id, state.currentSong?.fileUrl, state.playbackRevision, tryPlay]);
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !state.currentSong) return;
-
-    const handleTimeUpdate = () => {
-      if (!state.isPlaying) return;
-      
-      // Start tracking when song starts playing
-      if (listeningStartTimeRef.current === null) {
-        listeningStartTimeRef.current = Date.now();
-        return;
-      }
-
-      // Check if 30 seconds have passed and we haven't added to history yet
-      const listeningTime = Date.now() - listeningStartTimeRef.current;
-      if (listeningTime >= 30000 && !hasAddedToHistoryRef.current && state.currentSong) {
-        hasAddedToHistoryRef.current = true;
-        
-        // Add to listening history
-        if (typeof window !== 'undefined') {
-          const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-          if (currentUser?.id) {
-            addToListeningHistory(currentUser.id, state.currentSong.id, Math.floor(listeningTime / 1000));
-          }
-        }
-      }
-    };
-
-    const handlePlay = () => {
-      // Reset start time when playback resumes if not already tracking
-      if (listeningStartTimeRef.current === null) {
-        listeningStartTimeRef.current = Date.now();
-      }
-    };
-
-    const handlePause = () => {
-      // Reset tracking when paused (user might skip around)
-      listeningStartTimeRef.current = null;
-    };
-
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-    };
-  }, [addToListeningHistory, state.currentSong, state.isPlaying]);
-
-  // Now Playing Status Integration
+    if (!audio) return;
+    audio.volume = state.volume;
+    audio.muted = state.isMuted;
+  }, [state.volume, state.isMuted]);
   useEffect(() => {
-    const user = identityApi.getCurrentUser();
-    if (!user || !state.currentSong || !state.isPlaying) {
-      // Clear any pending now playing updates
-      if (nowPlayingTimeoutRef.current) {
-        clearTimeout(nowPlayingTimeoutRef.current);
-        nowPlayingTimeoutRef.current = null;
+    if (state.isPlaying) tryPlay();
+    else audioRef.current?.pause();
+  }, [state.isPlaying, tryPlay]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const audio = audioRef.current;
+      const song = latest.current.currentSong;
+      if (!audio || audio.paused || audio.seeking || !song || !owner.current) return;
+      listeningSeconds.current++;
+      if (
+        listeningSeconds.current >= nextHistoryAttempt.current &&
+        !historyAdded.current &&
+        historyAttempts.current < 3
+      ) {
+        historyAdded.current = true;
+        historyAttempts.current++;
+        nextHistoryAttempt.current = listeningSeconds.current + 30;
+        void userApi
+          .addToListeningHistory(owner.current, {
+            songId: song.id,
+            songTitle: song.title,
+            artist: song.artists.map(artist => artist.name).join(", "),
+            coverUrl: song.coverUrl,
+            duration: listeningSeconds.current,
+          })
+          .catch(() => {
+            historyAdded.current = false;
+            dispatch({
+              type: "PATCH",
+              payload: {
+                error:
+                  "Listening history could not be saved. The local User service may be unavailable.",
+              },
+            });
+          });
       }
-      
-      // Clear now playing if user stops playing
-      if (user && !state.isPlaying && state.currentSong) {
-        userApi.clearNowPlaying(user.id).catch(console.warn);
-      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const user = getSessionUser();
+    const song = state.currentSong;
+    if (!user) return;
+    if (!song || !state.isPlaying) {
+      void userApi.clearNowPlaying(user.id).catch(() => undefined);
       return;
     }
-
-    // Set now playing after a short delay to avoid spam during song switching
-    nowPlayingTimeoutRef.current = setTimeout(async () => {
+    let inFlight = false;
+    let cancelled = false;
+    const publish = async () => {
+      if (inFlight || cancelled || owner.current !== user.id) return;
+      inFlight = true;
       try {
         await userApi.setNowPlaying({
           identityUserId: user.id,
-          songId: state.currentSong!.id,
-          songTitle: state.currentSong!.title,
-          artist: state.currentSong!.artists?.map(a => a.name).join(', ') || 'Unknown Artist',
-          coverUrl: state.currentSong!.coverUrl,
-          positionSec: Math.floor(state.currentTime),
-          isPlaying: state.isPlaying,
+          songId: song.id,
+          songTitle: song.title,
+          artist: song.artists.map(artist => artist.name).join(", "),
+          coverUrl: song.coverUrl,
+          positionSec: Math.floor(audioRef.current?.currentTime || 0),
+          isPlaying: true,
         });
-      } catch (error) {
-        console.warn('Failed to update now playing status:', error);
-      }
-    }, 2000); // 2 second delay
-
-    return () => {
-      if (nowPlayingTimeoutRef.current) {
-        clearTimeout(nowPlayingTimeoutRef.current);
-        nowPlayingTimeoutRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.currentSong, state.isPlaying]); // Intentionally omit currentTime to avoid excessive updates
-
-  // Clear now playing when component unmounts
-  useEffect(() => {
-    return () => {
-      const user = identityApi.getCurrentUser();
-      if (user) {
-        userApi.clearNowPlaying(user.id).catch(console.warn);
+      } catch {
+        if (!cancelled)
+          dispatch({
+            type: "PATCH",
+            payload: {
+              error: "Now-playing status could not be updated. Check the local User service.",
+            },
+          });
+      } finally {
+        inFlight = false;
       }
     };
-  }, []);
-
-  const playSong = (song: Song, playlist?: Song[]) => {
-    // Check if this is the same song that's already loaded
-    const isSameSong = state.currentSong?.id === song.id;
-    
-    // Add current song to history if we're switching to a different song
-    if (state.currentSong && !isSameSong) {
-      dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
-    }
-    
-    if (playlist && playlist.length > 0) {
-      const songIndex = playlist.findIndex(s => s.id === song.id);
-      
-      // If it's the same song and same playlist, just play/resume
-      if (isSameSong && state.playlist.length > 0 && 
-          state.playlist.some(s => s.id === song.id)) {
-        dispatch({ type: 'PLAY' });
-        return;
-      }
-      
-      dispatch({ 
-        type: 'SET_PLAYLIST', 
-        payload: { 
-          songs: playlist, 
-          index: songIndex >= 0 ? songIndex : 0 
-        } 
-      });
-    } else {
-      // If it's the same song, just resume playbook
-      if (isSameSong) {
-        dispatch({ type: 'PLAY' });
-        return;
-      }
-      
-      dispatch({ type: 'SET_SONG', payload: song });
-    }
-    dispatch({ type: 'PLAY' });
-  };
-
-  const playPlaylist = (songs: Song[], startIndex: number = 0) => {
-    if (songs.length === 0) return;
-    
-    const validIndex = Math.max(0, Math.min(startIndex, songs.length - 1));
-    dispatch({ 
-      type: 'SET_PLAYLIST', 
-      payload: { 
-        songs, 
-        index: validIndex 
-      } 
-    });
-    dispatch({ type: 'PLAY' });
-  };
-
-  const togglePlayPause = () => {
-    if (state.isPlaying) {
-      dispatch({ type: 'PAUSE' });
-    } else {
-      dispatch({ type: 'PLAY' });
-    }
-  };
-
-  const nextSong = () => {
-    // Add current song to history before moving to next
-    if (state.currentSong) {
-      dispatch({ type: 'ADD_TO_HISTORY', payload: state.currentSong });
-    }
-    
-    // Allow advancing if there are songs in the queue OR if there's more than one song in the playlist OR repeat all is enabled
-    if (state.queue.length > 0 || state.playlist.length > 1 || (state.playlist.length === 1 && state.repeatMode === 'all')) {
-      dispatch({ type: 'NEXT_SONG' });
-      dispatch({ type: 'PLAY' });
-    }
-  };
-
-  const previousSong = () => {
-    // Spotify-like behavior: 
-    // - If more than 3 seconds into song, restart current song
-    // - If less than 3 seconds, go to previous song from history
-    if (state.currentTime > 3) {
-      // Restart current song from beginning
-      seekTo(0);
-    } else {
-      // Go to previous song from history if available
-      if (state.playHistory.length > 0) {
-        dispatch({ type: 'GO_BACK_IN_HISTORY' });
-        dispatch({ type: 'PLAY' });
-      } else {
-        // No history available, just restart current song
-        seekTo(0);
-      }
-    }
-  };
-
+    void publish();
+    const timer = setInterval(() => void publish(), 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [state.currentSong, state.isPlaying]);
   const seekTo = (time: number) => {
     const audio = audioRef.current;
-    if (!audio) {
-      console.error('Cannot seek: Audio element not found');
-      return;
-    }
-
-    if (!state.currentSong) {
-      console.error('Cannot seek: No song loaded');
-      return;
-    }
-
-    if (isNaN(time) || time < 0) {
-      console.error('Cannot seek: Invalid time', time);
-      return;
-    }
-
-    if (isSeekingRef.current) {
-      console.warn('Already seeking, ignoring new seek request');
-      return;
-    }
-
-    if (audio.readyState < 2) {
-      console.warn('Audio not ready for seeking, waiting...');
-      const handleCanPlay = () => {
-        audio.removeEventListener('canplay', handleCanPlay);
-        seekTo(time);
-      };
-      audio.addEventListener('canplay', handleCanPlay, { once: true });
-      return;
-    }
-
-    if (time > audio.duration) {
-      console.warn('Seek time exceeds duration, clamping to end');
-      time = Math.max(0, audio.duration - 0.1);
-    }
-
-
-    
-    try {
-      // Set seeking state to prevent timeupdate conflicts
-      dispatch({ type: 'SET_SEEKING', payload: true });
-      isSeekingRef.current = true;
-      
-      const wasPlaying = !audio.paused;
-      
-      // Pause audio during seeking to prevent conflicts
-      if (wasPlaying) {
-        audio.pause();
-      }
-      
-      // Perform the seek
-      audio.currentTime = time;
-      
-      const handleSeeked = () => {
-        audio.removeEventListener('seeked', handleSeeked);
-        dispatch({ type: 'SET_SEEKING', payload: false });
-        isSeekingRef.current = false;
-        
-        // Update the current time to the actual seeked position (force update)
-        dispatch({ type: 'SET_CURRENT_TIME', payload: audio.currentTime, force: true });
-        
-        if (wasPlaying) {
-          audio.play().catch(console.error);
-        }
-      };
-      
-      const handleSeekError = () => {
-        console.error('Seek operation failed');
-        audio.removeEventListener('seeked', handleSeeked);
-        audio.removeEventListener('error', handleSeekError);
-        dispatch({ type: 'SET_SEEKING', payload: false });
-        isSeekingRef.current = false;
-        
-        if (wasPlaying && audio.paused) {
-          audio.play().catch(console.error);
-        }
-      };
-      
-      audio.addEventListener('seeked', handleSeeked, { once: true });
-      audio.addEventListener('error', handleSeekError, { once: true });
-      
-      setTimeout(() => {
-        if (isSeekingRef.current) {
-          console.warn('Seeked event timeout, cleaning up');
-          audio.removeEventListener('seeked', handleSeeked);
-          audio.removeEventListener('error', handleSeekError);
-          dispatch({ type: 'SET_SEEKING', payload: false });
-          isSeekingRef.current = false;
-          
-          if (wasPlaying && audio.paused) {
-            audio.play().catch(console.error);
-          }
-        }
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Error during seeking:', error);
-      dispatch({ type: 'SET_SEEKING', payload: false });
-      isSeekingRef.current = false;
-    }
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    audio.currentTime = Math.max(0, Math.min(time, audio.duration));
+    dispatch({ type: "PATCH", payload: { currentTime: audio.currentTime } });
   };
-
-  const setVolume = (volume: number) => {
-    const clampedVolume = Math.max(0, Math.min(1, volume));
-    dispatch({ type: 'SET_VOLUME', payload: clampedVolume });
+  const previousSong = () => {
+    if ((audioRef.current?.currentTime || 0) > 3) seekTo(0);
+    else dispatch({ type: "PREVIOUS" });
   };
-
-  const toggleMute = () => {
-    dispatch({ type: 'TOGGLE_MUTE' });
-  };
-
-  const skipForward = (seconds: number = 10) => {
-    const audio = audioRef.current;
-    if (!audio || !state.currentSong) return;
-
-    const newTime = Math.min(state.currentTime + seconds, state.duration);
-    seekTo(newTime);
-  };
-
-  const skipBackward = (seconds: number = 10) => {
-    const audio = audioRef.current;
-    if (!audio || !state.currentSong) return;
-
-    const newTime = Math.max(state.currentTime - seconds, 0);
-    seekTo(newTime);
-  };
-
-  const setShuffle = (shuffle: boolean) => {
-    dispatch({ type: 'SET_SHUFFLE', payload: shuffle });
-  };
-
-  const setRepeat = (repeat: 'off' | 'one' | 'all') => {
-    dispatch({ type: 'SET_REPEAT', payload: repeat });
-  };
-
-  const addToQueue = (songs: Song | Song[]) => {
-    dispatch({ type: 'ADD_TO_QUEUE', payload: songs });
-  };
-
-  const removeFromQueue = (index: number) => {
-    dispatch({ type: 'REMOVE_FROM_QUEUE', payload: index });
-  };
-
-  const clearQueue = () => {
-    dispatch({ type: 'CLEAR_QUEUE' });
-  };
-
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
-    
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
+  const patch = (payload: Partial<AudioState>) => dispatch({ type: "PATCH", payload });
   const value: AudioContextType = {
     state,
-    playSong,
-    playPlaylist,
-    togglePlayPause,
-    nextSong,
+    ...state,
+    playSong: (song, songs = [song]) =>
+      dispatch({
+        type: "PLAYLIST",
+        songs,
+        index: Math.max(
+          0,
+          songs.findIndex(item => item.id === song.id)
+        ),
+      }),
+    playPlaylist: (songs, index = 0) => dispatch({ type: "PLAYLIST", songs, index }),
+    togglePlayPause: () => patch({ isPlaying: !state.isPlaying, error: null }),
+    nextSong: () => dispatch({ type: "NEXT" }),
     previousSong,
     seekTo,
-    skipForward,
-    skipBackward,
-    setVolume,
-    toggleMute,
-    setShuffle,
-    setRepeat,
-    addToQueue,
-    removeFromQueue,
-    clearQueue,
-    formatTime,
-    currentSong: state.currentSong,
-    isPlaying: state.isPlaying,
-    currentTime: state.currentTime,
-    duration: state.duration,
-    volume: state.volume,
-    isMuted: state.isMuted,
-    isLoading: state.isLoading,
-    isSeeking: state.isSeeking,
-    playlist: state.playlist,
-    queue: state.queue,
-    shuffleMode: state.shuffleMode,
-    repeatMode: state.repeatMode,
-    playHistory: state.playHistory,
+    skipForward: (seconds = 10) => seekTo(state.currentTime + seconds),
+    skipBackward: (seconds = 10) => seekTo(state.currentTime - seconds),
+    setVolume: volume => patch({ volume: Math.max(0, Math.min(1, volume)), isMuted: false }),
+    toggleMute: () => patch({ isMuted: !state.isMuted }),
+    setShuffle: shuffleMode => patch({ shuffleMode }),
+    setRepeat: repeatMode => patch({ repeatMode }),
+    addToQueue: songs =>
+      patch({ queue: [...state.queue, ...(Array.isArray(songs) ? songs : [songs])].slice(0, 500) }),
+    removeFromQueue: index => patch({ queue: state.queue.filter((_, i) => i !== index) }),
+    clearQueue: () => patch({ queue: [] }),
+    formatTime: seconds => {
+      const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+      return `${Math.floor(safe / 60)}:${String(Math.floor(safe % 60)).padStart(2, "0")}`;
+    },
   };
-
   return (
     <AudioContext.Provider value={value}>
       {children}
-      <audio ref={audioRef} preload="metadata" />
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        onTimeUpdate={() => patch({ currentTime: audioRef.current?.currentTime || 0 })}
+        onDurationChange={() =>
+          patch({
+            duration: Number.isFinite(audioRef.current?.duration) ? audioRef.current!.duration : 0,
+          })
+        }
+        onCanPlay={() => {
+          patch({ isLoading: false });
+          tryPlay();
+        }}
+        onLoadStart={() => patch({ isLoading: Boolean(latest.current.currentSong) })}
+        onWaiting={() => patch({ isLoading: true })}
+        onPlaying={() => patch({ isLoading: false })}
+        onSeeking={() => patch({ isSeeking: true })}
+        onSeeked={() =>
+          patch({ isSeeking: false, currentTime: audioRef.current?.currentTime || 0 })
+        }
+        onError={() =>
+          patch({
+            isPlaying: false,
+            isLoading: false,
+            error: "Audio could not be loaded. Check the local Music service and retry.",
+          })
+        }
+        onEnded={() => {
+          if (latest.current.repeatMode === "one") {
+            seekTo(0);
+            tryPlay();
+          } else dispatch({ type: "ENDED" });
+        }}
+      />
     </AudioContext.Provider>
   );
 }
-
 export function useAudio() {
   const context = useContext(AudioContext);
-  if (context === undefined) {
-    throw new Error('useAudio must be used within an AudioProvider');
-  }
+  if (!context) throw new Error("useAudio must be used within an AudioProvider");
   return context;
-} 
+}

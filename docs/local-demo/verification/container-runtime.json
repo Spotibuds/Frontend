@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-03T20:12:56.182Z",
+  "bindings": [
+    {
+      "container": "spotibuds-local-demo-frontend-1",
+      "containerPort": "3000/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "3100"
+    },
+    {
+      "container": "spotibuds-local-demo-identity-1",
+      "containerPort": "8080/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "5101"
+    },
+    {
+      "container": "spotibuds-local-demo-music-1",
+      "containerPort": "8080/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "5102"
+    },
+    {
+      "container": "spotibuds-local-demo-user-1",
+      "containerPort": "8080/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "5103"
+    },
+    {
+      "container": "spotibuds-local-demo-postgres-1",
+      "containerPort": "5432/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "55432"
+    },
+    {
+      "container": "spotibuds-local-demo-mongo-1",
+      "containerPort": "27017/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "57017"
+    },
+    {
+      "container": "spotibuds-local-demo-redis-1",
+      "containerPort": "6379/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "56379"
+    },
+    {
+      "container": "spotibuds-local-demo-azurite-1",
+      "containerPort": "10000/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "10000"
+    },
+    {
+      "container": "spotibuds-local-demo-mailpit-1",
+      "containerPort": "8025/tcp",
+      "hostIp": "127.0.0.1",
+      "hostPort": "8025"
+    }
+  ],
+  "applicationUids": {
+    "frontend": "1001",
+    "identity": "1654",
+    "music": "1654",
+    "user": "1654"
+  },
+  "generatedCredentialFilesExcludedFromFrontendImage": true
+}

@@ -1,16 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'next/navigation';
-import { useFriendHub } from '../../../hooks/useFriendHub';
-import { userApi, identityApi } from '../../../lib/api';
-import { notificationService } from '../../../lib/notificationService';
-import { chatHub, ChatMessage as ChatHubMessage } from '../../../lib/chatHub';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams } from "next/navigation";
+import { userApi, identityApi } from "../../../lib/api";
+import { notificationService } from "../../../lib/notificationService";
+import { chatHub, ChatMessage as ChatHubMessage } from "../../../lib/chatHub";
 
-import { Button } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
-import { Toast } from '../../../components/ui/Toast';
-import MusicImage from '../../../components/ui/MusicImage';
+import { Button } from "../../../components/ui/Button";
+import { Input } from "../../../components/ui/Input";
+import { Toast } from "../../../components/ui/Toast";
+import MusicImage from "../../../components/ui/MusicImage";
 interface User {
   id: string;
   username: string;
@@ -46,15 +45,17 @@ export default function ChatPage() {
   const [chat, setChat] = useState<Chat | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'info' }>>([]);
-  
+  const [toasts, setToasts] = useState<
+    Array<{ id: string; message: string; type: "success" | "error" | "info" }>
+  >([]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const addToast = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+  const addToast = useCallback((message: string, type: "success" | "error" | "info") => {
     const id = Math.random().toString(36).substr(2, 9);
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
@@ -69,7 +70,7 @@ export default function ChatPage() {
   // Sidebar state management
   useEffect(() => {
     const handleSidebarChange = () => {
-      const savedSidebarState = localStorage.getItem('sidebarOpen');
+      const savedSidebarState = localStorage.getItem("sidebarOpen");
       if (savedSidebarState !== null) {
         setSidebarOpen(JSON.parse(savedSidebarState));
       }
@@ -79,34 +80,29 @@ export default function ChatPage() {
     handleSidebarChange();
 
     // Listen for storage changes (cross-window) and custom events (same window)
-    window.addEventListener('storage', handleSidebarChange);
-    window.addEventListener('sidebarToggle', handleSidebarChange);
+    window.addEventListener("storage", handleSidebarChange);
+    window.addEventListener("sidebarToggle", handleSidebarChange);
 
     return () => {
-      window.removeEventListener('storage', handleSidebarChange);
-      window.removeEventListener('sidebarToggle', handleSidebarChange);
+      window.removeEventListener("storage", handleSidebarChange);
+      window.removeEventListener("sidebarToggle", handleSidebarChange);
     };
   }, []);
-
-  const handleError = useCallback((error: string) => {
-    // Only show toast for actual errors, not transport fallbacks
-    if (!error.includes('transport') && !error.includes('WebSocket')) {
-      addToast(error, 'error');
-    }
-  }, [addToast]);
 
   const handleMessageReceived = useCallback((message: ChatMessage) => {
     // Validate message structure
     if (!message.messageId) {
-      console.warn('Received message without messageId:', message);
+      console.warn("Received message without messageId:", message);
       return;
     }
-    
+
     // Add incoming message to local state, but check for duplicates first
     setChatMessages(prev => {
       const exists = prev.some(m => m.messageId === message.messageId);
       if (!exists) {
-        return [...prev, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        return [...prev, message].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
       }
       return prev;
     });
@@ -115,15 +111,17 @@ export default function ChatPage() {
   const handleMessageSent = useCallback((message: ChatMessage) => {
     // Validate message structure
     if (!message.messageId) {
-      console.warn('Sent message without messageId:', message);
+      console.warn("Sent message without messageId:", message);
       return;
     }
-    
+
     // Add sent message to local state (in case it wasn't already added)
     setChatMessages(prev => {
       const exists = prev.some(m => m.messageId === message.messageId);
       if (!exists) {
-        return [...prev, message].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        return [...prev, message].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
       }
       return prev;
     });
@@ -131,22 +129,16 @@ export default function ChatPage() {
 
   const handleMessageRead = useCallback((messageId: string) => {
     // Mark message as read in local state
-    setChatMessages(prev => prev.map(m => 
-      m.messageId === messageId ? { ...m, isRead: true } : m
-    ));
+    setChatMessages(prev =>
+      prev.map(m => (m.messageId === messageId ? { ...m, isRead: true } : m))
+    );
   }, []);
 
-  const {
-    isConnected,
-    connectionState,
-    markMessageAsRead: markMessageAsReadSignalR,
-  } = useFriendHub({
-    userId: currentUser?.id,
-    onError: handleError,
-    onMessageReceived: handleMessageReceived,
-    onMessageSent: handleMessageSent,
-    onMessageRead: handleMessageRead
-  });
+  const [connectionState, setConnectionState] = useState(chatHub.getConnectionState());
+  const [joined, setJoined] = useState(false);
+  const [sending, setSending] = useState(false);
+  const draftId = useRef<string | null>(null);
+  const isConnected = connectionState === "Connected" && joined;
 
   // Load current user and chat data
   useEffect(() => {
@@ -155,17 +147,17 @@ export default function ChatPage() {
         // Get current user from identity API
         const user = identityApi.getCurrentUser();
         if (!user) {
-          addToast('User not authenticated', 'error');
+          addToast("User not authenticated", "error");
           return;
         }
-        
-        // Get the full user profile with MongoDB _id for proper comparison
+
+        // Profile mappings use the canonical Identity GUID for participants and senders.
         const userProfile = await userApi.getCurrentUserProfile();
         const currentUserData = userProfile || {
           id: user.id,
-          username: user.username
+          username: user.username,
         };
-        
+
         setCurrentUser(currentUserData);
 
         // Load chat data
@@ -178,15 +170,16 @@ export default function ChatPage() {
         const otherParticipantId = chatData.participants.find(p => p !== currentUserData.id);
         if (otherParticipantId) {
           try {
-            const otherUser = await userApi.getUserProfile(otherParticipantId);
+            const [otherUser] = await userApi.getUserProfilesBatch([otherParticipantId]);
+            if (!otherUser) throw new Error("Chat participant could not be loaded.");
             setOtherParticipant(otherUser);
           } catch (error) {
-            console.error('Failed to fetch other participant profile:', error);
+            console.error("Failed to fetch other participant profile:", error);
             // Set fallback user info
             setOtherParticipant({
               id: otherParticipantId,
               username: `User ${otherParticipantId.slice(0, 8)}`,
-              displayName: `User ${otherParticipantId.slice(0, 8)}`
+              displayName: `User ${otherParticipantId.slice(0, 8)}`,
             });
           }
         }
@@ -200,24 +193,26 @@ export default function ChatPage() {
             messageId: msg.messageId,
             chatId: msg.chatId,
             senderId: msg.senderId,
-            senderName: msg.senderName || 'Unknown User',
+            senderName: msg.senderName || "Unknown User",
             content: msg.content,
             timestamp: msg.sentAt,
-            isRead: msg.readBy.length > 0
+            isRead: msg.isRead ?? msg.readBy.some(read => read.userId !== msg.senderId),
           }));
         // Sort messages by timestamp ascending (oldest first)
-        const sortedMessages = formattedMessages.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const sortedMessages = formattedMessages.sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
         setChatMessages(sortedMessages);
 
         // Mark all messages in this chat as read
         try {
           await userApi.markAllMessagesAsRead(chatId);
         } catch (error) {
-          console.error('Failed to mark messages as read:', error);
+          console.error("Failed to mark messages as read:", error);
         }
       } catch (error) {
-        console.error('Failed to load chat data:', error);
-        addToast('Failed to load chat', 'error');
+        console.error("Failed to load chat data:", error);
+        addToast("Failed to load chat", "error");
       } finally {
         setIsLoading(false);
       }
@@ -228,28 +223,41 @@ export default function ChatPage() {
   }, [chatId]); // Remove addToast from dependencies to prevent infinite loops
 
   const handleSendMessage = useCallback(async () => {
-    if (!message.trim() || !currentUser) return;
+    if (!message.trim() || !currentUser || sending) return;
+    const draft = message;
+    draftId.current ||= crypto.randomUUID();
+    setSending(true);
 
     try {
       // Send message via Chat Hub for real-time delivery
-      await chatHub.sendMessage(chatId, message.trim());
-      setMessage('');
+      const acknowledgement = await chatHub.sendMessage(chatId, draft.trim(), draftId.current);
+      handleMessageSent(acknowledgement);
+      setMessage(current => (current === draft ? "" : current));
+      draftId.current = null;
       inputRef.current?.focus();
     } catch (error) {
-      console.error('Failed to send message:', error);
-      addToast('Failed to send message', 'error');
+      console.error("Failed to send message:", error);
+      addToast(
+        error instanceof Error ? error.message : "Failed to send message. Your draft was kept.",
+        "error"
+      );
+    } finally {
+      setSending(false);
     }
-  }, [message, currentUser, chatId, addToast]);
+  }, [message, currentUser, chatId, addToast, sending, handleMessageSent]);
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
-  }, [handleSendMessage]);
+  const handleKeyPress = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSendMessage();
+      }
+    },
+    [handleSendMessage]
+  );
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   // Set current chat ID for notification service
@@ -257,7 +265,7 @@ export default function ChatPage() {
     if (chatId) {
       notificationService.setCurrentChatId(chatId);
     }
-    
+
     return () => {
       notificationService.setCurrentChatId(null);
     };
@@ -269,11 +277,15 @@ export default function ChatPage() {
 
     // Set up chat hub handlers for real-time messages
     chatHub.setHandlers({
+      onConnectionStateChange: state => {
+        setConnectionState(state);
+        if (state !== "Connected") setJoined(false);
+      },
+      onChatJoined: () => setJoined(true),
+      onMessageRead: handleMessageRead,
       onMessageReceived: (message: ChatHubMessage) => {
         // Only handle messages for this chat
         if (message.chatId === chatId) {
-          console.log('💬 Real-time message received in chat:', message);
-          
           // Convert to local format and add to messages
           const formattedMessage: ChatMessage = {
             messageId: message.messageId,
@@ -282,16 +294,15 @@ export default function ChatPage() {
             senderName: message.senderName,
             content: message.content,
             timestamp: message.timestamp,
-            isRead: message.isRead
+            isRead: message.isRead,
           };
-          
+
           handleMessageReceived(formattedMessage);
         }
       },
       onMessageSent: (message: ChatHubMessage) => {
         // Handle message sent confirmation
         if (message.chatId === chatId) {
-          console.log('💬 Message sent confirmation:', message);
           const formattedMessage: ChatMessage = {
             messageId: message.messageId,
             chatId: message.chatId,
@@ -299,29 +310,43 @@ export default function ChatPage() {
             senderName: message.senderName,
             content: message.content,
             timestamp: message.timestamp,
-            isRead: message.isRead
+            isRead: message.isRead,
           };
-          
+
           handleMessageSent(formattedMessage);
         }
       },
-      onError: (error) => {
-        console.error('💬 Chat hub error in chat page:', error);
-        if (!error.includes('transport') && !error.includes('WebSocket')) {
-          addToast(`Chat error: ${error}`, 'error');
+      onError: error => {
+        console.error("💬 Chat hub error in chat page:", error);
+        if (!error.includes("transport") && !error.includes("WebSocket")) {
+          addToast(`Chat error: ${error}`, "error");
         }
-      }
+      },
     });
 
     // Join the chat room
-    chatHub.joinChat(chatId);
+    void chatHub
+      .joinChat(chatId)
+      .catch(error =>
+        addToast(
+          error instanceof Error ? error.message : "Chat join failed. Retry reconnecting.",
+          "error"
+        )
+      );
 
     return () => {
       // Leave the chat room when component unmounts
-      chatHub.leaveChat(chatId);
+      void chatHub.leaveChat(chatId).catch(() => undefined);
       chatHub.removeHandlers();
     };
-  }, [chatId, currentUser?.id, handleMessageReceived, handleMessageSent, addToast]);
+  }, [
+    chatId,
+    currentUser?.id,
+    handleMessageReceived,
+    handleMessageSent,
+    handleMessageRead,
+    addToast,
+  ]);
 
   useEffect(() => {
     scrollToBottom();
@@ -334,47 +359,40 @@ export default function ChatPage() {
   useEffect(() => {
     // Mark messages as read when chat is opened and SignalR is connected
     if (chatMessages.length > 0 && currentUser && isConnected) {
-      const unreadMessages = chatMessages.filter(msg =>
-        !msg.isRead &&
-        msg.senderId !== currentUser.id &&
-        !processedMessagesRef.current.has(msg.messageId)
+      const unreadMessages = chatMessages.filter(
+        msg =>
+          !msg.isRead &&
+          msg.senderId !== currentUser.id &&
+          !processedMessagesRef.current.has(msg.messageId)
       );
 
-      unreadMessages.forEach(async (msg) => {
+      unreadMessages.forEach(async msg => {
         // Skip messages without valid messageId
         if (!msg.messageId) {
-          console.warn('Skipping message mark as read - missing messageId:', msg);
+          console.warn("Skipping message mark as read - missing messageId:", msg);
           return;
         }
-        
+
         // Mark this message as being processed
         processedMessagesRef.current.add(msg.messageId);
 
         try {
           // Mark as read via SignalR for real-time updates
-          await markMessageAsReadSignalR(msg.messageId);
-
-          // Also mark via API for persistence (backup)
-          try {
-            await userApi.markMessageAsRead(msg.messageId);
-          } catch (apiError) {
-            console.warn('API mark as read failed, but SignalR succeeded:', apiError);
-          }
+          await chatHub.markMessageAsRead(msg.messageId);
 
           // Update local state
-          setChatMessages(prev => prev.map(m =>
-            m.messageId === msg.messageId ? { ...m, isRead: true } : m
-          ));
+          setChatMessages(prev =>
+            prev.map(m => (m.messageId === msg.messageId ? { ...m, isRead: true } : m))
+          );
         } catch (error) {
-          console.error('Failed to mark message as read:', error);
+          console.error("Failed to mark message as read:", error);
           // Remove from processed set on error so it can be retried, and queue for reconnect
           processedMessagesRef.current.delete(msg.messageId);
           pendingRetryRef.current.add(msg.messageId);
         }
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMessages.length, currentUser?.id, markMessageAsReadSignalR, isConnected]);
+  }, [chatMessages, currentUser, isConnected]);
 
   // Retry any failed read acknowledgements once the connection is back
   useEffect(() => {
@@ -389,23 +407,20 @@ export default function ChatPage() {
           pendingRetryRef.current.delete(id);
           continue;
         }
-        
+
         try {
-          await markMessageAsReadSignalR(id);
-          try {
-            await userApi.markMessageAsRead(id);
-          } catch {}
-          setChatMessages(prev => prev.map(m => m.messageId === id ? { ...m, isRead: true } : m));
+          await chatHub.markMessageAsRead(id);
+          setChatMessages(prev => prev.map(m => (m.messageId === id ? { ...m, isRead: true } : m)));
           pendingRetryRef.current.delete(id);
           processedMessagesRef.current.add(id);
-  } catch {
+        } catch {
           // Keep it in the retry set; will retry on next reconnect
         }
       }
     };
 
     retry();
-  }, [isConnected, currentUser, markMessageAsReadSignalR, setChatMessages]);
+  }, [isConnected, currentUser, setChatMessages]);
 
   if (isLoading) {
     return (
@@ -439,12 +454,24 @@ export default function ChatPage() {
         <div className="p-6 flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              <svg
+                className="w-8 h-8 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                />
               </svg>
             </div>
             <h2 className="text-xl font-semibold text-white mb-2">Chat Not Found</h2>
-            <p className="text-gray-400">This chat doesn&apos;t exist or you don&apos;t have access to it.</p>
+            <p className="text-gray-400">
+              This chat doesn&apos;t exist or you don&apos;t have access to it.
+            </p>
           </div>
         </div>
       </>
@@ -453,7 +480,9 @@ export default function ChatPage() {
 
   return (
     <>
-  <div className={`fixed top-16 bottom-16 sm:bottom-20 transition-all duration-300 z-35 ${sidebarOpen ? 'left-64 sm:left-72' : 'left-0'} right-0`}>
+      <div
+        className={`fixed top-16 bottom-16 sm:bottom-20 transition-all duration-300 z-35 ${sidebarOpen ? "left-64 sm:left-72" : "left-0"} right-0`}
+      >
         <div className="flex flex-col h-full max-w-full">
           {/* Chat Header */}
           <div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-800/50">
@@ -461,17 +490,25 @@ export default function ChatPage() {
               <div className="flex items-center gap-3">
                 <MusicImage
                   src={otherParticipant?.avatarUrl}
-                  alt={otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
+                  alt={
+                    otherParticipant
+                      ? otherParticipant.displayName || otherParticipant.username
+                      : "Unknown User"
+                  }
                   className="w-10 h-10 sm:w-12 sm:h-12 rounded-full"
                 />
                 <div className="min-w-0">
                   <h1 className="text-base sm:text-lg font-semibold text-white truncate">
-                    {otherParticipant ? (otherParticipant.displayName || otherParticipant.username) : 'Unknown User'}
+                    {otherParticipant
+                      ? otherParticipant.displayName || otherParticipant.username
+                      : "Unknown User"}
                   </h1>
                   <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
+                    ></span>
                     <span className="text-gray-400">
-                      {connectionState === 'Connected' ? 'Online' : connectionState}
+                      {connectionState === "Connected" ? "Online" : connectionState}
                     </span>
                   </div>
                 </div>
@@ -481,64 +518,70 @@ export default function ChatPage() {
 
           {/* Messages Area */}
           <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2 sm:space-y-3 lg:space-y-4">
-          {chatMessages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">No messages yet</h3>
-              <p className="text-gray-400">Start the conversation by sending a message!</p>
-            </div>
-          ) : (
-            chatMessages.map((msg) => {
-              // Skip messages without valid messageId to prevent React key warnings and API errors
-              if (!msg.messageId) {
-                console.warn('Message missing messageId:', msg);
-                return null;
-              }
-              
-              // Use IdentityUserId for comparison since that's what we're using consistently
-              const isOwnMessage = msg.senderId === currentUser?.id;
-              
-              return (
-                <div
-                  key={msg.messageId}
-                  className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[280px] sm:max-w-xs lg:max-w-sm xl:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-xl shadow-sm ${
-                      isOwnMessage
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-white'
-                    }`}
+            {chatMessages.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
+                  <svg
+                    className="w-8 h-8 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs sm:text-sm font-medium opacity-90">
-                        {isOwnMessage ? 'You' : msg.senderName}
-                      </span>
-                      <span className="text-xs opacity-60">
-                        {new Date(msg.timestamp).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-sm sm:text-base leading-relaxed">{msg.content}</p>
-                    {isOwnMessage && (
-                      <div className="flex justify-end mt-2">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">No messages yet</h3>
+                <p className="text-gray-400">Start the conversation by sending a message!</p>
+              </div>
+            ) : (
+              chatMessages.map(msg => {
+                // Skip messages without valid messageId to prevent React key warnings and API errors
+                if (!msg.messageId) {
+                  console.warn("Message missing messageId:", msg);
+                  return null;
+                }
+
+                // Use IdentityUserId for comparison since that's what we're using consistently
+                const isOwnMessage = msg.senderId === currentUser?.id;
+
+                return (
+                  <div
+                    key={msg.messageId}
+                    className={`flex ${isOwnMessage ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[280px] sm:max-w-xs lg:max-w-sm xl:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-xl shadow-sm ${
+                        isOwnMessage ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs sm:text-sm font-medium opacity-90">
+                          {isOwnMessage ? "You" : msg.senderName}
+                        </span>
                         <span className="text-xs opacity-60">
-                          {msg.isRead ? '✓✓' : '✓'}
+                          {new Date(msg.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       </div>
-                    )}
+                      <p className="text-sm sm:text-base leading-relaxed">{msg.content}</p>
+                      {isOwnMessage && (
+                        <div className="flex justify-end mt-2">
+                          <span className="text-xs opacity-60">{msg.isRead ? "✓✓" : "✓"}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
           </div>
 
           {/* Message Input */}
@@ -546,23 +589,29 @@ export default function ChatPage() {
             <div className="flex gap-2 sm:gap-3 items-end">
               <div className="flex-1">
                 <Input
+                  aria-label="Type a message..."
                   ref={inputRef}
                   value={message}
-                  onChange={(e) => setMessage(e.target.value)}
+                  onChange={e => setMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Type a message..."
                   className="w-full bg-gray-800 border-gray-600 text-white placeholder-gray-400 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-                  disabled={!isConnected}
                 />
               </div>
               <Button
+                aria-label="Send message"
                 onClick={handleSendMessage}
-                disabled={!message.trim() || !isConnected}
+                disabled={!message.trim() || !isConnected || sending}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                 size="sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
                 </svg>
               </Button>
             </div>
@@ -573,7 +622,7 @@ export default function ChatPage() {
         </div>
 
         {/* Toasts */}
-        {toasts.map((toast) => (
+        {toasts.map(toast => (
           <Toast
             key={toast.id}
             message={toast.message}

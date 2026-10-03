@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-03",
+  "scope": "Final manual in-app browser inspection after narrowly scoped test fixture cleanup",
+  "authenticatedAccount": "alice",
+  "playlist": "Demo Favorites",
+  "seededSongCount": 2,
+  "desktop": {
+    "viewportWidth": 1280,
+    "documentScrollWidth": 1280,
+    "horizontalOverflow": false,
+    "image": "../browser-playlist.png"
+  },
+  "mobile": {
+    "viewportWidth": 390,
+    "documentScrollWidth": 382,
+    "horizontalOverflow": false,
+    "sidebarClosed": true,
+    "image": "../browser-mobile.png"
+  },
+  "nativeAudioStopped": true,
+  "temporaryViewportOverrideReset": true,
+  "browserMarkedAsDeliverable": true,
+  "limitations": [
+    "Representative responsive inspection; exhaustive device and accessibility coverage was not executed."
+  ]
+}

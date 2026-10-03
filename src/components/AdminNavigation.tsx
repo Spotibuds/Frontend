@@ -22,10 +22,7 @@ export default function TopNavigation() {
       {/* Mobile Hamburger Button */}
       <div className="flex items-center justify-between md:hidden">
         <span className="text-purple-200 font-bold text-lg">Admin</span>
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="text-purple-200 focus:outline-none"
-        >
+        <button onClick={() => setIsOpen(!isOpen)} className="text-purple-200 focus:outline-none">
           {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
       </div>
@@ -38,8 +35,7 @@ export default function TopNavigation() {
         `}
       >
         {navItems.map(({ name, href, icon: Icon }) => {
-          const isActive =
-            href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+          const isActive = href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
 
           return (
             <li key={name} className="flex-shrink-0">
@@ -47,9 +43,10 @@ export default function TopNavigation() {
                 href={href}
                 className={`
                   flex items-center gap-2 px-3 py-2 rounded-lg transition
-                  ${isActive
-                    ? "bg-purple-600 text-white shadow"
-                    : "text-purple-200 hover:bg-purple-800 hover:text-white"
+                  ${
+                    isActive
+                      ? "bg-purple-600 text-white shadow"
+                      : "text-purple-200 hover:bg-purple-800 hover:text-white"
                   }
                 `}
                 onClick={() => setIsOpen(false)} // close menu on click

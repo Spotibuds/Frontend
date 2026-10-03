@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-03T20:38:05.639Z",
+  "verdict": "Verified for the isolated single-instance local demo",
+  "command": "pwsh -File Frontend/demo/Test.ps1 -Browser -BuildImages",
+  "commandExitCode": 0,
+  "backend": {
+    "Identity": {
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    "Music": {
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "User": {
+      "passed": 19,
+      "failed": 0,
+      "skipped": 0
+    },
+    "totalPassed": 56,
+    "applicationBuildWarnings": 0
+  },
+  "frontend": {
+    "unitPassed": 29,
+    "browserPassed": 21,
+    "browserSkipped": 0,
+    "typeCheck": "passed",
+    "lint": "passed; zero warnings",
+    "format": "passed",
+    "productionBuild": "passed",
+    "supplementalPlaybackCleanup": {
+      "source": "../frontend-browser-verification-playback-cleanup.json",
+      "changedCasePassed": 1,
+      "fullSuiteRepeated": false,
+      "originalFullSuiteJsonSha256": "51d67898a03d79f33063f09b1e8203fd58456d7ab2232641d01a560b8ffa47b2"
+    }
+  },
+  "dependencies": {
+    "backendKnownVulnerablePackages": 0,
+    "frontendProductionAdvisories": 0,
+    "frontendDevelopmentAdvisories": 1,
+    "exception": "GHSA-vfj7-8cjw-p6xm; static lint globs only; exact gate expires 2026-10-17",
+    "ciReportShapeChecks": 27,
+    "actualCiDependencyReports": 3,
+    "remoteCiTriggered": false
+  },
+  "docker": {
+    "allFourApplicationBuilds": "passed",
+    "loopbackBindings": 9,
+    "nonrootApplications": 4,
+    "privateGeneratedFilesExcluded": true
+  },
+  "persistedIntegration": {
+    "identityPostgresMongoMailpitChecks": 40,
+    "outageRangeRestartChecks": 26,
+    "statusCliChecks": 2,
+    "allDependenciesRestored": true
+  },
+  "cleanSetup": {
+    "source": "verification/clean-setup.json",
+    "freshNamedVolumes": true,
+    "latestDatabaseMigrations": true,
+    "repeatedSeedIdsIdentical": true,
+    "fullStackRestartDataAndMediaMatched": true,
+    "credentialsPreserved": true
+  },
+  "environmentGeneration": {
+    "scenarios": 3,
+    "checksPassed": 12
+  },
+  "frontendDevelopment": {
+    "source": "verification/frontend-development.json",
+    "checksPassed": 21,
+    "documentedStartup": "passed",
+    "scopedWindowsStopHelper": "passed",
+    "containerFrontendRestored": true,
+    "scope": "Startup, explicit local API configuration and scoped development teardown; full browser workflows ran against the production container."
+  },
+  "taskFixtureCleanup": {
+    "source": "verification/playback-fixture-cleanup.json",
+    "removedHistoricalTestPlaylists": 4,
+    "checksPassed": 22,
+    "databaseReset": false,
+    "seededPlaylistAndExactMediaHashesUnchanged": true
+  },
+  "ledger": {
+    "counts": {
+      "originalAuditIds": 92,
+      "originalFindings": 73,
+      "originalRisksAndDormantItems": 19,
+      "encounteredDuringTask": 28,
+      "total": 120
+    },
+    "dispositions": {
+      "originalAudit": {
+        "Fixed and verified": 84,
+        "Fixed, verification blocked": 0,
+        "Mitigated for the local demo": 5,
+        "Deferred: production-only follow-up": 3,
+        "Not applicable, with evidence": 0
+      },
+      "encounteredDuringTask": {
+        "Fixed and verified": 28,
+        "Fixed, verification blocked": 0,
+        "Mitigated for the local demo": 0,
+        "Deferred: production-only follow-up": 0,
+        "Not applicable, with evidence": 0
+      },
+      "overall": {
+        "Fixed and verified": 112,
+        "Fixed, verification blocked": 0,
+        "Mitigated for the local demo": 5,
+        "Deferred: production-only follow-up": 3,
+        "Not applicable, with evidence": 0
+      }
+    }
+  },
+  "discoveryEvidence": [
+    "../frontend-browser-discovery.json",
+    "../frontend-browser-discovery-signout.json",
+    "../frontend-browser-discovery-feed.json",
+    "../frontend-browser-discovery-recovery.json"
+  ],
+  "limitations": [
+    "Single instance per service; presence, now-playing and live routing need distributed coordination before scaling.",
+    "Local HTTP Development cookie exception applies only to loopback; production requires TLS/Secure cookies.",
+    "One exact development-only dependency advisory remains until a patched compatible lint chain is available or the 2026-10-17 review deadline.",
+    "Identity .NET 8 migration is due before November 2026 support ends.",
+    "Remote CI was not triggered; local equivalent commands and workflow/report gates were verified.",
+    "No production load, exhaustive browser/accessibility matrix, cloud policy or backup/restore drill was executed.",
+    "Historical external credentials were not reused and their revocation is unverified."
+  ],
+  "productionActions": [
+    "TLS/reverse proxy and Secure-cookie policy",
+    "Identity framework migration",
+    "Distributed realtime coordination and durable delivery",
+    "Production secret rotation, cloud identity/storage/registry policy",
+    "Load/browser/accessibility matrix, operational observability and backup/restore drills"
+  ],
+  "safety": {
+    "productionAccess": false,
+    "deploymentOrPush": false,
+    "tokensOrPasswordsInEvidence": false,
+    "originalAuditPreserved": true
+  }
+}

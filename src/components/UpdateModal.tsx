@@ -1,11 +1,13 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
+import { useDialog } from "@/hooks/useDialog";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Album, Artist, Song, musicApi } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import Image from "next/image";
+import MusicImage from "@/components/ui/MusicImage";
 
 const MySwal = withReactContent(Swal);
 
@@ -44,6 +46,8 @@ export default function UpdateModal({
     coverFile?: File;
     audioFile?: File;
   }>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [allArtists, setAllArtists] = useState<Artist[]>([]);
   const [allAlbums, setAllAlbums] = useState<Album[]>([]);
   const [artistQuery, setArtistQuery] = useState("");
@@ -55,7 +59,7 @@ export default function UpdateModal({
   const [hasTypedArtist, setHasTypedArtist] = useState(false);
   const [hasTypedAlbum, setHasTypedAlbum] = useState(false);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setHasTypedArtist(false);
     setHasTypedAlbum(false);
   }, [data]);
@@ -71,16 +75,16 @@ export default function UpdateModal({
   }, [type]);
 
   // Initialize form state
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (data) {
       let artist = null;
       let album = null;
 
       // Handle different data types
-      if (type === 'song' && 'artists' in data) {
+      if (type === "song" && "artists" in data) {
         artist = data.artists?.[0] || null;
         album = data.album || null;
-      } else if (type === 'album' && 'artist' in data) {
+      } else if (type === "album" && "artist" in data) {
         artist = data.artist || null;
       }
 
@@ -95,9 +99,9 @@ export default function UpdateModal({
 
       // Handle cover preview for different data types
       let coverUrl = "";
-      if ('coverUrl' in data && data.coverUrl) {
+      if ("coverUrl" in data && data.coverUrl) {
         coverUrl = data.coverUrl;
-      } else if ('imageUrl' in data && data.imageUrl) {
+      } else if ("imageUrl" in data && data.imageUrl) {
         coverUrl = data.imageUrl;
       }
       setCoverPreview(coverUrl);
@@ -110,11 +114,11 @@ export default function UpdateModal({
   }, [data, type]);
 
   // Artist suggestions
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (artistQuery.trim() === "") {
       setArtistSuggestions([]);
     } else {
-      const filtered = allArtists.filter((a) =>
+      const filtered = allArtists.filter(a =>
         a.name.toLowerCase().includes(artistQuery.toLowerCase())
       );
       setArtistSuggestions(filtered);
@@ -122,15 +126,13 @@ export default function UpdateModal({
   }, [artistQuery, allArtists]);
 
   // Album suggestions
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (!albumQuery.trim()) {
       setAlbumSuggestions([]);
     } else {
       const filtered = allAlbums
-        .filter((a) =>
-          a.title.toLowerCase().includes(albumQuery.toLowerCase())
-        )
-        .filter((a) => type !== "song" || a.artist); // all albums for songs must have artist
+        .filter(a => a.title.toLowerCase().includes(albumQuery.toLowerCase()))
+        .filter(a => type !== "song" || a.artist); // all albums for songs must have artist
       setAlbumSuggestions(filtered);
     }
   }, [albumQuery, allAlbums, type]);
@@ -141,18 +143,18 @@ export default function UpdateModal({
     if (e.target instanceof HTMLInputElement && e.target.type === "file") {
       const file = e.target.files?.[0];
       if (file) {
-        setFormDataState((prev) => ({ ...prev, [name]: file }));
+        setFormDataState(prev => ({ ...prev, [name]: file }));
         if (name === "coverFile" || name === "imageFile") {
           setCoverPreview(URL.createObjectURL(file));
         }
       }
     } else {
-      setFormDataState((prev) => ({ ...prev, [name]: value }));
+      setFormDataState(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleSave = async () => {
-    if (!type || !data?.id) return;
+    if (!type || !data?.id || saving) return;
 
     // Validation
     if ((type === "album" || type === "song") && !formDataState.artist?.id) {
@@ -179,12 +181,14 @@ export default function UpdateModal({
     if (type === "song") {
       form.append("Title", formDataState.title || "");
       if (formDataState.audioFile) form.append("AudioFile", formDataState.audioFile);
-      else form.append("AudioFile", new Blob());
+
       if (formDataState.coverFile) form.append("CoverFile", formDataState.coverFile);
       if (formDataState.artists?.[0]?.id) form.append("ArtistId", formDataState.artists[0].id);
       if (formDataState.album?.id) form.append("AlbumId", formDataState.album.id);
     }
 
+    setSaving(true);
+    setSaveError("");
     try {
       const updated = await onUpdate(type, data.id, form);
 
@@ -200,31 +204,39 @@ export default function UpdateModal({
       }
     } catch (err) {
       console.error(err);
-      await MySwal.fire({ icon: "error", title: "Something went wrong" });
+      setSaveError(err instanceof Error ? err.message : "Update failed. Your input was kept.");
+    } finally {
+      setSaving(false);
     }
   };
 
+  const dialogRef = useDialog(isOpen, onClose);
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-gray-900 p-6 rounded-lg w-96 space-y-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Update ${type}`}
+        tabIndex={-1}
+        className="bg-gray-900 p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto space-y-4"
+      >
         <h3 className="text-white text-lg font-semibold">Update {type}</h3>
-
-        {coverPreview && (
-          <Image
-            src={coverPreview}
-            alt="cover preview"
-            width={96}
-            height={96}
-            className="object-cover mb-2 rounded"
-          />
+        {saveError && (
+          <p role="alert" className="text-red-300">
+            {saveError}
+          </p>
         )}
+
+        {coverPreview && <MusicImage src={coverPreview} alt="Cover preview" size="large" />}
 
         {type === "artist" && (
           <>
             <input
               name="name"
+              aria-label="name"
               value={formDataState.name || formDataState.title || ""}
               onChange={handleChange}
               placeholder="Artist Name"
@@ -232,6 +244,7 @@ export default function UpdateModal({
             />
             <textarea
               name="bio"
+              aria-label="bio"
               value={formDataState.bio || ""}
               onChange={handleChange}
               placeholder="Artist Bio"
@@ -240,6 +253,7 @@ export default function UpdateModal({
             <label className="w-full block mb-2 text-white">
               Profile Image
               <input
+                aria-label="image File"
                 type="file"
                 name="imageFile"
                 onChange={handleChange}
@@ -263,8 +277,9 @@ export default function UpdateModal({
             {/* Artist Input */}
             <input
               name="artistQuery"
+              aria-label="artistQuery"
               value={artistQuery}
-              onChange={(e) => {
+              onChange={e => {
                 setArtistQuery(e.target.value);
                 setHasTypedArtist(true);
               }}
@@ -273,12 +288,20 @@ export default function UpdateModal({
             />
             {hasTypedArtist && artistSuggestions.length > 0 && (
               <ul className="bg-gray-700 rounded max-h-32 overflow-y-auto text-white mb-2">
-                {artistSuggestions.map((a) => (
+                {artistSuggestions.map(a => (
                   <li
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={event => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.currentTarget.click();
+                      }
+                    }}
                     key={a.id}
                     className="px-2 py-1 cursor-pointer hover:bg-gray-600"
                     onClick={() => {
-                      setFormDataState((prev) => ({ ...prev, artist: a, artists: [a] }));
+                      setFormDataState(prev => ({ ...prev, artist: a, artists: [a] }));
                       setArtistQuery(a.name);
                       setArtistSuggestions([]);
                       setAlbumQuery("");
@@ -295,6 +318,7 @@ export default function UpdateModal({
               <>
                 <input
                   name="title"
+                  aria-label="title"
                   value={formDataState.title || ""}
                   onChange={handleChange}
                   placeholder="Album Title"
@@ -303,6 +327,7 @@ export default function UpdateModal({
                 <label className="w-full block mb-2 text-white">
                   Cover Image
                   <input
+                    aria-label="cover File"
                     type="file"
                     name="coverFile"
                     onChange={handleChange}
@@ -325,6 +350,7 @@ export default function UpdateModal({
               <>
                 <input
                   name="title"
+                  aria-label="title"
                   value={formDataState.title || ""}
                   onChange={handleChange}
                   placeholder="Song Title"
@@ -332,8 +358,9 @@ export default function UpdateModal({
                 />
                 <input
                   name="albumQuery"
+                  aria-label="albumQuery"
                   value={albumQuery}
-                  onChange={(e) => {
+                  onChange={e => {
                     setAlbumQuery(e.target.value);
                     setHasTypedAlbum(true);
                   }}
@@ -343,13 +370,20 @@ export default function UpdateModal({
                 />
                 {hasTypedAlbum && albumSuggestions.length > 0 && (
                   <ul className="bg-gray-700 rounded max-h-32 overflow-y-auto text-white mb-2">
-                    {albumSuggestions.map((a) => (
+                    {albumSuggestions.map(a => (
                       <li
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.currentTarget.click();
+                          }
+                        }}
                         key={a.id}
                         className="px-2 py-1 cursor-pointer hover:bg-gray-600"
                         onClick={() => {
-
-                          setFormDataState((prev) => ({
+                          setFormDataState(prev => ({
                             ...prev,
                             album: a,
                             artists: a.artist ? [a.artist] : [],
@@ -368,12 +402,14 @@ export default function UpdateModal({
                 <label className="w-full block mb-2 text-white">
                   Audio File
                   <input
+                    aria-label="audio File"
                     type="file"
                     name="audioFile"
                     onChange={handleChange}
                     className="hidden"
                   />
-                  <Button className="ml-3"
+                  <Button
+                    className="ml-3"
                     type="button"
                     onClick={() =>
                       document.querySelector<HTMLInputElement>('input[name="audioFile"]')?.click()
@@ -385,12 +421,14 @@ export default function UpdateModal({
                 <label className="w-full block mb-2 text-white">
                   Cover Image
                   <input
+                    aria-label="cover File"
                     type="file"
                     name="coverFile"
                     onChange={handleChange}
                     className="hidden"
                   />
-                  <Button className="ml-3"
+                  <Button
+                    className="ml-3"
                     type="button"
                     onClick={() =>
                       document.querySelector<HTMLInputElement>('input[name="coverFile"]')?.click()
@@ -409,12 +447,15 @@ export default function UpdateModal({
             Cancel
           </Button>
           <Button
-            className={`bg-blue-600 hover:bg-blue-700 ${type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)
-              ? "opacity-50 cursor-not-allowed"
-              : ""
-              }`}
+            className={`bg-blue-600 hover:bg-blue-700 ${
+              type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)
+                ? "opacity-50 cursor-not-allowed"
+                : ""
+            }`}
             onClick={handleSave}
-            disabled={type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)}
+            disabled={
+              saving || (type === "song" && (!formDataState.artist?.id || !formDataState.album?.id))
+            }
           >
             Save
           </Button>

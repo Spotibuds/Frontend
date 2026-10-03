@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-03T19:54:59.171Z",
+  "completed": true,
+  "dependenciesRestored": true,
+  "checks": [
+    {
+      "name": "Baseline audio is playable PCM with complete bytes",
+      "passed": true
+    },
+    {
+      "name": "Cold Music start with stopped Redis preserves byte-exact audio",
+      "passed": true
+    },
+    {
+      "name": "Streaming bytes=0-0 is byte-accurate with matching length/range",
+      "passed": true
+    },
+    {
+      "name": "Streaming bytes=-7 is byte-accurate with matching length/range",
+      "passed": true
+    },
+    {
+      "name": "Streaming bytes=44- is byte-accurate with matching length/range",
+      "passed": true
+    },
+    {
+      "name": "Unsatisfiable range returns 416 and actual total length",
+      "passed": true
+    },
+    {
+      "name": "Storage outage affects readiness while liveness remains available",
+      "passed": true
+    },
+    {
+      "name": "Interrupted cover replacement reports actual storage failure",
+      "passed": true
+    },
+    {
+      "name": "Failed cover replacement preserves working metadata and song ordering",
+      "passed": true
+    },
+    {
+      "name": "Storage recovery preserves complete audio bytes",
+      "passed": true
+    },
+    {
+      "name": "Mongo outage returns controlled 503 for catalogue/profile reads",
+      "passed": true
+    },
+    {
+      "name": "Database outage does not falsely change process liveness",
+      "passed": true
+    },
+    {
+      "name": "Mongo recovery reconnects without recreating API containers",
+      "passed": true
+    },
+    {
+      "name": "Mongo recovery retains profile identity",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL outage fails session authentication with controlled 503",
+      "passed": true
+    },
+    {
+      "name": "Downstream protected APIs fail closed during session-store outage",
+      "passed": true
+    },
+    {
+      "name": "Supplied bearer on public playlist reads reports session-store failure explicitly",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL recovery preserves the existing valid session",
+      "passed": true
+    },
+    {
+      "name": "Session-store outage rejects playlist creation without persisting a mutation",
+      "passed": true
+    },
+    {
+      "name": "Pending refresh survives API restart and activates its previously installed successor",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves profile, privacy and avatar identity",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves playlist ownership, ordering and cover",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves listening event data",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves canonical chat messages",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves exact generated media bytes",
+      "passed": true
+    },
+    {
+      "name": "Full API restart preserves ordinary/admin privilege separation",
+      "passed": true
+    }
+  ],
+  "statusCommandChecks": [
+    {
+      "name": "Demo.ps1 status exits nonzero with stopped Blob dependency",
+      "passed": true
+    },
+    {
+      "name": "Demo.ps1 status succeeds after dependency and API recovery",
+      "passed": true
+    }
+  ]
+}

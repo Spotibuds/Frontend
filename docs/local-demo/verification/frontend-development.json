@@ -1,0 +1,100 @@
+{
+  "completed": true,
+  "restored": true,
+  "date": "2026-10-03T20:11:33.1119133Z",
+  "scope": "Development startup, anonymous rendering, compiled loopback configuration and Windows process lifecycle only; no authenticated development workflows tested.",
+  "command": "pwsh -File Frontend/demo/Test-FrontendDevelopment.ps1",
+  "checks": [
+    {
+      "name": "Only the named frontend container is stopped before development startup",
+      "passed": true
+    },
+    {
+      "name": "Development HTTP3100 returns200",
+      "passed": true
+    },
+    {
+      "name": "Development login page renders anonymous username/password controls",
+      "passed": true
+    },
+    {
+      "name": "All served local JavaScript responses are readable",
+      "passed": true
+    },
+    {
+      "name": "Served development client uses loopback API5101",
+      "passed": true
+    },
+    {
+      "name": "Served development client uses loopback API5102",
+      "passed": true
+    },
+    {
+      "name": "Served development client uses loopback API5103",
+      "passed": true
+    },
+    {
+      "name": "Anonymous bootstrap targets configured local Identity",
+      "passed": true
+    },
+    {
+      "name": "Development CSP includes eval support and all local API origins",
+      "passed": true
+    },
+    {
+      "name": "API5101 stays ready during frontend-only development startup",
+      "passed": true
+    },
+    {
+      "name": "API5102 stays ready during frontend-only development startup",
+      "passed": true
+    },
+    {
+      "name": "API5103 stays ready during frontend-only development startup",
+      "passed": true
+    },
+    {
+      "name": "Stopped child belongs to the exact test-launched parent and creation time",
+      "passed": true
+    },
+    {
+      "name": "Verified workspace Next child is stopped and releases3100",
+      "passed": true
+    },
+    {
+      "name": "The launched Next development parent exits after its child stops",
+      "passed": true
+    },
+    {
+      "name": "Foreign fixture is rejected without stopping its exact process",
+      "passed": true
+    },
+    {
+      "name": "Actual free port produces an idempotent no-op",
+      "passed": true
+    },
+    {
+      "name": "API5101 ready after container restore",
+      "passed": true
+    },
+    {
+      "name": "API5102 ready after container restore",
+      "passed": true
+    },
+    {
+      "name": "API5103 ready after container restore",
+      "passed": true
+    },
+    {
+      "name": "Production frontend restored with production CSP",
+      "passed": true
+    }
+  ],
+  "lifecycle": {
+    "ownedDevelopmentStopped": true,
+    "foreignListenerRejectedWithoutStopping": true,
+    "freePortNoop": true,
+    "containerFrontendRestored": true
+  },
+  "priorDiscovery": "PTY Ctrl+C left the verified development child listening; the first restore failed on port3100. Exact verified parent stop subsequently released its child. No broad Node termination occurred."
+}

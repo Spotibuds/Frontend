@@ -1,12 +1,13 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Song, type Artist, type Album } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import Image from "next/image";
+import { useDialog } from "@/hooks/useDialog";
 
 const MySwal = withReactContent(Swal);
 
@@ -34,6 +35,11 @@ export default function AdminPageForSongs() {
   // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dialogRef = useDialog(isCreateModalOpen || isUpdateModalOpen, () => {
+    setIsCreateModalOpen(false);
+    setIsUpdateModalOpen(false);
+  });
   const [modalData, setModalData] = useState<{
     id: string;
     title: string;
@@ -77,11 +83,11 @@ export default function AdminPageForSongs() {
     modalData.album?.id &&
     (isCreateModalOpen ? modalData.audioFile : true);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     fetchSongs();
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (artistSearch.trim() === "") {
       setFilteredArtists([]);
       return;
@@ -91,7 +97,7 @@ export default function AdminPageForSongs() {
     );
   }, [artistSearch, artists]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (albumSearch.trim() === "") {
       setFilteredAlbums([]);
       return;
@@ -101,29 +107,16 @@ export default function AdminPageForSongs() {
     );
   }, [albumSearch, albums]);
 
-  useEffect(() => {
-    const fetchGenres = async () => {
-      try {
-        const res = await fetch(
-          "https://raw.githubusercontent.com/voltraco/genres/master/genres.json"
-        );
-        const data = await res.json();
-        setGenres(data);
-      } catch (err) {
-        console.error("Failed to load genres", err);
-      }
-    };
-    fetchGenres();
+  useDeferredEffect(() => {
+    setGenres(["Ambient", "Classical", "Electronic", "Jazz", "Pop", "Rock", "Soundtrack"]);
   }, []);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     if (genreSearch.trim() === "") {
       setFilteredGenres([]);
       return;
     }
-    setFilteredGenres(
-      genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase()))
-    );
+    setFilteredGenres(genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())));
   }, [genreSearch, genres]);
 
   // Pagination logic
@@ -154,14 +147,18 @@ export default function AdminPageForSongs() {
     try {
       const success = await adminApi.deleteSong(id);
       if (success) {
-        setSongs(songs.filter((a) => a.id !== id));
+        setSongs(songs.filter(a => a.id !== id));
         MySwal.fire({ icon: "success", title: "Song deleted successfully" });
       } else {
         MySwal.fire({ icon: "error", title: "Failed to delete song" });
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
     }
   };
 
@@ -195,7 +192,6 @@ export default function AdminPageForSongs() {
       album: song.album,
       durationSec: song.durationSec || 0,
     });
-    console.log(song.coverUrl);
     setCoverPreview(song.coverUrl);
     const fetchedArtists = await musicApi.getArtists();
     setArtists(fetchedArtists);
@@ -214,44 +210,53 @@ export default function AdminPageForSongs() {
 
     if (name === "coverFile") {
       const file = files?.[0];
-      setModalData((prev) => ({ ...prev, coverFile: file }));
+      setModalData(prev => ({ ...prev, coverFile: file }));
       if (file) setCoverPreview(URL.createObjectURL(file));
     } else if (name === "audioFile") {
       const file = files?.[0];
       if (file) {
-        setModalData((prev) => ({ ...prev, audioFile: file }));
+        setModalData(prev => ({ ...prev, audioFile: file }));
         const audio = document.createElement("audio");
         audio.src = URL.createObjectURL(file);
         audio.addEventListener("loadedmetadata", () => {
-          setModalData((prev) => ({ ...prev, durationSec: Math.round(audio.duration) }));
+          setModalData(prev => ({ ...prev, durationSec: Math.round(audio.duration) }));
         });
       }
     } else if (name === "artist") {
-      setModalData((prev) => ({
+      setModalData(prev => ({
         ...prev,
-        artists: [{ id: value, name: artists.find((a) => a.id === value)?.name || "" }],
+        artists: [{ id: value, name: artists.find(a => a.id === value)?.name || "" }],
       }));
       fetchAlbumsForArtist(value);
     } else if (name === "album") {
-      setModalData((prev) => ({
+      setModalData(prev => ({
         ...prev,
-        album: { id: value, title: albums.find((a) => a.id === value)?.title || "" },
+        album: { id: value, title: albums.find(a => a.id === value)?.title || "" },
       }));
     } else {
-      setModalData((prev) => ({ ...prev, [name]: value }));
+      setModalData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const fetchAlbumsForArtist = async (artistId: string) => {
     const artistAlbums = await musicApi.getArtistAlbums(artistId);
     setAlbums(artistAlbums);
-    setModalData((prev) => ({ ...prev, album: undefined }));
+    setModalData(prev => ({ ...prev, album: undefined }));
   };
 
   // Submit create modal
   const handleCreateSubmit = async () => {
-    if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id || !modalData.audioFile) {
-      MySwal.fire({ icon: "warning", title: "Please fill all required fields: Title, Artist, Album, Audio File" });
+    if (saving) return;
+    if (
+      !modalData.title ||
+      !modalData.artists[0]?.id ||
+      !modalData.album?.id ||
+      !modalData.audioFile
+    ) {
+      MySwal.fire({
+        icon: "warning",
+        title: "Please fill all required fields: Title, Artist, Album, Audio File",
+      });
       return;
     }
     if (!modalData.artists[0]?.id || !modalData.album?.id) {
@@ -259,7 +264,7 @@ export default function AdminPageForSongs() {
       return;
     }
 
-
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
@@ -272,7 +277,7 @@ export default function AdminPageForSongs() {
 
       const newSong = await adminApi.createSong(formData);
       if (newSong) {
-        setSongs((prev) => [...prev, newSong]);
+        setSongs(prev => [...prev, newSong]);
         setIsCreateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Song created successfully" });
       } else {
@@ -280,17 +285,28 @@ export default function AdminPageForSongs() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   // Submit update modal
   const handleUpdateSubmit = async () => {
+    if (saving) return;
     if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id) {
-      MySwal.fire({ icon: "warning", title: "Please fill all required fields: Title, Artist, Album" });
+      MySwal.fire({
+        icon: "warning",
+        title: "Please fill all required fields: Title, Artist, Album",
+      });
       return;
     }
 
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
@@ -300,11 +316,10 @@ export default function AdminPageForSongs() {
       formData.append("Duration", modalData.durationSec.toString());
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
       if (modalData.audioFile) formData.append("AudioFile", modalData.audioFile);
-      else formData.append("AudioFile", new Blob());
 
       const updatedSong = await adminApi.updateSong(modalData.id, formData);
       if (updatedSong) {
-        setSongs((prev) => prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
+        setSongs(prev => prev.map(a => (a.id === modalData.id ? { ...a, ...updatedSong } : a)));
         setIsUpdateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Song updated successfully" });
       } else {
@@ -312,7 +327,13 @@ export default function AdminPageForSongs() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -333,13 +354,15 @@ export default function AdminPageForSongs() {
         {loading ? (
           <p className="text-gray-400">Loading songs...</p>
         ) : error ? (
-          <p className="text-red-400">{error}</p>
+          <p role="alert" className="text-red-400">
+            {error} <button onClick={fetchSongs}>Retry</button>
+          </p>
         ) : songs.length === 0 ? (
           <p className="text-gray-400">No songs found</p>
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {currentSongs.map((song) => (
+              {currentSongs.map(song => (
                 <div
                   key={song.id}
                   className="flex flex-col sm:flex-row items-center bg-gray-900 p-4 rounded shadow-md space-y-3 sm:space-y-0 sm:space-x-4"
@@ -355,7 +378,7 @@ export default function AdminPageForSongs() {
                   <div className="flex-1 text-center sm:text-left">
                     <p className="text-white font-semibold">{song.title}</p>
                     <p className="text-gray-400 text-sm">
-                      {song.artists.map((a) => a.name).join(", ")} - {song.album?.title}
+                      {song.artists.map(a => a.name).join(", ")} - {song.album?.title}
                     </p>
                     <p className="text-gray-400 text-sm">Duration: {song.durationSec}s</p>
                     <div className="mt-2 flex flex-wrap justify-center sm:justify-start gap-2">
@@ -403,13 +426,21 @@ export default function AdminPageForSongs() {
         {/* Modal (same as your original, unchanged) */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Song editor"
+              tabIndex={-1}
+              className="bg-gray-900 p-6 rounded shadow-lg w-96 max-h-[90vh] overflow-y-auto"
+            >
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Song" : "Update Song"}
               </h2>
 
               {/* form inputs unchanged */}
               <input
+                aria-label="Title"
                 type="text"
                 name="title"
                 placeholder="Title"
@@ -420,10 +451,11 @@ export default function AdminPageForSongs() {
               {/* Genre Search */}
               <div className="relative mb-2">
                 <input
+                  aria-label="Search Genre"
                   type="text"
                   placeholder="Search Genre"
                   value={modalData.genre || genreSearch}
-                  onChange={(e) => {
+                  onChange={e => {
                     setModalData({ ...modalData, genre: e.target.value });
                     setGenreSearch(e.target.value);
                     setShowGenreDropdown(true);
@@ -435,6 +467,14 @@ export default function AdminPageForSongs() {
                   <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
                     {filteredGenres.map((g, idx) => (
                       <li
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.currentTarget.click();
+                          }
+                        }}
                         key={idx}
                         className="p-2 hover:bg-gray-700 cursor-pointer text-white"
                         onClick={() => {
@@ -453,10 +493,11 @@ export default function AdminPageForSongs() {
               {/* Artist Search */}
               <div className="relative mb-2">
                 <input
+                  aria-label="Search Artist"
                   type="text"
                   placeholder="Search Artist"
                   value={modalData.artists[0]?.name || artistSearch}
-                  onChange={(e) => {
+                  onChange={e => {
                     setModalData({ ...modalData, artists: [{ id: "", name: e.target.value }] });
                     setArtistSearch(e.target.value);
                     setShowArtistDropdown(true);
@@ -468,6 +509,14 @@ export default function AdminPageForSongs() {
                   <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
                     {filteredArtists.map(a => (
                       <li
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.currentTarget.click();
+                          }
+                        }}
                         key={a.id}
                         className="p-2 hover:bg-gray-700 cursor-pointer text-white"
                         onClick={() => {
@@ -488,10 +537,11 @@ export default function AdminPageForSongs() {
               {/* Album Search */}
               <div className="relative mb-2">
                 <input
+                  aria-label="Search Album"
                   type="text"
                   placeholder="Search Album"
                   value={modalData.album?.title || albumSearch}
-                  onChange={(e) => {
+                  onChange={e => {
                     setModalData({ ...modalData, album: { id: "", title: e.target.value } });
                     setAlbumSearch(e.target.value);
                     setShowAlbumDropdown(true);
@@ -503,6 +553,14 @@ export default function AdminPageForSongs() {
                   <ul className="absolute z-10 bg-gray-800 border border-gray-700 rounded w-full mt-1 max-h-40 overflow-y-auto">
                     {filteredAlbums.map(alb => (
                       <li
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={event => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.currentTarget.click();
+                          }
+                        }}
                         key={alb.id}
                         className="p-2 hover:bg-gray-700 cursor-pointer text-white"
                         onClick={() => {
@@ -519,50 +577,60 @@ export default function AdminPageForSongs() {
               </div>
 
               <label className="text-gray-400 text-sm mb-1">Cover Image:</label>
-              <label
-                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 mr-2 fill-white inline"
+                  viewBox="0 0 32 32"
+                >
                   <path
                     d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                   <path
                     d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                 </svg>
                 Upload Cover
                 <input
+                  aria-label="cover File"
                   type="file"
                   name="coverFile"
                   accept="image/*"
                   className="hidden"
                   onChange={handleModalChange}
                 />
-
               </label>
 
               {coverPreview && (
-                <Image
+                <MusicImage
                   src={coverPreview}
                   alt="cover preview"
-                  width={96}   
-                  height={96}  
+                  size="large"
                   className="object-cover mb-2 rounded"
                 />
               )}
 
               <label className="text-gray-400 text-sm mb-1">Audio File:</label>
-              <label
-                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 mr-2 fill-white inline"
+                  viewBox="0 0 32 32"
+                >
                   <path
                     d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                   <path
                     d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                 </svg>
                 Upload Audio
                 <input
+                  aria-label="audio File"
                   type="file"
                   name="audioFile"
                   accept=".mp3,.wav,.flac,.m4a,.ogg"
@@ -571,7 +639,9 @@ export default function AdminPageForSongs() {
                 />
               </label>
               {!modalData.audioFile && !isCreateModalOpen && (
-                <p className="text-gray-400 mb-2">Audio file exists. Select a new file to replace it.</p>
+                <p className="text-gray-400 mb-2">
+                  Audio file exists. Select a new file to replace it.
+                </p>
               )}
               <p className="text-gray-400 mb-4">Duration: {modalData.durationSec}s</p>
 
@@ -586,17 +656,17 @@ export default function AdminPageForSongs() {
                   Cancel
                 </button>
                 <button
-                  className={`${isCreateModalOpen
-                    ? "bg-purple-600 hover:bg-purple-700"
-                    : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded 
+                  className={`${
+                    isCreateModalOpen
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded
        disabled:bg-gray-500 disabled:cursor-not-allowed`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
-                  disabled={!isModalValid} // disables the button when modal is not valid
+                  disabled={saving || !isModalValid} // disables the button when modal is not valid
                 >
                   {isCreateModalOpen ? "Create" : "Update"}
                 </button>
-
               </div>
             </div>
           </div>

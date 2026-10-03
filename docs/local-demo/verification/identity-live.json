@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-03T19:54:01.680Z",
+  "scope": "Isolated spotibuds-local-demo fixtures; no credentials logged",
+  "checks": [
+    {
+      "name": "Registration has a GUID Identity ID",
+      "passed": true
+    },
+    {
+      "name": "Ordinary registration has ordinary privilege",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL stores one account/session and hashed credentials",
+      "passed": true
+    },
+    {
+      "name": "Missing-profile recovery restores canonical fields and repeated reconciliation retains unique IdentityUserId",
+      "passed": true
+    },
+    {
+      "name": "Anonymous and ordinary role changes denied",
+      "passed": true
+    },
+    {
+      "name": "Refresh preparation installs a pending cookie without issuing access",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL pending preparation preserves its unconsumed hashed predecessor",
+      "passed": true
+    },
+    {
+      "name": "Lost prepare cookie retries recover exactly one pending successor",
+      "passed": true
+    },
+    {
+      "name": "Missing or different completion intent cannot consume either credential",
+      "passed": true
+    },
+    {
+      "name": "Lost completion body and four same-intent retries recover without another cookie mutation",
+      "passed": true
+    },
+    {
+      "name": "Repeated completion leaves exactly one active unconsumed successor",
+      "passed": true
+    },
+    {
+      "name": "Consumed predecessor reuse remains strict replay even for matching preparation intent",
+      "passed": true
+    },
+    {
+      "name": "Concurrent PostgreSQL refresh credential consumption has exactly one winner",
+      "passed": true
+    },
+    {
+      "name": "Strict replay policy revokes the winning successor",
+      "passed": true
+    },
+    {
+      "name": "Replay leaves no active family in persisted state",
+      "passed": true
+    },
+    {
+      "name": "Logout rejects former access token immediately",
+      "passed": true
+    },
+    {
+      "name": "User validates revoked sid across service boundaries",
+      "passed": true
+    },
+    {
+      "name": "Music validates revoked sid before mutation",
+      "passed": true
+    },
+    {
+      "name": "Recovery responses do not enumerate known accounts",
+      "passed": true
+    },
+    {
+      "name": "Four concurrent PostgreSQL recovery requests leave exactly one current single-use link",
+      "passed": true
+    },
+    {
+      "name": "Real Mailpit message contains the guest reset link",
+      "passed": true
+    },
+    {
+      "name": "Successful PostgreSQL reset invalidates an additional outstanding legacy recovery link",
+      "passed": true
+    },
+    {
+      "name": "Reset credential is single-use",
+      "passed": true
+    },
+    {
+      "name": "Password reset revokes the prior refresh family",
+      "passed": true
+    },
+    {
+      "name": "New password authenticates after actual captured email reset",
+      "passed": true
+    },
+    {
+      "name": "Reset consumption and all six hashed recovery credentials are persisted as invalidated",
+      "passed": true
+    },
+    {
+      "name": "Expired Mailpit reset credential is rejected",
+      "passed": true
+    },
+    {
+      "name": "Concurrent profile authority updates acknowledge only completed synchronization",
+      "passed": true
+    },
+    {
+      "name": "Concurrent profile synchronization leaves Mongo equal to the latest PostgreSQL authority",
+      "passed": true
+    },
+    {
+      "name": "Password mutation completes while four old-password logins race",
+      "passed": true
+    },
+    {
+      "name": "Racing old-password request 1 cannot leave an authenticated session after password change",
+      "passed": true
+    },
+    {
+      "name": "Racing old-password request 2 cannot leave an authenticated session after password change",
+      "passed": true
+    },
+    {
+      "name": "Racing old-password request 3 cannot leave an authenticated session after password change",
+      "passed": true
+    },
+    {
+      "name": "Racing old-password request 4 cannot leave an authenticated session after password change",
+      "passed": true
+    },
+    {
+      "name": "Password/login race leaves no active family authenticated by the old password",
+      "passed": true
+    },
+    {
+      "name": "Restricted internal recovery contract carries canonical fields",
+      "passed": true
+    },
+    {
+      "name": "Administrator role transition synchronizes PostgreSQL claims and Mongo authority copy",
+      "passed": true
+    },
+    {
+      "name": "Demotion synchronizes ordinary role and immediately revokes old administrator access",
+      "passed": true
+    },
+    {
+      "name": "Deletion removes Identity state and completes durable cleanup",
+      "passed": true
+    },
+    {
+      "name": "Deletion removes the synchronized profile",
+      "passed": true
+    }
+  ]
+}

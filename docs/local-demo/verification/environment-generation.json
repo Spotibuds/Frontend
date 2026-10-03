@@ -1,0 +1,24 @@
+{
+  "scenarioCount": 3,
+  "checks": {
+    "missingAccountFailsNonzero": true,
+    "interruptedEnvPreserved": true,
+    "missingAccountNotSilentlyCreated": true,
+    "freshGenerationSucceeded": true,
+    "freshFilesCreated": true,
+    "exactlyFourAccounts": true,
+    "ordinaryAccountsAndOneAdmin": true,
+    "passwordsUnique": true,
+    "adminConfigurationMatches": true,
+    "dedicatedProjectName": true,
+    "rerunSucceeded": true,
+    "bothFileHashesUnchanged": true
+  },
+  "exitCodes": {
+    "rerun": 0,
+    "interrupted": 1,
+    "fresh": 0
+  },
+  "passedChecks": 12,
+  "totalChecks": 12
+}

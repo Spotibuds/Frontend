@@ -58,7 +58,7 @@ class ReactionCache {
     key: string,
     userId: string,
     emoji: string,
-    action: 'add' | 'remove',
+    action: "add" | "remove",
     reactionData?: Partial<CachedReaction>
   ): CachedReaction[] | null {
     const current = this.get(key);
@@ -69,17 +69,17 @@ class ReactionCache {
       r => r.fromIdentityUserId === userId && r.emoji === emoji
     );
 
-    if (action === 'add' && existingIndex === -1) {
+    if (action === "add" && existingIndex === -1) {
       // Add new reaction
       updated.push({
         emoji,
         fromIdentityUserId: userId,
-        fromUserName: reactionData?.fromUserName || 'User',
-        toIdentityUserId: reactionData?.toIdentityUserId || '',
+        fromUserName: reactionData?.fromUserName || "User",
+        toIdentityUserId: reactionData?.toIdentityUserId || "",
         createdAt: new Date().toISOString(),
         ...reactionData,
       });
-    } else if (action === 'remove' && existingIndex !== -1) {
+    } else if (action === "remove" && existingIndex !== -1) {
       // Remove existing reaction
       updated.splice(existingIndex, 1);
     }
@@ -121,7 +121,7 @@ export const getCacheKey = {
 };
 
 // Auto-cleanup every 5 minutes
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   setInterval(() => reactionCache.cleanup(), 5 * 60 * 1000);
 }
 

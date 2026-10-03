@@ -1,0 +1,25 @@
+{
+  "recordedAt": "2026-10-03",
+  "run": "root full rebuilt-stack run 67361",
+  "stats": {
+    "startTime": "2026-10-03T19:42:21.516Z",
+    "duration": 248207.73700000002,
+    "expected": 20,
+    "unexpected": 1,
+    "skipped": 0,
+    "flaky": 0
+  },
+  "result": "20/21 passed; one strict-selector regression-test failure",
+  "failedCase": "anonymous recovery is real and public; invalid reset is rejected",
+  "primaryFailure": {
+    "file": "tests/browser/demo.spec.ts",
+    "line": 39,
+    "message": "Strict mode violation: getByRole(alert) resolved to two elements.",
+    "matches": [
+      "Actual reset error: Reset link is invalid, expired, or already used",
+      "Empty Next route announcer: __next-route-announcer__"
+    ]
+  },
+  "correction": "Scope reset assertion to the actual invalid/expired/used error. Also scope the other generic alert assertion to the missing-profile error in the listening-history main content. No first-match shortcut; no app changes.",
+  "security": "No credential, token, cookie, personal profile or raw request header/body is retained here."
+}

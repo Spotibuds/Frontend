@@ -1,0 +1,700 @@
+{
+  "repository": "Frontend",
+  "updatedAt": "2026-10-03",
+  "scope": "Frontend source/tooling only; root owns shared demo and final merged ledger.",
+  "evidencePolicy": "Final statuses reflect asserted state; initial interrupted outage runs are not verification.",
+  "validation": {
+    "cleanInstall": "Passed npm ci after all dependency changes",
+    "typeCheck": "Passed in final documented run8951.",
+    "lint": "Passed, zero warnings, in final documented run8951.",
+    "unitTests": "29/29 passed in final documented run8951.",
+    "dependencyGate": "Passed in final documented run8951: runtime0; one exact unpatched development-only advisory exception until2026-10-17.",
+    "browser": "21/21 actual Chromium cases passed, zero skipped/flaky, in final documented run8951 (exit0). Sanitized complete case summary: docs/frontend-browser-verification.json. Four discovery records preserve preceding failures/corrections and HTTP429 burst evidence.",
+    "formatCheck": "Passed in final documented run8951.",
+    "productionBuild": "Passed in final documented run8951; all4 Docker images built.",
+    "supplementalPlaybackCleanup": "Changed case4 actual Chromium PASS1/1 (1.8s test/3.7s suite), original full21 JSON retained unchanged; type/scoped ESLint passed. See docs/frontend-browser-verification-playback-cleanup.json."
+  },
+  "entries": [
+    {
+      "id": "F-01",
+      "title": "Every normal playlist mutation omits authentication",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "All playlist JSON and multipart mutations use the shared authenticated request client. Exact-order persistence uses the reorder endpoint; full playlist details are fetched before playback and membership checks. Errors retain drafts.",
+      "changedFiles": [
+        "src/lib/request.ts",
+        "src/lib/playlist.ts",
+        "src/lib/api.ts",
+        "src/components/PlaylistManager.tsx",
+        "src/components/PlaylistCoverUploader.tsx",
+        "src/app/playlists/[id]/page.tsx",
+        "tests/session.test.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Unit authenticated writes/multipart/204 tests pass.",
+        "Live Chromium create/edit/reload, cover/reorder/reload/removal and authenticated deletion cleanup passed in the 2026-10-03 stable run."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Foreign/anonymous authorization is independently verified by Music tests; see Music/docs/remediation.json."
+      ]
+    },
+    {
+      "id": "F-02",
+      "title": "Failed token refresh leaves the user record behind",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "A single clearSession clears memory access, legacy credentials, user hints and request/hub/audio ownership. Login redirects only after validated refresh/me.",
+      "changedFiles": [
+        "src/lib/session.ts",
+        "src/lib/request.ts",
+        "src/app/page.tsx",
+        "src/components/layout/AppLayout.tsx",
+        "tests/session.test.ts"
+      ],
+      "verification": [
+        "Unit failed-refresh and terminal401 checks verify all credential/profile keys cleared.",
+        "Live UI reload retains validated session without token persistence; sign-out clears profile and returns to login."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-03",
+      "title": "Refresh can resurrect a session after logout and retry without a limit",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "One generation-aware coordinator uses abortable browser Web Locks, one ten-second deadline and two refresh phases. Prepare installs a pending HttpOnly cookie before completion consumes its predecessor; completion does not write another cookie. Only a bounded operation UUID/time is stored for navigation recovery. Logout/account switch abort old work and clear pending ownership; protected API retries one 401. Login, logout and renewal share the same bounded cookie-operation lock. A persisted token-free sign-out intent blocks cookie bootstrap until an explicit successful login; failed revocation remains visible with a manual bounded retry.",
+      "changedFiles": [
+        "src/lib/session.ts",
+        "src/lib/request.ts",
+        "src/lib/managedHub.ts",
+        "tests/session.test.ts",
+        "src/lib/api.ts",
+        "src/app/page.tsx",
+        "src/lib/audio.tsx"
+      ],
+      "verification": [
+        "Unit concurrent refresh coalescing, delayed refresh after logout, repeated401 termination pass.",
+        "Live reload and logout lifecycle pass.",
+        "New unit cases verify interrupted completion/module-reload reuse, expired-marker replacement, old completion cannot overwrite a new account, and both phases share one ten-second deadline. All 21 frontend unit cases pass.",
+        "Actual staged-protocol Chromium loses prepared Set-Cookie and completion body in two hard-navigation modes; both resume the pending operation, load protected playlists, reload successfully, store no tokens and sign out without stale ownership. Focused catalogue create/edit/delete also passes on staged renewal.",
+        "29-unit suite covers logout503/reload, failed versus successful explicit login, quota recovery after cleanup, blocked storage, cross-tab sign-out, delayed logout/login ordering and same-intent acknowledgement.",
+        "Final complete documented run8951 PASS21/21 Chromium workflows (0skip/flaky); frontend29 units/type/lint/format/build/dependency checks passed. See docs/frontend-browser-verification.json."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Full final21-case clean-stack run remains root-owned; consumed-parent replay is independently verified by Identity tests."
+      ]
+    },
+    {
+      "id": "F-04",
+      "title": "Password recovery is inaccessible and only simulates success",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Recovery routes are public; real Identity recovery uses isolated Mailpit delivery. Invalid/expired link and password-policy errors are shown; successful reset removes token query.",
+      "changedFiles": [
+        "src/app/forgot-password/page.tsx",
+        "src/app/reset-password/page.tsx",
+        "src/components/layout/ConditionalAppLayout.tsx",
+        "src/lib/api.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Live anonymous forgot-password submits to actualAPI and generic status; invalid reset is rejected.",
+        "Identity recovery single-use/expiry/password change verified by its live suite.",
+        "Actual public UI registration, local Mailpit capture, password reset, new-password login, old-password rejection and used-link rejection passed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-05",
+      "title": "Chat draft is erased even when sending fails",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "ChatHub state and successful room join govern send. Stable client message IDs and actual server acknowledgement clear the draft only on success.",
+      "changedFiles": [
+        "src/lib/chatHub.ts",
+        "src/app/chat/[id]/page.tsx",
+        "tests/hubs.test.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Live direct chat acknowledgement renders exactly once and persists after reload; rejected4001-character message retains draft.",
+        "Two independent UI users offline/online: disconnected draft retained, accepted after reconnect, delivered once."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-06",
+      "title": "Initial chat join race hides persisted messages until refresh",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Desired room survives initial start and reconnect. Late subscribers immediately receive existing connection state and joined room.",
+      "changedFiles": [
+        "src/lib/chatHub.ts",
+        "src/lib/managedHub.ts",
+        "src/app/chat/[id]/page.tsx",
+        "tests/hubs.test.ts"
+      ],
+      "verification": [
+        "Unit shared initial startup, desired room join and late-connected subscriber pass.",
+        "Two users see initial and post-offline-reconnect messages and read receipts without refresh."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-07",
+      "title": "Hub enable/disconnect lifecycle can orphan live connections",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Shared idempotent start/stop promises and session generation cancel connecting/reconnecting hubs; page subscriptions and layout handlers are cleaned up.",
+      "changedFiles": [
+        "src/lib/managedHub.ts",
+        "src/lib/chatHub.ts",
+        "src/lib/notificationHub.ts",
+        "src/lib/friendHub.ts",
+        "src/hooks/useFriendHub.ts",
+        "src/components/layout/AppLayout.tsx",
+        "tests/hubs.test.ts"
+      ],
+      "verification": [
+        "Unit one connection for concurrent starts and cancellation during Connecting pass.",
+        "Real browser two-user reconnect/rejoin and logout pass."
+      ],
+      "status": "Fixed and verified",
+      "limitations": ["Multi-replica connection/backplane behavior is a production follow-up."]
+    },
+    {
+      "id": "F-08",
+      "title": "Audio continues across logout and end-of-playlist state is wrong",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Session-aware native audio stop/reset, namespaced persisted state, bounded queue/history, correct repeat/end/index transitions. Native same-track repeats reload using playbackRevision.",
+      "changedFiles": [
+        "src/lib/audio.tsx",
+        "src/lib/audioState.ts",
+        "src/components/layout/AppLayout.tsx",
+        "tests/audio.test.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Reducer final/repeat/queue/history/reset tests pass.",
+        "Live media plays with native readyState4 and advancing currentTime; logout pauses and removes src.",
+        "Actual native seek near 40 seconds, previous/next tracks, repeat restarting the same track, shuffle visiting both tracks, and final finite-queue pause passed in a focused Chromium run."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-09",
+      "title": "Now-playing status expires during ordinary long tracks",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Cancellable30-second now-playing heartbeat reads native position; paused/logout state clears it.",
+      "changedFiles": ["src/lib/audio.tsx", "src/lib/session.ts", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Live125-second local track played uninterrupted to120seconds; now-playing still present, position>=89 seconds and updatedAt under40seconds; Pause clears it."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-10",
+      "title": "Clearing profile bio/name can report success without clearing persisted data",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Explicit empty bio/displayName values reach User API. AvatarURL is no longer included in general profile PUT; validated upload endpoint owns avatar mutations.",
+      "changedFiles": [
+        "src/app/user/edit/page.tsx",
+        "src/lib/api.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Live set profile fields, clear through UI, save, complete reload: both remain empty. Original synthetic profile restored afterwards."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-11",
+      "title": "Search responses can overwrite newer queries and blank search leaves results",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "AbortController and request sequence prevent stale query writes. Blank query clears results/loading immediately; initial URL query is read once.",
+      "changedFiles": ["src/app/search/page.tsx", "src/lib/api.ts", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Live browser controlled800ms old query cannot replace later results; clearing removes results and searching state."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "F-12",
+      "title": "Outages are shown as empty data and empty feeds retry indefinitely",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Errors propagate through request/client; UI separates loading/error/successful-empty, retains mutation drafts and provides retry. Successful empty feed ends startup retries.",
+      "changedFiles": [
+        "src/lib/request.ts",
+        "src/lib/api.ts",
+        "src/app/feed/page.tsx",
+        "src/app/dashboard/page.tsx",
+        "src/app/friends/page.tsx",
+        "src/app/notifications/page.tsx",
+        "src/components/PlaylistManager.tsx",
+        "tests/session.test.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Unit503 propagates instead of[]; deferred effect StrictMode probe performs one startup.",
+        "Live controlled503 playlist create shows error and retains form draft.",
+        "Root independent UI outage review identified contradictory empty/error states, now removed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Broader service-outage checks are in Frontend/docs/local-demo evidence produced by root."
+      ]
+    },
+    {
+      "id": "F-13",
+      "title": "Shared forms have no programmatic labels or error associations",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Stable label/ID and validation associations; named icon controls; focus-trapped Escape-dismissable dialogs; native keyboard seek/volume range controls. Closed navigation is aria-hidden and inert, and friend-request accept/decline actions have explicit accessible names.",
+      "changedFiles": [
+        "src/components/ui/Input.tsx",
+        "src/hooks/useDialog.ts",
+        "src/components/UpdateModal.tsx",
+        "src/components/layout/AppLayout.tsx",
+        "src/app/admin/artists/page.tsx",
+        "src/app/admin/songs/page.tsx",
+        "src/app/playlists/[id]/page.tsx",
+        "tests/input.test.tsx",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Input unit verifies label focus and invalid/describedby relationships.",
+        "Actual browser login/recovery/profile/playlist/chat workflows locate controls by accessible name.",
+        "Fresh-image mobile test verifies aria-hidden/inert and a Tab action cannot focus a closed-sidebar descendant; named song actions remain visible and document overflow is zero."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Broader assistive-technology and browser certification is a production follow-up."
+      ]
+    },
+    {
+      "id": "F-14",
+      "title": "Declared formatter commands cannot execute",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Pinned formatter and compatible ESLint9/Next16 tooling; meaningful unit and live browser suites, validation-onlyCI.",
+      "changedFiles": [
+        "package.json",
+        "package-lock.json",
+        ".prettierrc",
+        "eslint.config.mjs",
+        ".github/workflows/ci-cd.yml",
+        "vitest.config.mts",
+        "playwright.config.ts",
+        "tests"
+      ],
+      "verification": [
+        "Fresh npmci completed; npmrunformat executes installed pinned Prettier.",
+        "Type-check passes; ESLint maxwarnings0 passes; unit29/29 pass.",
+        "After final source edits, type-check, ESLint with zero warnings and format:check pass; the latest unit run passed all 17 cases."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Final clean-image build and complete browser acceptance are recorded by the root demo workflow."
+      ]
+    },
+    {
+      "id": "F-15",
+      "title": "Listening-history page cannot reach older items and missing profiles can spin forever",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Bounded50-item skip paging, ID/time deduplication, cancellation, terminal retention marker and finally loading completion.",
+      "changedFiles": [
+        "src/app/user/[id]/listening-history/page.tsx",
+        "src/lib/api.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Live105 persisted entries on disposable account reached50\u2192100\u2192105 with105 unique datetime values and oldest marker. Account removed using isolated admin context.",
+        "Live missing GUID profile exits loading and displays error."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "FR-01",
+      "title": "Tokens in localStorage and third-party scripts increase XSS theft impact",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Access token stays in memory and refresh in HttpOnly Strict cookie; remove third-party CAPTCHA/script/font dependencies and set local origin CSP and no-referrer.",
+      "changedFiles": [
+        "src/lib/session.ts",
+        "src/lib/request.ts",
+        "next.config.ts",
+        "src/app/register/page.tsx",
+        "src/app/layout.tsx",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Live browser localStorage token/refreshToken are null before and after reload; session survives real cookie refresh.",
+        "Source CSP restricts scripts to self, disallows objects/framing and has no third-partyscript origin."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "CSP retains unsafe-inline for current Next streaming output; this reduces persistent credential theft but is not a proof against every XSS. Production nonce CSP/TLS remains a follow-up."
+      ]
+    },
+    {
+      "id": "FR-02",
+      "title": "Unused ListeningHistory component sends pagination offset as limit",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Removed unused broken history component; single routed history implementation remains.",
+      "changedFiles": [
+        "src/components/ListeningHistory.tsx (removed)",
+        "src/app/user/[id]/listening-history/page.tsx"
+      ],
+      "verification": [
+        "Removed-file and no-import source review; routed105-entry browser pagination passes."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "FR-03",
+      "title": "Unused admin statistics client route does not exist",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Removed unused admin statistics client and response interface instead of leaving a dormant contract untested. The substantive admin catalogue UI remains.",
+      "changedFiles": ["src/lib/api.ts"],
+      "verification": [
+        "rg has no getStatistics/AdminStats caller or removed client route; source removal reviewed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "FR-04",
+      "title": "Realtime token query and forced LongPolling limit renewal and scaling",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Current shared accessTokenFactory replaces fixed query credential; default SignalR transport negotiation supports WebSocket with fallback and generation-safe reconnect.",
+      "changedFiles": [
+        "src/lib/managedHub.ts",
+        "src/lib/chatHub.ts",
+        "src/lib/friendHub.ts",
+        "src/lib/notificationHub.ts"
+      ],
+      "verification": [
+        "Native browser WebSocket negotiate/start observed againstlocalUser.",
+        "Two-user actual offline/online automatic reconnect rejoins and receives messages/receipts."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "Browser transports may carry access_token query because SignalR requires it; server log sanitation belongsUser. Multi-replica/backplane/proxy validation deferred."
+      ]
+    },
+    {
+      "id": "O-01",
+      "title": "The pinned Next.js App Router release is vulnerable to unauthenticated remote code execution",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Upgrade Next16.3.8 and React/DOM19.3.0 with matchingNext ESLint and supported Node24.",
+      "changedFiles": [
+        "package.json",
+        "package-lock.json",
+        "Dockerfile",
+        ".github/workflows/ci-cd.yml"
+      ],
+      "verification": [
+        "Authoritative September2026 Next patch advisory and React release reviewed.",
+        "Fresh lockfile install passes; current runtime npm audit reports0 advisories."
+      ],
+      "status": "Fixed and verified",
+      "limitations": ["Final image SBOM and final build are in parent final verification."]
+    },
+    {
+      "id": "O-02",
+      "title": "Dependency scans report vulnerable packages and the frontend image uses an unsupported Node runtime",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Use supported Node24, updated transitive graph, runtime advisory gate and a strict expiring exception for the single unpatched static-lint braces advisory.",
+      "changedFiles": [
+        "package.json",
+        "package-lock.json",
+        "Dockerfile",
+        "scripts/audit-dependencies.mjs",
+        "README.md"
+      ],
+      "verification": [
+        "Fresh npmci passes; authoritative npm runtime audit0. Full scan has5affected chain entries for one advisory GHSA-vfj7-8cjw-p6xm, absent from runtimegraph.",
+        "audit:dependencies passes exact exception and rejects new/runtime/patched/expired advisories."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "No patched braces release as of2026-10-03. Exception expires2026-10-17; ESLint9 retained due currentNext Reactplugin compatibility, not silent suppression. .NET dependency verification belongs other repositories."
+      ]
+    },
+    {
+      "id": "O-04",
+      "title": "Frontend Identity and User workflows push and deploy on pull requests",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Frontend pull request/main workflow is build/test/image-validation only, without publishing/deploying or production secrets; least permissions.",
+      "changedFiles": [".github/workflows/ci-cd.yml"],
+      "verification": [
+        "YAML source review confirms no login/push/deploy steps and no secrets; local equivalent npm validation commands run."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "Hosted internal/fork GitHub execution intentionally not triggered for this local task."
+      ]
+    },
+    {
+      "id": "O-05",
+      "title": "Frontend deployment omits API build arguments and silently bakes fixed production hosts",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Explicit validated public build config, localdev5101/2/3 defaults and no silent cloud fallback. Docker requires three public build arguments.",
+      "changedFiles": [
+        "src/lib/config.ts",
+        "src/lib/request.ts",
+        "Dockerfile",
+        ".env.example",
+        "next.config.ts",
+        ".github/workflows/ci-cd.yml",
+        "README.md"
+      ],
+      "verification": [
+        "Browser requests/media and WebSockets observed targeting127.0.0.1:5101/5102/5103.",
+        "Live login/profile/catalogue/media/playlist/chat work in finalconfigured stack."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "O-06",
+      "title": "The documented local stack cannot run together with the default ports",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Document authoritative loopback3100 frontend and5101/5102/5103 matrix; dev script binds3100; root delivers isolated Compose prerequisites and secrets.",
+      "changedFiles": ["src/lib/config.ts", "package.json", ".env.example", "README.md"],
+      "verification": ["All services launched concurrently, real browser workflows pass."],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Compose fresh environment/restart evidence belongsroot Frontend/docs/local-demo."
+      ]
+    },
+    {
+      "id": "O-07",
+      "title": "Setup documentation describes incompatible identity claims and incomplete shell setup",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Publish topology, compatible issuer/audience, URL/build variables, exact8\u2013100/six-unique password policy, localSMTP and clean npm commands.",
+      "changedFiles": ["README.md", "src/app/register/page.tsx", "src/app/reset-password/page.tsx"],
+      "verification": [
+        "Readme/source contract review; actual lockfileinstall/type/lint/unit and stable-stack browser workflows exercised."
+      ],
+      "status": "Fixed and verified",
+      "limitations": ["Full clean shared-stack instructions verified by root."]
+    },
+    {
+      "id": "O-R02",
+      "title": "Container privilege and build-context hygiene need hardening",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Node24 nonroot1001 standalone image and explicit build-context exclusions for secrets, accountfixture, localassets/results,git,node_modules/cache/build.",
+      "changedFiles": ["Dockerfile", ".dockerignore", ".gitignore"],
+      "verification": [
+        "Dockerfile source nonroot review; root final image nonroot/context inspection."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "Final runtime inspection verified four nonroot application containers, nine loopback bindings and exclusion of generated private files. Production capability, immutable-image and registry policies need separate hardening."
+      ]
+    },
+    {
+      "id": "NEW-F01",
+      "title": "Playlist detail and initial mobile sidebar overflow the viewport",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Responsive wrapping playlist header/rows, named row actions and overlay/collapsed mobile sidebar without desktop contentpadding.",
+      "changedFiles": [
+        "src/app/playlists/[id]/page.tsx",
+        "src/components/layout/AppLayout.tsx",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Root CUA at 390x844 reproduced original horizontal overflow (document scrollWidth 436px).",
+        "Actual focused Chromium at 390x844 reports document.scrollWidth <= document.clientWidth; the named Play Morning Loop control is visible."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F02",
+      "title": "Private friends disappear from directories and chat headers",
+      "applicability": "Applicable to the original frontend; reproduced against current source and addressed in this work.",
+      "correction": "Use bounded50-profile permitted summary batches for privatefriend directories/chat headers, preserve knownidentity without forbidden detailed-profile reads.",
+      "changedFiles": [
+        "src/app/friends/page.tsx",
+        "src/app/chat/[id]/page.tsx",
+        "tests/browser/demo.spec.ts",
+        "src/app/user/[id]/page.tsx"
+      ],
+      "verification": [
+        "Root live Friends UI exposed accepted private Bob disappearing behind a swallowed 403.",
+        "Actual focused Chromium shows Bob in Friends, preserves a non-empty directory and opens the existing chat with a Bob header."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "The same permitted batch strategy also replaces detailed profile reads in the profile friends popup; the final suite exercises directory/chat behavior."
+      ]
+    },
+    {
+      "id": "NEW-F03",
+      "title": "Feed reactions use guessed post IDs and an unsupported emoji",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "Feed preload and reaction writes now use server-issued postId; now-playing writes retain contextType, songId and recipient. Supported heart emoji replaces the unsupported face. Per-post pending state prevents duplicate clicks, failed writes roll back and show errors, and session clearing invalidates the reaction cache.",
+      "changedFiles": [
+        "src/app/feed/page.tsx",
+        "src/lib/feedTypes.ts",
+        "src/lib/session.ts",
+        "src/lib/reactionCache.ts",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Fresh-image actual Chromium adds one supported heart reaction to live now-playing, reloads with the heart visibly selected, clears now-playing and still sees the selected heart on the recent-song slide. Canonical persisted API reaction remains exactly once.",
+        "Session-scoped reaction cache clearing and per-post pending/error behavior reviewed; User persisted regression covers canonical resolution.",
+        "Final complete documented run8951 PASS21/21 Chromium workflows (0skip/flaky); frontend29 units/type/lint/format/build/dependency checks passed. See docs/frontend-browser-verification.json."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F04",
+      "title": "Notification read failures silently discard failure feedback",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "Read, mark-all-read, handle and deletion failures are visible. Navigation after marking a message notification waits for success; server deletion completes before local state changes.",
+      "changedFiles": [
+        "src/contexts/NotificationContext.tsx",
+        "src/components/ui/NotificationDropdown.tsx",
+        "src/app/notifications/page.tsx",
+        "tests/browser/demo.spec.ts"
+      ],
+      "verification": [
+        "Actual Chromium controlled 503 for mark-all-read keeps the action available and displays the failure; actual retry persists read status and reload returns unreadCount zero."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F05",
+      "title": "Profiles have no visible follow or unfollow workflow",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "A guarded Follow/Unfollow button loads actual owner-scoped follow state, persists each change, reports failures inline and restores persisted state after reload.",
+      "changedFiles": ["src/app/user/[id]/page.tsx", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Actual two independent ordinary users: Follow persists true, reload shows Unfollow, Unfollow persists false and resets accessible pressed state."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F06",
+      "title": "Profile Message sends a Mongo profile ID as a chat participant",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "Profile Message uses the account Identity GUID and exposes chat-creation failure feedback.",
+      "changedFiles": ["src/app/user/[id]/page.tsx", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Actual profile Message opens a persisted chat with exactly both Identity GUID participants and displays the correct other-user header."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F07",
+      "title": "Content policy blocks local audio metadata preview in the admin song form",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "CSP media-src permits blob URLs so selected audio files can load native metadata; production script and connect restrictions remain scoped.",
+      "changedFiles": ["next.config.ts", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Actual admin file selection displays native metadata Duration: 12s; song upload/create/edit persists, public album/artist discovery includes it, and UI deletion/reload succeeds."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F08",
+      "title": "Closed sidebar remains in the accessibility and keyboard trees",
+      "applicability": "Applicable; discovered during actual local demo validation or source contract review.",
+      "correction": "The closed sidebar is aria-hidden and inert so offscreen links cannot receive focus.",
+      "changedFiles": ["src/components/layout/AppLayout.tsx", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Root CUA reproduced hidden links remaining reachable. Fresh-image Chromium verifies aria-hidden/inert on the closed sidebar and a Tab action cannot focus any descendant; mobile document width remains within viewport."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F09",
+      "title": "Friend request JSON uses the wrong recipient property",
+      "applicability": "Applicable; actual two-user social workflow reproduced HTTP 400 Invalid account identifier.",
+      "correction": "Shared friend request client sends targetUserId, matching the canonical User request DTO; every page reuses that client.",
+      "changedFiles": ["src/lib/api.ts", "tests/browser/demo.spec.ts"],
+      "verification": [
+        "Actual two ordinary users send a request, accept it, open a profile chat with correct Identity GUID participants, remove friendship and both pages return to Add Friend. Focused case passed on the rebuilt image."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-S01",
+      "title": "Hard navigation can lose a rotated refresh cookie and revoke a valid session",
+      "applicability": "Applicable to the shared Identity/frontend renewal contract. The first complete 20-case run passed 19 and failed catalogue deletion after seven refresh200 responses followed by two refresh401 responses; focused reruns had passed, exposing an intermittent navigation race.",
+      "correction": "Cookie installation and predecessor consumption are separate phases. A random operation UUID/time is persisted only for 30 seconds under the refresh Web Lock; interrupted documents resume that operation. Completion receives the already-installed pending HttpOnly cookie and does not mutate another cookie. Consumed-predecessor replay still revokes the family. Generation checks, cancellation and marker clearing prevent logout/account-switch resurrection.",
+      "changedFiles": [
+        "src/lib/session.ts",
+        "tests/session.test.ts",
+        "tests/browser/demo.spec.ts",
+        "README.md"
+      ],
+      "verification": [
+        "Frontend unit29/29 pass, including staged lost-completion/module reload, operation expiry, account switch/logout protection, shared ten-second timeout and sign-out ownership races.",
+        "Actual Chromium server-finished interruption case passes both lost-prepare-cookie and lost-completion-body modes with real hard navigation. Protected playlists, another reload, token-free storage, effective HttpOnly successor cookie and logout are verified.",
+        "Actual full administrator create/edit/discover/delete case passes on the staged client.",
+        "The preceding failedfull20 evidence (19passed/1failed) is preserved in docs/frontend-browser-discovery.json.",
+        "Final complete documented run8951 PASS21/21 Chromium workflows (0skip/flaky); frontend29 units/type/lint/format/build/dependency checks passed. See docs/frontend-browser-verification.json."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Identity independently verifies unconditional consumed-predecessor replay revocation; this browser proof uses local Chromium with Web Locks."
+      ]
+    },
+    {
+      "id": "NEW-F10",
+      "title": "Failed server logout can silently restore the account after reload",
+      "applicability": "Applicable; actual browser inspection found logout503 clears local state but leaves a usable server cookie, and the login-page bootstrap could renew that cookie.",
+      "correction": "A token-free sign-out intent survives documents and tabs, blocks automatic renewal and retains truthful pending-revocation feedback. Only validated explicit login clears intent. Login/logout/renewal use one bounded origin-wide cookie lock; late logout acknowledgements update only their own intent. Storage denial fails closed, with one persistence retry after cleanup frees quota. Audio and local ownership teardown continue when storage throws.",
+      "changedFiles": [
+        "src/lib/session.ts",
+        "src/lib/api.ts",
+        "src/lib/audio.tsx",
+        "src/app/page.tsx",
+        "tests/session.test.ts",
+        "tests/browser/demo.spec.ts",
+        "README.md"
+      ],
+      "verification": [
+        "Unit29/29 pass, including failed revoke/reload with zero renewal calls; failed login preserves intent; successful explicit login clears it; readable-but-write-denied storage; all storage methods blocked; quota freed by cleanup; cross-tab intent; delayed logout/login serialization; queued login cancellation; same-intent acknowledgement.",
+        "Actual Chromium focused case2 PASS (7.2s): logout503 leaves original bearer session valid; reload makes zero renewal calls and cannot restore account; failed explicit login retains intent; real retry revokes the server family; explicit successful login clears intent; a second tab waits for delayed real logout before login and survives reload.",
+        "Rebuilt full21 first passed20/failed1 due loading-button test selector (Sign In versus Signing in...), corrected and focused passed; sanitized evidence retained in docs/frontend-browser-discovery-signout.json. App source/image unchanged for that correction.",
+        "Final complete documented run8951 PASS21/21 Chromium workflows (0skip/flaky); frontend29 units/type/lint/format/build/dependency checks passed. See docs/frontend-browser-verification.json."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-F11",
+      "title": "Playback regression cleanup reuses revoked credentials and leaks task-created playlists",
+      "applicability": "Applicable to the QA fixture lifecycle. Final manual UI review found four exact task-created Playback fixture playlists left by earlier successful browser runs; this was a test cleanup defect, not an app playlist deletion defect.",
+      "correction": "Case4 obtains a fresh Alice session through the independent Playwright request fixture after browser logout, checks owner identity, asserts deletion204 plus persisted detail404 and owner-list absence, then revokes the cleanup session with asserted logout204. Browser guest/audio teardown assertions remain intact. Focus uses a separate output directory and list reporter to preserve the final full-suite JSON.",
+      "changedFiles": [
+        "tests/browser/demo.spec.ts",
+        "docs/frontend-browser-verification-playback-cleanup.json"
+      ],
+      "verification": [
+        "Changed actual Chromium playback/logout/cleanup case passed1/1:1.8s test,3.7s suite,exit0. Delete204, persisted detail404/list absence and cleanup logout204 are asserted.",
+        "Type check and scoped ESLint passed after the test-only correction; formatting applied.",
+        "SHA256 verifies the original final full21 browser-results JSON remains unchanged."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Historical leaked fixture removal is separately scoped and verified by root; this supplemental proof removes only its own newly created playback fixture."
+      ]
+    }
+  ]
+}

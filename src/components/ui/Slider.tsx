@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from "react";
 
 interface SliderProps {
   children: React.ReactNode[];
@@ -7,11 +7,11 @@ interface SliderProps {
   showArrows?: boolean;
 }
 
-export default function Slider({ 
-  children, 
-  itemWidth = "200px", 
-  gap = "16px", 
-  showArrows = true 
+export default function Slider({
+  children,
+  itemWidth = "200px",
+  gap = "16px",
+  showArrows = true,
 }: SliderProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -28,20 +28,21 @@ export default function Slider({
   useEffect(() => {
     checkScrollability();
     const handleResize = () => checkScrollability();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [children]);
 
-  const scroll = (direction: 'left' | 'right') => {
+  const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
       const scrollAmount = scrollRef.current.clientWidth * 0.8;
-      const newScrollLeft = direction === 'left' 
-        ? scrollRef.current.scrollLeft - scrollAmount
-        : scrollRef.current.scrollLeft + scrollAmount;
-      
+      const newScrollLeft =
+        direction === "left"
+          ? scrollRef.current.scrollLeft - scrollAmount
+          : scrollRef.current.scrollLeft + scrollAmount;
+
       scrollRef.current.scrollTo({
         left: newScrollLeft,
-        behavior: 'smooth'
+        behavior: "smooth",
       });
     }
   };
@@ -51,12 +52,18 @@ export default function Slider({
       {/* Left Arrow */}
       {showArrows && canScrollLeft && (
         <button
-          onClick={() => scroll('left')}
+          onClick={() => scroll("left")}
           className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
           aria-label="Scroll left"
         >
-          <svg width="12" height="12" className="sm:w-4 sm:h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M10 3.5L6.5 7l3.5 3.5"/>
+          <svg
+            width="12"
+            height="12"
+            className="sm:w-4 sm:h-4"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+          >
+            <path d="M10 3.5L6.5 7l3.5 3.5" />
           </svg>
         </button>
       )}
@@ -64,12 +71,18 @@ export default function Slider({
       {/* Right Arrow */}
       {showArrows && canScrollRight && (
         <button
-          onClick={() => scroll('right')}
+          onClick={() => scroll("right")}
           className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
           aria-label="Scroll right"
         >
-          <svg width="12" height="12" className="sm:w-4 sm:h-4" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6 3.5L9.5 7 6 10.5"/>
+          <svg
+            width="12"
+            height="12"
+            className="sm:w-4 sm:h-4"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+          >
+            <path d="M6 3.5L9.5 7 6 10.5" />
           </svg>
         </button>
       )}
@@ -81,18 +94,18 @@ export default function Slider({
         className="flex overflow-x-auto scrollbar-hide"
         style={{
           gap,
-          scrollSnapType: 'x mandatory',
-          WebkitOverflowScrolling: 'touch',
-          scrollBehavior: 'smooth'
+          scrollSnapType: "x mandatory",
+          WebkitOverflowScrolling: "touch",
+          scrollBehavior: "smooth",
         }}
       >
         {children.map((child, index) => (
           <div
             key={index}
             className="flex-shrink-0"
-            style={{ 
+            style={{
               width: itemWidth,
-              scrollSnapAlign: 'start'
+              scrollSnapAlign: "start",
             }}
           >
             {child}
@@ -111,4 +124,4 @@ export default function Slider({
       `}</style>
     </div>
   );
-} 
+}

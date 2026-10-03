@@ -1,25 +1,8 @@
 import type { Metadata } from "next";
-import { Inter, Roboto_Mono } from "next/font/google";
 import "./globals.css";
 import { AudioProvider } from "@/lib/audio";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import ConditionalAppLayout from "@/components/layout/ConditionalAppLayout";
-
-const geistSans = Inter({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-  fallback: ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Arial", "sans-serif"],
-  preload: true,
-});
-
-const geistMono = Roboto_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", "monospace"],
-  preload: true,
-});
 
 export const metadata: Metadata = {
   title: {
@@ -45,34 +28,26 @@ export const metadata: Metadata = {
     creator: "@spotibuds",
   },
   robots: {
-    index: true,
-    follow: true,
+    index: false,
+    follow: false,
   },
   icons: {
-    icon: [
-      { url: '/logo.svg', type: 'image/svg+xml' },
-    ],
-    shortcut: '/logo.svg',
-    apple: '/logo.svg',
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    shortcut: "/logo.svg",
+    apple: "/logo.svg",
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="antialiased">
         <ErrorBoundary>
           <AudioProvider>
-            <ConditionalAppLayout>
-              {children}
-            </ConditionalAppLayout>
+            <ConditionalAppLayout>{children}</ConditionalAppLayout>
           </AudioProvider>
         </ErrorBoundary>
       </body>
     </html>
   );
-} 
+}

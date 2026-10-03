@@ -1,0 +1,136 @@
+{
+  "repository": "Frontend",
+  "completed": true,
+  "scope": "Actual local production-container Chromium workflows; no claim about development-mode workflows.",
+  "run": "Root documented full Test.ps1 run8951, exit0",
+  "stats": {
+    "startTime": "2026-10-03T19:50:06.644Z",
+    "duration": 234867.838,
+    "expected": 21,
+    "unexpected": 0,
+    "skipped": 0,
+    "flaky": 0
+  },
+  "cases": [
+    {
+      "name": "anonymous recovery is real and public; invalid reset is rejected",
+      "status": "passed",
+      "durationMs": 838
+    },
+    {
+      "name": "session survives reload; failed logout remains signed out across reload and cookie operations serialize",
+      "status": "passed",
+      "durationMs": 5786
+    },
+    {
+      "name": "playlist create and edit persist through real API and reload; failed creation keeps draft",
+      "status": "passed",
+      "durationMs": 3413
+    },
+    {
+      "name": "real media plays and logout stops and clears the audio element",
+      "status": "passed",
+      "durationMs": 2126
+    },
+    {
+      "name": "playlist cover, ordering and removals persist through the UI and real API",
+      "status": "passed",
+      "durationMs": 1666
+    },
+    {
+      "name": "direct chat joins, renders acknowledged messages once and keeps rejected drafts",
+      "status": "passed",
+      "durationMs": 2081
+    },
+    {
+      "name": "clearing profile fields persists after save and a complete reload",
+      "status": "passed",
+      "durationMs": 1226
+    },
+    {
+      "name": "search cancellation prevents stale results and clearing stops loading",
+      "status": "passed",
+      "durationMs": 1636
+    },
+    {
+      "name": "history loads real entries, survives reload and missing profiles exit loading",
+      "status": "passed",
+      "durationMs": 1224
+    },
+    {
+      "name": "native playback publishes now-playing beyond its TTL and pause clears it",
+      "status": "passed",
+      "durationMs": 121622
+    },
+    {
+      "name": "player seeks real media and handles previous, next, repeat, shuffle and finite queue",
+      "status": "passed",
+      "durationMs": 4377
+    },
+    {
+      "name": "playlist detail fits a narrow screen and names song actions",
+      "status": "passed",
+      "durationMs": 1429
+    },
+    {
+      "name": "history pagination loads 105 distinct persisted entries for a disposable account",
+      "status": "passed",
+      "durationMs": 4326
+    },
+    {
+      "name": "two users receive chat and read receipts initially and after an offline reconnect",
+      "status": "passed",
+      "durationMs": 35529
+    },
+    {
+      "name": "accepted private friend remains visible by permitted summary and can open chat",
+      "status": "passed",
+      "durationMs": 1928
+    },
+    {
+      "name": "administrator creates, edits, discovers and deletes a catalogue through the UI",
+      "status": "passed",
+      "durationMs": 13404
+    },
+    {
+      "name": "registration and Mailpit password recovery complete through the public UI",
+      "status": "passed",
+      "durationMs": 3117
+    },
+    {
+      "name": "now-playing feed reaction persists after reload and remains on the history post",
+      "status": "passed",
+      "durationMs": 3316
+    },
+    {
+      "name": "notification read outage stays visible and a successful retry persists",
+      "status": "passed",
+      "durationMs": 7550
+    },
+    {
+      "name": "two ordinary users follow, unfollow, accept friendship, open a profile chat and remove friendship",
+      "status": "passed",
+      "durationMs": 9143
+    },
+    {
+      "name": "hard navigation survives lost prepare cookies and lost completion bodies without replaying consumed credentials",
+      "status": "passed",
+      "durationMs": 5940
+    }
+  ],
+  "staticChecks": {
+    "unitTests": "29/29 passed",
+    "typeCheck": "passed",
+    "lint": "passed, zero warnings",
+    "format": "passed",
+    "build": "passed",
+    "dependencies": "runtime0; one exact documented development-only exception until2026-10-17"
+  },
+  "discoveryArtifacts": [
+    "docs/frontend-browser-discovery.json",
+    "docs/frontend-browser-discovery-signout.json",
+    "docs/frontend-browser-discovery-feed.json",
+    "docs/frontend-browser-discovery-recovery.json"
+  ],
+  "security": "No credentials, tokens, cookies, request headers/bodies or personal profiles are retained."
+}

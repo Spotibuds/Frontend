@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from 'react';
-import { PhotoIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { musicApi } from '@/lib/api';
-import MusicImage from './ui/MusicImage';
+import { useState, useRef } from "react";
+import { PhotoIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { musicApi } from "@/lib/api";
+import MusicImage from "./ui/MusicImage";
 
 interface PlaylistCoverUploaderProps {
   playlistId: string;
@@ -12,12 +12,13 @@ interface PlaylistCoverUploaderProps {
   className?: string;
 }
 
-export default function PlaylistCoverUploader({ 
-  playlistId, 
-  currentCoverUrl, 
+export default function PlaylistCoverUploader({
+  playlistId,
+  currentCoverUrl,
   onCoverUpdated,
-  className = ''
+  className = "",
 }: PlaylistCoverUploaderProps) {
+  const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,45 +28,46 @@ export default function PlaylistCoverUploader({
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Select a JPEG, PNG or WebP image");
       return;
     }
 
     // Validate file size (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB');
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File size must be less than 5MB");
       return;
     }
 
+    setError("");
     setUploading(true);
     try {
       const result = await musicApi.uploadPlaylistCover(playlistId, file);
       onCoverUpdated?.(result.coverUrl);
     } catch (error) {
-      console.error('Error uploading cover:', error);
-      alert(error instanceof Error ? error.message : 'Failed to upload cover image');
+      console.error("Error uploading cover:", error);
+      setError(error instanceof Error ? error.message : "Failed to upload cover image");
     } finally {
       setUploading(false);
       // Reset file input
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
     }
   };
 
   const handleDeleteCover = async () => {
     if (!currentCoverUrl) return;
-    
-    if (!confirm('Are you sure you want to delete the cover image?')) return;
+
+    if (!confirm("Are you sure you want to delete the cover image?")) return;
 
     setDeleting(true);
     try {
       await musicApi.deletePlaylistCover(playlistId);
       onCoverUpdated?.(null);
     } catch (error) {
-      console.error('Error deleting cover:', error);
-      alert(error instanceof Error ? error.message : 'Failed to delete cover image');
+      console.error("Error deleting cover:", error);
+      setError(error instanceof Error ? error.message : "Failed to delete cover image");
     } finally {
       setDeleting(false);
     }
@@ -73,13 +75,18 @@ export default function PlaylistCoverUploader({
 
   return (
     <div className={`playlist-cover-uploader ${className}`}>
+      {error && (
+        <p role="alert" className="text-red-300">
+          {error}
+        </p>
+      )}
       <div className="relative group">
         {/* Cover Image Display */}
         <div className="w-48 h-48 rounded-lg overflow-hidden bg-gray-800 border-2 border-gray-700">
           {currentCoverUrl ? (
-            <MusicImage 
-              src={currentCoverUrl} 
-              alt="Playlist cover" 
+            <MusicImage
+              src={currentCoverUrl}
+              alt="Playlist cover"
               size="large"
               className="w-full h-full object-cover"
             />
@@ -88,12 +95,12 @@ export default function PlaylistCoverUploader({
               <PhotoIcon className="w-16 h-16 text-gray-500" />
             </div>
           )}
-          
+
           {/* Overlay with upload/delete buttons */}
-          <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
+          <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
             <button
               type="button"
-              onClick={(e) => {
+              onClick={e => {
                 e.preventDefault();
                 e.stopPropagation();
                 fileInputRef.current?.click();
@@ -108,11 +115,11 @@ export default function PlaylistCoverUploader({
                 <PhotoIcon className="w-6 h-6" />
               )}
             </button>
-            
+
             {currentCoverUrl && (
               <button
                 type="button"
-                onClick={(e) => {
+                onClick={e => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleDeleteCover();
@@ -135,7 +142,8 @@ export default function PlaylistCoverUploader({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
+          aria-label="Upload playlist cover"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -143,11 +151,9 @@ export default function PlaylistCoverUploader({
 
       {/* Upload hint */}
       <p className="text-sm text-gray-400 mt-2 text-center">
-        {currentCoverUrl ? 'Hover to change or delete cover' : 'Click to upload cover image'}
+        {currentCoverUrl ? "Hover to change or delete cover" : "Click to upload cover image"}
       </p>
-      <p className="text-xs text-gray-500 text-center">
-        Max 10MB • JPEG, PNG, WebP
-      </p>
+      <p className="text-xs text-gray-500 text-center">Max 5MB • JPEG, PNG, WebP</p>
     </div>
   );
 }

@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-03T20:38:05.292Z",
+  "reports": [
+    {
+      "repository": "Identity",
+      "projects": [
+        "Identity.csproj"
+      ],
+      "knownVulnerablePackages": 0,
+      "reportShapeRegressions": 9,
+      "status": "passed"
+    },
+    {
+      "repository": "Music",
+      "projects": [
+        "Music.csproj",
+        "Music.Tests.csproj"
+      ],
+      "knownVulnerablePackages": 0,
+      "reportShapeRegressions": 9,
+      "status": "passed"
+    },
+    {
+      "repository": "User",
+      "projects": [
+        "User.csproj"
+      ],
+      "knownVulnerablePackages": 0,
+      "reportShapeRegressions": 9,
+      "status": "passed"
+    }
+  ],
+  "regressionChecks": 27,
+  "remoteCiTriggered": false
+}

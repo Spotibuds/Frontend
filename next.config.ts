@@ -1,47 +1,35 @@
 import type { NextConfig } from "next";
-
+const origins = ["NEXT_PUBLIC_IDENTITY_API", "NEXT_PUBLIC_MUSIC_API", "NEXT_PUBLIC_USER_API"]
+  .map(key => process.env[key])
+  .filter(Boolean)
+  .map(value => new URL(value!).origin);
 const nextConfig: NextConfig = {
   output: "standalone",
-  typescript: {
-    // Allow production builds to complete even if there are TypeScript errors
-    ignoreBuildErrors: false,
-  },
-  eslint: {
-    // Allow production builds to complete even if there are ESLint errors
-    ignoreDuringBuilds: false,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-    ],
-  },
-  // Fix cross-origin warnings - specify allowed origins for dev server
-  allowedDevOrigins: [
-    "26.179.76.180",
-    "localhost",
-    "127.0.0.1",
-  ],
-  // Improve font loading and network resilience
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
+  images: { unoptimized: true },
   async headers() {
+    const connect = [
+      "'self'",
+      ...origins,
+      "http://127.0.0.1:5101",
+      "http://127.0.0.1:5102",
+      "http://127.0.0.1:5103",
+      "ws://127.0.0.1:*",
+    ].join(" ");
     return [
       {
         source: "/(.*)",
         headers: [
           {
-            key: "Cross-Origin-Embedder-Policy",
-            value: "unsafe-none",
+            key: "Content-Security-Policy",
+            value: `default-src 'self'; script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${origins.join(" ")} http://127.0.0.1:5102 http://127.0.0.1:5103; media-src 'self' blob: ${origins.join(" ")} http://127.0.0.1:5102; connect-src ${connect}; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'`,
           },
-          {
-            key: "Cross-Origin-Opener-Policy", 
-            value: "same-origin-allow-popups",
-          },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
         ],
       },
     ];
   },
 };
-
-export default nextConfig; 
+export default nextConfig;

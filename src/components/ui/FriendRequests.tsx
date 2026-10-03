@@ -1,24 +1,34 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './Card';
-import { Button } from './Button';
-import { userApi, identityApi, FriendRequest } from '@/lib/api';
-import { useFriendHub } from '@/hooks/useFriendHub';
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "./Card";
+import { Button } from "./Button";
+import { userApi, identityApi, FriendRequest } from "@/lib/api";
 
 interface FriendRequestsProps {
   className?: string;
 }
 
-export default function FriendRequests({ className = '' }: FriendRequestsProps) {
+export default function FriendRequests({ className = "" }: FriendRequestsProps) {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Initialize friend hub for real-time updates
-  useFriendHub();
 
-  useEffect(() => {
+  // Initialize friend hub for real-time updates
+
+  async function loadFriendRequests(userId: string) {
+    try {
+      const requests = await userApi.getPendingFriendRequests(userId);
+      setFriendRequests(requests);
+    } catch (error) {
+      console.error("Failed to load friend requests:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useDeferredEffect(() => {
     const user = identityApi.getCurrentUser();
     setCurrentUser(user);
 
@@ -26,17 +36,6 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
       loadFriendRequests(user.id);
     }
   }, []);
-
-  const loadFriendRequests = async (userId: string) => {
-    try {
-      const requests = await userApi.getPendingFriendRequests(userId);
-      setFriendRequests(requests);
-    } catch (error) {
-      console.error('Failed to load friend requests:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleAcceptRequest = async (requestId: string) => {
     if (!currentUser) return;
@@ -46,7 +45,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
       // Remove from local state
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
     } catch (error) {
-      console.error('Failed to accept friend request:', error);
+      console.error("Failed to accept friend request:", error);
     }
   };
 
@@ -58,7 +57,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
       // Remove from local state
       setFriendRequests(prev => prev.filter(req => req.requestId !== requestId));
     } catch (error) {
-      console.error('Failed to decline friend request:', error);
+      console.error("Failed to decline friend request:", error);
     }
   };
 
@@ -82,13 +81,11 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
   return (
     <Card className={`bg-gray-800/50 border-gray-700 ${className}`}>
       <CardHeader>
-        <CardTitle className="text-white">
-          Friend Requests ({friendRequests.length})
-        </CardTitle>
+        <CardTitle className="text-white">Friend Requests ({friendRequests.length})</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {friendRequests.map((request) => (
+          {friendRequests.map(request => (
             <div
               key={request.requestId}
               className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg"
@@ -106,7 +103,7 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
                   </p>
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-2">
                 <Button
                   onClick={() => handleAcceptRequest(request.requestId)}
@@ -128,4 +125,4 @@ export default function FriendRequests({ className = '' }: FriendRequestsProps) 
       </CardContent>
     </Card>
   );
-} 
+}

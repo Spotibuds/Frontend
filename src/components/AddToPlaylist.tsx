@@ -1,9 +1,10 @@
-'use client';
+"use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { PlusIcon, CheckIcon } from '@heroicons/react/24/outline';
-import { PlaylistService, Playlist } from '@/lib/playlist';
-import { Song } from '@/lib/api';
+import React, { useState, useCallback } from "react";
+import { PlusIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { PlaylistService, Playlist } from "@/lib/playlist";
+import { Song } from "@/lib/api";
 
 interface AddToPlaylistProps {
   song: Song;
@@ -13,21 +14,24 @@ interface AddToPlaylistProps {
 
 export default function AddToPlaylist({ song, userId, onAdded }: AddToPlaylistProps) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
   const loadUserPlaylists = useCallback(async () => {
     try {
       const userPlaylists = await PlaylistService.getUserPlaylists(userId);
-      setPlaylists(userPlaylists);
+      setPlaylists(
+        await Promise.all(userPlaylists.map(item => PlaylistService.getPlaylist(item.id)))
+      );
     } catch (error) {
-      console.error('Failed to load playlists:', error);
+      setError(error instanceof Error ? error.message : "Playlists could not be loaded.");
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     loadUserPlaylists();
   }, [loadUserPlaylists]);
 
@@ -35,15 +39,19 @@ export default function AddToPlaylist({ song, userId, onAdded }: AddToPlaylistPr
     try {
       setAddingTo(playlist.id);
       await PlaylistService.addSongToPlaylist(playlist.id, song.id);
-      
+
       // Reload playlists to get the updated data from backend
       await loadUserPlaylists();
       onAdded?.(playlist);
-      
+
       // Show success feedback
       setTimeout(() => setAddingTo(null), 1000);
     } catch (error) {
-      console.error('Failed to add song to playlist:', error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Song could not be added. Retry when Music is available."
+      );
       setAddingTo(null);
     }
   };
@@ -52,20 +60,12 @@ export default function AddToPlaylist({ song, userId, onAdded }: AddToPlaylistPr
     if (!playlist.songs || playlist.songs.length === 0) {
       return false;
     }
-    
+
     // Simple string comparison to avoid any potential type issues
     const songIds = playlist.songs.map(s => String(s.id));
     const targetId = String(song.id);
     const isInPlaylist = songIds.includes(targetId);
-    
-    console.log(`Checking playlist "${playlist.name}":`, {
-      targetSongId: targetId,
-      targetSongTitle: song.title,
-      playlistSongIds: songIds,
-      playlistSongs: playlist.songs.map(s => ({ id: s.id, title: s.title })),
-      result: isInPlaylist
-    });
-    
+
     return isInPlaylist;
   };
 
@@ -79,34 +79,35 @@ export default function AddToPlaylist({ song, userId, onAdded }: AddToPlaylistPr
 
   return (
     <div className="max-h-60 overflow-y-auto">
+      {error && (
+        <p role="alert" className="text-red-300">
+          {error} <button onClick={loadUserPlaylists}>Retry</button>
+        </p>
+      )}
       {playlists.length === 0 ? (
         <div className="p-4 text-gray-400 text-center">
           <p>No playlists found</p>
           <p className="text-sm">Create a playlist first</p>
         </div>
       ) : (
-        playlists.map((playlist) => {
+        playlists.map(playlist => {
           const isInPlaylist = isSongInPlaylist(playlist);
           const isAdding = addingTo === playlist.id;
-          
+
           return (
             <button
               key={playlist.id}
               onClick={() => !isInPlaylist && !isAdding && handleAddToPlaylist(playlist)}
               disabled={isInPlaylist || isAdding}
               className={`w-full p-3 text-left hover:bg-gray-700 transition-colors flex items-center justify-between rounded-lg ${
-                isInPlaylist ? 'opacity-50' : ''
+                isInPlaylist ? "opacity-50" : ""
               }`}
             >
               <div className="min-w-0 flex-1">
-                <div className="text-white font-medium truncate">
-                  {playlist.name}
-                </div>
-                <div className="text-gray-400 text-sm">
-                  {playlist.songs.length} songs
-                </div>
+                <div className="text-white font-medium truncate">{playlist.name}</div>
+                <div className="text-gray-400 text-sm">{playlist.songs.length} songs</div>
               </div>
-              
+
               <div className="flex-shrink-0 ml-3">
                 {isAdding ? (
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>

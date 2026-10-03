@@ -1,0 +1,226 @@
+{
+  "repository": "Frontend",
+  "updated": "2026-10-03",
+  "entries": [
+    {
+      "id": "O-01",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Patched Next/React to maintained audited versions; production build and dependency checks replace the vulnerable release.",
+      "changedFiles": [
+        "Dockerfile",
+        "package.json",
+        "package-lock.json"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "O-02",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Patched API/runtime/frontend dependencies, removed unused libraries, and added lockfiles/advisory validation.",
+      "changedFiles": [
+        "demo/Test.ps1",
+        "scripts/audit-dependencies.mjs"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "One unpatched development-only braces advisory is restricted to static lint globs; exact exception expires2026-10-17. Production graph and backend scans are clear. Identity .NET8 migration due before November2026 support end."
+      ]
+    },
+    {
+      "id": "O-03",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Generated fresh isolated secrets and removed current tracked credential defaults without inspecting external credential validity or rewriting historical Git.",
+      "changedFiles": [
+        "demo/New-LocalEnvironment.ps1",
+        "demo/.env.example",
+        "demo/compose.yml",
+        "demo/verify-delivery.mjs"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "Historical external credentials remain unverified/unrevoked. Rotation and possible history rewrite require their owners."
+      ]
+    },
+    {
+      "id": "O-04",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "All four repositories use validation-only pull-request CI without deployment/push/cloud secrets.",
+      "changedFiles": [
+        ".github/workflows",
+        "demo/Test.ps1",
+        "Identity/.github/workflows/ci-cd.yml",
+        "Music/.github/workflows/ci-cd.yml",
+        "User/.github/workflows/ci-cd.yml",
+        "Identity/scripts/check-advisories.py",
+        "Music/scripts/check-advisories.py",
+        "User/scripts/check-advisories.py"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed.",
+        "Three advisory validators passed nine report-shape regressions each and actual current no-restore dependency reports, including both Music solution projects. Missing projects, nested lookup failures and vulnerabilities fail closed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Remote CI was not triggered; equivalent local checks and workflow source were verified."
+      ]
+    },
+    {
+      "id": "O-05",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Mandatory explicit frontend API build arguments and local compile-time origins remove silent production fallback.",
+      "changedFiles": [
+        "demo/compose.yml",
+        "Dockerfile",
+        "src/lib/config.ts"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "O-06",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Named isolated Compose, unique loopback host ports, bounded readiness and idempotent fixture scripts.",
+      "changedFiles": [
+        "demo/compose.yml",
+        "demo/Demo.ps1",
+        "demo/wait-ready.mjs",
+        "demo/seed.mjs"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "O-07",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "PowerShell guide documents exact prerequisites, commands, claims, URLs, accounts, privacy, recovery, persistence and reset scope.",
+      "changedFiles": [
+        "demo/README.md",
+        "demo/Test.ps1",
+        "demo/Demo.ps1"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "O-R01",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Document local recovery/readiness; production backups, restoration drills, centralized observability and incident response remain separate.",
+      "changedFiles": [
+        "demo/README.md"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Deferred: production-only follow-up",
+      "limitations": [
+        "No production recovery or cloud operations executed."
+      ]
+    },
+    {
+      "id": "O-R02",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Application images run nonroot; build contexts exclude credentials, Git, tests and generated artifacts; all exposed ports are loopback.",
+      "changedFiles": [
+        "demo/compose.yml",
+        "demo/inspect-runtime.mjs",
+        ".dockerignore",
+        "Dockerfile"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Mitigated for the local demo",
+      "limitations": [
+        "Vendor infrastructure initialization privilege and production immutable-image/registry/cloud policies need separate hardening."
+      ]
+    },
+    {
+      "id": "O-R03",
+      "applicability": "Shared local-demo operations scope.",
+      "correction": "Execute local real browser/media/concurrency/outage/restart scenarios; defer broad browser, operational load and cloud policy matrix.",
+      "changedFiles": [
+        "demo/Test.ps1",
+        "demo/outage-restart-integration.mjs",
+        "tests/browser",
+        "demo/README.md"
+      ],
+      "verification": [
+        "See verification-summary.json for exact executed commands/results; no remote production or CI deployment performed."
+      ],
+      "status": "Deferred: production-only follow-up",
+      "limitations": [
+        "Chromium/IAB basic desktop/mobile tested; no exhaustive browser matrix, production load or cloud policy validation."
+      ]
+    },
+    {
+      "id": "NEW-O01",
+      "title": "CLI status could exit successfully despite failed API readiness.",
+      "applicability": "Discovered during final local startup script review.",
+      "correction": "Propagate failed readiness exit codes and use a bounded one-attempt status probe; retain startup retries.",
+      "changedFiles": [
+        "demo/Demo.ps1",
+        "demo/wait-ready.mjs",
+        "demo/demo-api.mjs",
+        "demo/outage-restart-integration.mjs"
+      ],
+      "verification": [
+        "Final outage command passed26 persisted outage/range/restart checks plus2 actual CLI checks: status exits nonzero with stopped Blob dependency and zero after recovery."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-O02",
+      "title": "Interrupted environment generation could report success with missing account credentials.",
+      "applicability": "Discovered during clean-start script review.",
+      "correction": "Write account credentials before publishing environment and reject existing environments whose account file is missing.",
+      "changedFiles": [
+        "demo/New-LocalEnvironment.ps1"
+      ],
+      "verification": [
+        "Three disposable-copy scenarios and twelve assertions passed: missing-account failure preserves environment, fresh setup produces one Admin and three Users, rerun preserves both file hashes."
+      ],
+      "status": "Fixed and verified",
+      "limitations": []
+    },
+    {
+      "id": "NEW-O03",
+      "title": "Windows development teardown left a Next child holding the demo port.",
+      "applicability": "The documented frontend development startup worked, but PTY Ctrl+C left its verified child on3100 and the first container restore failed. An empty unelevated listener query did not prove that the port was free.",
+      "correction": "Provide a scoped Windows fallback that verifies the listener, exact workspace Next dev parent, command paths and process creation times before stopping only the owned child. Inspect all3100 listeners and exclusively bind-probe loopback before claiming the port is free. Retain a bounded lifecycle regression with owned-stop, foreign-denial and no-op checks plus container restoration.",
+      "changedFiles": [
+        "demo/Stop-FrontendDevelopment.ps1",
+        "demo/Test-FrontendDevelopment.ps1",
+        "demo/verify-development-page.cjs",
+        "demo/README.md",
+        "docs/local-demo/verification/frontend-development.json"
+      ],
+      "verification": [
+        "Final bounded Windows lifecycle regression passed21/21 checks: anonymous rendering and loopback configuration, exact launched-parent identity/time guard, owned child/parent termination, foreign fixture refused and preserved, exclusive-bind free-port no-op, and production frontend plus all three APIs restored. The scoped helper also refused the running Docker frontend without stopping it."
+      ],
+      "status": "Fixed and verified",
+      "limitations": [
+        "Windows helper intentionally refuses other command shapes or uncertain ownership. Authenticated UI workflows were verified against the production container; development checks cover startup, configuration and lifecycle."
+      ]
+    }
+  ]
+}

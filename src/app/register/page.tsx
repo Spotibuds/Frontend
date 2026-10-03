@@ -1,14 +1,15 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import ReCAPTCHA from "react-google-recaptcha";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { ApiError } from "@/lib/request";
 import { identityApi, type RegisterRequest } from "@/lib/api";
 
 interface FormData extends RegisterRequest {
@@ -25,6 +26,7 @@ export default function RegisterPage() {
     recaptchaToken: null,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [registrationPending, setRegistrationPending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -32,7 +34,7 @@ export default function RegisterPage() {
   const router = useRouter();
 
   // Prevent hydration mismatches
-  useEffect(() => {
+  useDeferredEffect(() => {
     setIsMounted(true);
   }, []);
 
@@ -81,10 +83,8 @@ export default function RegisterPage() {
       newErrors.confirmPassword = "Passwords do not match";
     }
 
-    // reCAPTCHA validation
-    if (!formData.recaptchaToken) {
-      newErrors.recaptcha = "Please complete the CAPTCHA";
-    }
+    if (new Set(formData.password).size < 6)
+      newErrors.password = "Password must contain at least six unique characters";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -92,7 +92,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     setLoading(true);
@@ -101,18 +101,26 @@ export default function RegisterPage() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirmPassword, recaptchaToken, ...registerData } = formData;
-      await identityApi.register(registerData);
-      
+      if (!registrationPending) await identityApi.register(registerData);
+
       // Auto-login after successful registration
       await identityApi.login({
         username: formData.username,
         password: formData.password,
       });
-      
+
       router.push("/dashboard");
     } catch (error) {
+      if (error instanceof ApiError && error.status === 503) {
+        setRegistrationPending(true);
+        setErrors({
+          general:
+            "Your account may have been created while profile synchronization is pending. Keep these credentials and use Retry sign-in shortly; do not register again.",
+        });
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : "Registration failed";
-      
+
       // Try to parse the error message as JSON to get detailed errors
       let parsedError: { errors?: string[]; message?: string } | null = null;
       try {
@@ -120,7 +128,7 @@ export default function RegisterPage() {
       } catch {
         // Not JSON, treat as plain error message
       }
-      
+
       // Handle specific error cases
       if (parsedError && parsedError.errors && Array.isArray(parsedError.errors)) {
         // Handle validation errors from backend
@@ -137,12 +145,22 @@ export default function RegisterPage() {
           }
         });
         setErrors(validationErrors);
-      } else if (errorMessage.includes("username") || errorMessage.includes("DuplicateUserName") || errorMessage.includes("already taken")) {
+      } else if (
+        errorMessage.includes("username") ||
+        errorMessage.includes("DuplicateUserName") ||
+        errorMessage.includes("already taken")
+      ) {
         setErrors({ username: "This username is already taken" });
       } else if (errorMessage.includes("email") || errorMessage.includes("already exists")) {
         setErrors({ email: "This email is already registered" });
-      } else if (errorMessage.includes("database synchronization") || errorMessage.includes("MongoDB")) {
-        setErrors({ general: "Registration failed due to a temporary database issue. Please try again in a moment." });
+      } else if (
+        errorMessage.includes("database synchronization") ||
+        errorMessage.includes("MongoDB")
+      ) {
+        setErrors({
+          general:
+            "Registration failed due to a temporary database issue. Please try again in a moment.",
+        });
       } else {
         setErrors({ general: errorMessage });
       }
@@ -151,9 +169,7 @@ export default function RegisterPage() {
     }
   };
 
-  const handleInputChange = (field: keyof FormData) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleInputChange = (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear field error when user starts typing
@@ -162,21 +178,14 @@ export default function RegisterPage() {
     }
   };
 
-  const handleRecaptchaChange = (token: string | null) => {
-    setFormData(prev => ({ ...prev, recaptchaToken: token }));
-    if (errors.recaptcha) {
-      setErrors(prev => ({ ...prev, recaptcha: "" }));
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <Image 
-          src="/logo.svg" 
-          alt="Spotibuds Logo" 
-          width={200} 
+        <Image
+          src="/logo.svg"
+          alt="Spotibuds Logo"
+          width={200}
           height={60}
           priority
           className="h-12 w-auto"
@@ -189,7 +198,7 @@ export default function RegisterPage() {
           <CardTitle className="text-3xl gradient-text">Join Spotibuds</CardTitle>
           <p className="text-gray-400 mt-2">Create your account to get started</p>
         </CardHeader>
-        
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.general && (
@@ -200,6 +209,7 @@ export default function RegisterPage() {
 
             <Input
               label="Username"
+              autoComplete="username"
               type="text"
               placeholder="Choose a username"
               value={formData.username}
@@ -210,6 +220,7 @@ export default function RegisterPage() {
 
             <Input
               label="Email"
+              autoComplete="email"
               type="email"
               placeholder="Enter your email"
               value={formData.email}
@@ -221,6 +232,7 @@ export default function RegisterPage() {
             <div className="relative">
               <Input
                 label="Password"
+                autoComplete="new-password"
                 type={showPassword ? "text" : "password"}
                 placeholder="Create a password"
                 value={formData.password}
@@ -243,13 +255,15 @@ export default function RegisterPage() {
                 </span>
               </button>
               <p className="text-xs text-gray-400 mt-1">
-                Password must contain at least 8 characters, including uppercase, lowercase, numbers, and special characters
+                Use 8–100 characters with uppercase, lowercase, a number, a symbol and six unique
+                characters.
               </p>
             </div>
 
             <div className="relative">
               <Input
                 label="Confirm Password"
+                autoComplete="new-password"
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
@@ -273,26 +287,21 @@ export default function RegisterPage() {
               </button>
             </div>
 
-
-
             <div className="flex justify-center">
-              <ReCAPTCHA
-                sitekey="6Lc_XnUrAAAAAJifrj3oH0a2EGx6ml4pWIrlYKus"
-                theme="dark"
-                onChange={handleRecaptchaChange}
-              />
+              <p className="text-xs text-gray-400">
+                Local demo registration uses server rate limits. No third-party CAPTCHA is loaded.
+              </p>
             </div>
             {errors.recaptcha && (
               <p className="text-sm text-red-400 text-center">{errors.recaptcha}</p>
             )}
 
-            <Button
-              type="submit"
-              className="w-full"
-              loading={loading}
-              size="lg"
-            >
-              {loading ? "Creating account..." : "Create Account"}
+            <Button type="submit" className="w-full" loading={loading} size="lg">
+              {loading
+                ? "Please wait..."
+                : registrationPending
+                  ? "Retry sign-in"
+                  : "Create Account"}
             </Button>
           </form>
 
@@ -311,4 +320,4 @@ export default function RegisterPage() {
       </Card>
     </div>
   );
-} 
+}

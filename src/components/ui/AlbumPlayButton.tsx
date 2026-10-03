@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Play, Pause, Plus } from 'lucide-react';
-import { Album, musicApi } from '@/lib/api';
-import { useAudio } from '@/lib/audio';
+import React, { useState } from "react";
+import { Play, Pause, Plus } from "lucide-react";
+import { Album, musicApi } from "@/lib/api";
+import { useAudio } from "@/lib/audio";
 
 interface AlbumPlayButtonProps {
   album: Album;
-  size?: 'small' | 'medium' | 'large';
+  size?: "small" | "medium" | "large";
   showAddToQueue?: boolean;
 }
 
-export default function AlbumPlayButton({ 
-  album, 
-  size = 'medium',
-  showAddToQueue = false 
+export default function AlbumPlayButton({
+  album,
+  size = "medium",
+  showAddToQueue = false,
 }: AlbumPlayButtonProps) {
   const { currentSong, isPlaying, playSong, togglePlayPause, addToQueue, clearQueue } = useAudio();
   const [isLoading, setIsLoading] = useState(false);
@@ -23,15 +23,15 @@ export default function AlbumPlayButton({
   const isCurrentAlbumPlaying = currentSong?.album?.id === album.id && isPlaying;
 
   const sizeClasses = {
-    small: 'w-8 h-8',
-    medium: 'w-12 h-12',
-    large: 'w-16 h-16'
+    small: "w-8 h-8",
+    medium: "w-12 h-12",
+    large: "w-16 h-16",
   };
 
   const iconSizes = {
     small: 16,
     medium: 20,
-    large: 24
+    large: 24,
   };
 
   const handlePlayAlbum = async (e: React.MouseEvent) => {
@@ -46,15 +46,15 @@ export default function AlbumPlayButton({
     try {
       setIsLoading(true);
       const albumSongs = await musicApi.getAlbumSongs(album.id);
-      
+
       if (albumSongs.length > 0) {
         // Clear the current queue first
         clearQueue();
-        
+
         // Start playing the first song
         const firstSong = albumSongs[0];
         playSong(firstSong);
-        
+
         // Add the remaining songs to the queue (if any)
         if (albumSongs.length > 1) {
           const remainingSongs = albumSongs.slice(1);
@@ -62,7 +62,7 @@ export default function AlbumPlayButton({
         }
       }
     } catch (error) {
-      console.error('Error playing album:', error);
+      console.error("Error playing album:", error);
     } finally {
       setIsLoading(false);
     }
@@ -74,12 +74,12 @@ export default function AlbumPlayButton({
     try {
       setIsLoading(true);
       const albumSongs = await musicApi.getAlbumSongs(album.id);
-      
+
       if (albumSongs.length > 0) {
         addToQueue(albumSongs);
       }
     } catch (error) {
-      console.error('Error adding album to queue:', error);
+      console.error("Error adding album to queue:", error);
     } finally {
       setIsLoading(false);
     }
@@ -91,7 +91,7 @@ export default function AlbumPlayButton({
         onClick={handlePlayAlbum}
         disabled={isLoading}
         className={`${sizeClasses[size]} bg-green-500 hover:bg-green-400 text-white rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100`}
-        title={isCurrentAlbumPlaying ? 'Pause album' : 'Play album'}
+        title={isCurrentAlbumPlaying ? "Pause album" : "Play album"}
       >
         {isLoading ? (
           <div className="animate-spin rounded-full border-2 border-white border-t-transparent w-4 h-4" />

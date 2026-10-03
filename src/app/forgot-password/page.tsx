@@ -6,7 +6,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-// identityApi import removed – not used in this component
+import { identityApi } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (!email.trim()) {
       setError("Email is required");
       return;
@@ -31,8 +31,7 @@ export default function ForgotPasswordPage() {
     setError("");
 
     try {
-      // For now, just simulate the request since the backend endpoint might not exist yet
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await identityApi.forgotPassword(email.trim());
       setSuccess(true);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to send reset email";
@@ -47,10 +46,10 @@ export default function ForgotPasswordPage() {
       <div className="min-h-screen flex items-center justify-center p-4">
         {/* Logo */}
         <div className="absolute top-6 left-6">
-          <Image 
-            src="/logo.svg" 
-            alt="Spotibuds Logo" 
-            width={200} 
+          <Image
+            src="/logo.svg"
+            alt="Spotibuds Logo"
+            width={200}
             height={60}
             priority
             className="h-12 w-auto"
@@ -68,7 +67,8 @@ export default function ForgotPasswordPage() {
               </p>
             </div>
             <p className="text-gray-400 text-sm">
-              Didn&apos;t receive an email? Check your spam folder or try again.
+              For this local demo, open the Mailpit inbox at 127.0.0.1:8025. If delivery failed,
+              check Identity readiness and retry.
             </p>
             <div className="space-y-2">
               <Link href="/">
@@ -76,8 +76,8 @@ export default function ForgotPasswordPage() {
                   Back to Sign In
                 </Button>
               </Link>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 className="w-full"
                 onClick={() => {
                   setSuccess(false);
@@ -97,10 +97,10 @@ export default function ForgotPasswordPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       {/* Logo */}
       <div className="absolute top-6 left-6">
-        <Image 
-          src="/logo.svg" 
-          alt="Spotibuds Logo" 
-          width={200} 
+        <Image
+          src="/logo.svg"
+          alt="Spotibuds Logo"
+          width={200}
           height={60}
           priority
           className="h-12 w-auto"
@@ -115,7 +115,7 @@ export default function ForgotPasswordPage() {
             Enter your email address and we&apos;ll send you a link to reset your password.
           </p>
         </CardHeader>
-        
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
@@ -126,22 +126,18 @@ export default function ForgotPasswordPage() {
 
             <Input
               label="Email Address"
+              autoComplete="email"
               type="email"
               placeholder="Enter your email"
               value={email}
-              onChange={(e) => {
+              onChange={e => {
                 setEmail(e.target.value);
                 if (error) setError("");
               }}
               required
             />
 
-            <Button
-              type="submit"
-              className="w-full"
-              loading={loading}
-              size="lg"
-            >
+            <Button type="submit" className="w-full" loading={loading} size="lg">
               {loading ? "Sending..." : "Send Reset Link"}
             </Button>
           </form>
@@ -161,4 +157,4 @@ export default function ForgotPasswordPage() {
       </Card>
     </div>
   );
-} 
+}

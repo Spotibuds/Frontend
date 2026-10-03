@@ -1,0 +1,22 @@
+{
+  "issue": "NEW-S01",
+  "description": "First full20 run discovered the interrupted-refresh navigation race before staged renewal.",
+  "stats": {
+    "startTime": "2026-10-03T18:34:06.545Z",
+    "duration": 378786.499,
+    "expected": 19,
+    "skipped": 0,
+    "unexpected": 1,
+    "flaky": 0
+  },
+  "failures": [
+    {
+      "title": "administrator creates, edits, discovers and deletes a catalogue through the UI",
+      "status": "timedOut",
+      "errors": [
+        "Test timeout of 90000ms exceeded.",
+        "Error: Catalogue stage delete /admin: locator.click: Test timeout of 90000ms exceeded.\nCall log:\n  - waiting for getByText('Browser album 1791052618510 edited', { exact: true }).locator('..').getByRole('button', { name: 'Delete', exact: true })\n; responses: POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 200, POST /api/auth/refresh 401, POST /api/auth/refresh 401\n\n  764 |     );\n  765 |   } catch (error) {\n> 766 |     throw new Error(\n      |           ^\n  767 |       `Catalogue stage ${stage}: ${error instanceof Error ? error.message : \"failed\"}; responses: ${failures.join(\", \")}`\n  768 |     );\n  769 |   } finally {\n    at C:\\Users\\Arkhun\\Documents\\Soft Projects\\Spotibuds\\Frontend\\tests\\browser\\demo.spec.ts:766:11"
+      ]
+    }
+  ]
+}

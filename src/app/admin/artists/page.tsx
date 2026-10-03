@@ -1,12 +1,13 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import SidebarNavigation from "../../../components/AdminNavigation";
 import MusicImage from "@/components/ui/MusicImage";
 import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
-import Image from "next/image";
+import { useDialog } from "@/hooks/useDialog";
 
 const MySwal = withReactContent(Swal);
 
@@ -23,6 +24,11 @@ export default function AdminPageForArtists() {
   // Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const dialogRef = useDialog(isCreateModalOpen || isUpdateModalOpen, () => {
+    setIsCreateModalOpen(false);
+    setIsUpdateModalOpen(false);
+  });
   const [modalData, setModalData] = useState<{
     id: string;
     name: string;
@@ -44,16 +50,16 @@ export default function AdminPageForArtists() {
       const data = await musicApi.getArtists();
       setArtists(data);
 
-      const albumsPromises = data.map((artist) =>
+      const albumsPromises = data.map(artist =>
         musicApi
           .getArtistAlbums(artist.id)
-          .then((albums) => ({ id: artist.id, albums }))
+          .then(albums => ({ id: artist.id, albums }))
           .catch(() => ({ id: artist.id, albums: [] }))
       );
 
       const albumsResults = await Promise.all(albumsPromises);
       const albumsObj: Record<string, Album[]> = {};
-      albumsResults.forEach((res) => {
+      albumsResults.forEach(res => {
         albumsObj[res.id] = res.albums;
       });
       setAlbumsMap(albumsObj);
@@ -65,7 +71,7 @@ export default function AdminPageForArtists() {
     }
   };
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     fetchArtists();
   }, []);
 
@@ -96,7 +102,7 @@ export default function AdminPageForArtists() {
       try {
         const success = await adminApi.deleteArtist(id);
         if (success) {
-          setArtists(artists.filter((a) => a.id !== id));
+          setArtists(artists.filter(a => a.id !== id));
           MySwal.fire({
             icon: "success",
             title: "Artist deleted successfully",
@@ -111,7 +117,8 @@ export default function AdminPageForArtists() {
         console.error(err);
         MySwal.fire({
           icon: "error",
-          title: "Something went wrong",
+          title: "Change failed",
+          text: err instanceof Error ? err.message : "Retry when the local service is available",
         });
       }
     }
@@ -138,29 +145,31 @@ export default function AdminPageForArtists() {
     const { name, value, files } = e.target;
     if (name === "imageFile") {
       const file = files?.[0];
-      setModalData((prev) => ({ ...prev, imageFile: file }));
+      setModalData(prev => ({ ...prev, imageFile: file }));
       if (file) setImagePreview(URL.createObjectURL(file));
     } else {
-      setModalData((prev) => ({ ...prev, [name]: value }));
+      setModalData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   // Submit create
   const handleCreateSubmit = async () => {
+    if (saving) return;
     if (!modalData.name) {
       MySwal.fire({ icon: "warning", title: "Name is required" });
       return;
     }
 
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Name", modalData.name);
-      if (modalData.bio) formData.append("Bio", modalData.bio);
+      formData.append("Bio", modalData.bio || "");
       if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const newArtist = await adminApi.createArtist(formData);
       if (newArtist) {
-        setArtists((prev) => [...prev, newArtist]);
+        setArtists(prev => [...prev, newArtist]);
         setIsCreateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Artist created successfully" });
       } else {
@@ -168,28 +177,34 @@ export default function AdminPageForArtists() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   // Submit update
   const handleUpdateSubmit = async () => {
+    if (saving) return;
     if (!modalData.name) {
       MySwal.fire({ icon: "warning", title: "Name is required" });
       return;
     }
 
+    setSaving(true);
     try {
       const formData = new FormData();
       formData.append("Name", modalData.name);
-      if (modalData.bio) formData.append("Bio", modalData.bio);
+      formData.append("Bio", modalData.bio || "");
       if (modalData.imageFile) formData.append("ImageFile", modalData.imageFile);
 
       const updatedArtist = await adminApi.updateArtist(modalData.id!, formData);
       if (updatedArtist) {
-        setArtists((prev) =>
-          prev.map((a) => (a.id === modalData.id ? { ...a, ...updatedArtist } : a))
-        );
+        setArtists(prev => prev.map(a => (a.id === modalData.id ? { ...a, ...updatedArtist } : a)));
         setIsUpdateModalOpen(false);
         MySwal.fire({ icon: "success", title: "Artist updated successfully" });
       } else {
@@ -197,7 +212,13 @@ export default function AdminPageForArtists() {
       }
     } catch (err) {
       console.error(err);
-      MySwal.fire({ icon: "error", title: "Something went wrong" });
+      MySwal.fire({
+        icon: "error",
+        title: "Change failed",
+        text: err instanceof Error ? err.message : "Retry when the local service is available",
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -218,14 +239,16 @@ export default function AdminPageForArtists() {
         {loading ? (
           <p className="text-gray-400">Loading artists...</p>
         ) : error ? (
-          <p className="text-red-400">{error}</p>
+          <p role="alert" className="text-red-400">
+            {error} <button onClick={fetchArtists}>Retry</button>
+          </p>
         ) : artists.length === 0 ? (
           <p className="text-gray-400">No artists found</p>
         ) : (
           <>
             {/* Artist grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {currentArtists.map((artist) => (
+              {currentArtists.map(artist => (
                 <div
                   key={artist.id}
                   className="flex flex-col sm:flex-row items-center bg-gray-900 p-4 rounded shadow-md space-y-3 sm:space-y-0 sm:space-x-4"
@@ -282,18 +305,25 @@ export default function AdminPageForArtists() {
                 Next
               </button>
             </div>
-
           </>
         )}
 
         {/* Modal */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
           <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
-            <div className="bg-gray-900 p-6 rounded shadow-lg w-96">
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Artist editor"
+              tabIndex={-1}
+              className="bg-gray-900 p-6 rounded shadow-lg w-96 max-h-[90vh] overflow-y-auto"
+            >
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Artist" : "Update Artist"}
               </h2>
               <input
+                aria-label="Name"
                 type="text"
                 name="name"
                 placeholder="Name"
@@ -302,6 +332,7 @@ export default function AdminPageForArtists() {
                 onChange={handleModalChange}
               />
               <input
+                aria-label="BIO"
                 type="text"
                 name="bio"
                 placeholder="BIO"
@@ -309,18 +340,24 @@ export default function AdminPageForArtists() {
                 value={modalData.bio}
                 onChange={handleModalChange}
               />
-              <label
-                className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-6 mr-2 fill-white inline" viewBox="0 0 32 32">
+              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-6 mr-2 fill-white inline"
+                  viewBox="0 0 32 32"
+                >
                   <path
                     d="M23.75 11.044a7.99 7.99 0 0 0-15.5-.009A8 8 0 0 0 9 27h3a1 1 0 0 0 0-2H9a6 6 0 0 1-.035-12 1.038 1.038 0 0 0 1.1-.854 5.991 5.991 0 0 1 11.862 0A1.08 1.08 0 0 0 23 13a6 6 0 0 1 0 12h-3a1 1 0 0 0 0 2h3a8 8 0 0 0 .75-15.956z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                   <path
                     d="M20.293 19.707a1 1 0 0 0 1.414-1.414l-5-5a1 1 0 0 0-1.414 0l-5 5a1 1 0 0 0 1.414 1.414L15 16.414V29a1 1 0 0 0 2 0V16.414z"
-                    data-original="#000000" />
+                    data-original="#000000"
+                  />
                 </svg>
                 Upload Image
                 <input
+                  aria-label="image File"
                   type="file"
                   name="imageFile"
                   accept="image/*"
@@ -329,11 +366,10 @@ export default function AdminPageForArtists() {
                 />
               </label>
               {imagePreview && (
-                <Image
+                <MusicImage
                   src={imagePreview}
                   alt="preview"
-                  width={96} 
-                  height={96} 
+                  size="large"
                   className="object-cover mb-2 rounded"
                 />
               )}
@@ -348,10 +384,12 @@ export default function AdminPageForArtists() {
                   Cancel
                 </button>
                 <button
-                  className={`${isCreateModalOpen
-                    ? "bg-purple-600 hover:bg-purple-700"
-                    : "bg-yellow-500 hover:bg-yellow-600"
-                    } text-white px-4 py-2 rounded`}
+                  className={`${
+                    isCreateModalOpen
+                      ? "bg-purple-600 hover:bg-purple-700"
+                      : "bg-yellow-500 hover:bg-yellow-600"
+                  } text-white px-4 py-2 rounded`}
+                  disabled={saving}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >
                   {isCreateModalOpen ? "Create" : "Update"}

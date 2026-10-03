@@ -1,14 +1,15 @@
-'use client';
+"use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import { useState, useEffect } from 'react';
-import PlaylistManager from '@/components/PlaylistManager';
-import { identityApi } from '@/lib/api';
+import { useState } from "react";
+import PlaylistManager from "@/components/PlaylistManager";
+import { identityApi } from "@/lib/api";
 
 export default function PlaylistsPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     const user = identityApi.getCurrentUser();
     if (user) {
       setCurrentUser(user);
@@ -43,8 +44,12 @@ export default function PlaylistsPage() {
         <div className="bg-gray-800">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
             <div className="text-center">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">My Playlists</h1>
-              <p className="text-gray-400 text-sm sm:text-base">Create and manage your music collections</p>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
+                My Playlists
+              </h1>
+              <p className="text-gray-400 text-sm sm:text-base">
+                Create and manage your music collections
+              </p>
             </div>
           </div>
         </div>

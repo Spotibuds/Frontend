@@ -1,0 +1,43 @@
+{
+  "recordedAt": "2026-10-03",
+  "run": "root full rebuilt-stack run 46525",
+  "stats": {
+    "startTime": "2026-10-03T19:27:56.282Z",
+    "duration": 246877.984,
+    "expected": 20,
+    "unexpected": 1,
+    "skipped": 0,
+    "flaky": 0
+  },
+  "result": "20/21 passed; now-playing/history reaction locator failed",
+  "failedCase": "now-playing feed reaction persists after reload and remains on the history post",
+  "primaryFailure": "After the reaction survived the live-card reload, section.hasText(Morning Loop).first() did not expose Remove heart. Weekly song aggregates also contain this track; the feed shuffles both post types.",
+  "correction": "Test matches Alice author and the recent-song card, excluding shuffled weekly aggregate cards; feed/slides independently confirms saved post ID/type/song/author. Read statuses are asserted before JSON parsing. No app quota/image changes or database reset.",
+  "security": "No token, password, cookie, profile content or request header/body is retained here.",
+  "focusedEvidence": [
+    {
+      "result": "Pass",
+      "durationSeconds": 2.9,
+      "assertions": "Canonical saved post exists as Alice recent_song, reaction survives live reload/history, own reaction cleanup completes."
+    },
+    {
+      "result": "Burst repetitions rejected",
+      "observed": "Three quick repetitions saw empty JSON bodies; subsequent status instrumentation directly confirmed HTTP429 on the canonical read. The original empty-body status was not captured, so attributing those first three failures to limiting is an inference."
+    },
+    {
+      "result": "Pass",
+      "durationSeconds": 4.4
+    },
+    {
+      "result": "Rate limited",
+      "status": 429,
+      "endpoint": "GET /api/feed/reactions/by-post",
+      "policy": "User fixed-window300 requests/account/minute; unchanged."
+    },
+    {
+      "result": "Pass after actual window recovery",
+      "durationSeconds": 3.8,
+      "assertions": "Canonical card, live→history persistence, reload and cleanup of only the actor own heart."
+    }
+  ]
+}

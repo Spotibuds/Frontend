@@ -1,39 +1,44 @@
 # Spotibuds Frontend
 
-A Next.js frontend application for the Spotibuds music platform.
+This repository is one of four sibling Git repositories. The complete isolated demo lives in [demo/README.md](demo/README.md); follow that guide to generate local secrets, start all dependencies, migrate, seed and verify the stack. Do not reuse historical cloud endpoints or credentials.
 
-## Features
+The frontend is at `http://127.0.0.1:3100`; Identity, Music and User use ports `5101`, `5102` and `5103`. All browser calls use those explicit build-time API URLs. Changing the URLs requires rebuilding the browser assets. The local token issuer is `spotibuds-local` and audience is `spotibuds-demo`; Identity issues the access token consumed by all services.
 
-- User authentication (register, login, logout)
-- Music discovery and management
-- User profiles and privacy settings
-- Follow/unfollow system
+## Frontend development
 
-## Environment Variables
+Use Node 24 LTS and npm 11. Container builds pin Node 24.21.0. From this repository in PowerShell:
 
-The following environment variables are configured in Azure App Service:
-
-- `NEXT_PUBLIC_IDENTITY_API`: Identity service URL
-- `NEXT_PUBLIC_MUSIC_API`: Music service URL  
-- `NEXT_PUBLIC_USER_API`: User service URL
-- `NODE_ENV`: Environment (production/development)
-
-## Password Requirements
-
-When registering, passwords must meet the following requirements:
-- At least 8 characters long
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one digit
-- At least one special character
-
-## Development
-
-```bash
-npm install
+```powershell
+Copy-Item .env.example .env.local
+npm ci
 npm run dev
 ```
 
-## Deployment
+The `.env.local` file contains only public local API URLs. Secrets belong in the ignored demo environment file, never in `NEXT_PUBLIC_*` variables. Production-mode builds require all three API values and fail without them. The validation workflow builds/tests a container without publishing or deploying it.
 
-The application is containerized and deployed to Azure App Service using Azure Container Registry. 
+```powershell
+npm run type-check
+npm run lint
+npm run format:check
+npm test
+npm run audit:dependencies
+npm run build
+```
+
+`npm test` runs session, JSON/multipart auth, hub lifecycle, audio navigation, accessible input and StrictMode regressions. After the complete demo is ready and seeded, run `npm run test:browser` for persisted UI workflows. It reads ignored fixture accounts and IDs, disables credential-bearing traces/video/screenshots, and writes ignored `test-results/browser-results.json`. It reuses installed Windows Chromium where available; elsewhere run `npx playwright install chromium` first. Keep the APIs running during these tests. The browser suite includes a real two-minute audio/now-playing check.
+
+## Session and workflow behavior
+
+Access tokens stay in memory. Refresh credentials stay in Identity's HttpOnly, SameSite Strict cookie. Cookie writes require the custom request header and exact local browser Origin. Expiry uses one refresh coordinator and one ten-second deadline for both phases. Login, logout and renewal share browser Web Locks so cookie mutations cannot overlap across tabs. Prepare installs a pending HttpOnly cookie without consuming its predecessor; complete consumes the predecessor only after the browser presents that installed successor, and does not write another cookie. Only a random operation ID and timestamp are retained for up to 30 seconds across navigation, so an interrupted phase can resume safely. No access or refresh credential enters storage. Consumed-predecessor replay still revokes the entire family. Requests retry a 401 once. Logout immediately clears local state, aborts old requests and stops playback/hubs. A token-free sign-out intent blocks automatic cookie renewal across reloads until an explicit successful login. If server revocation fails, the login page displays the actual failure and a bounded manual retry; it never reports that the server session was revoked. Blocked or full storage disables automatic bootstrap. Other tabs receive a token-free session-change event. Profile JSON in storage is a display hint, validated before authenticated navigation.
+
+Registration requires an 8–100 character password containing upper and lower case, a digit, a symbol and six distinct characters. A synchronization-pending registration keeps the form and retries sign-in. Recovery is public and calls Identity; open the local Mailpit inbox described in the demo guide. Reset tokens are single use. Email changes are unavailable until a verified email-change workflow exists.
+
+Private avatars and playlist covers are fetched with the shared authenticated client into revocable object URLs. Music playback uses catalogue-controlled local media endpoints. Failed writes retain form/draft data with error feedback. Chat waits for join and persisted acknowledgement, using an idempotent draft ID. History pages use bounded skip pagination and a terminal marker.
+
+## Dependency exception and evidence
+
+Next 16.3.8 and React 19.3.0 implement the current vendor security recommendations. The runtime dependency audit has zero advisories. One unpatched development-only `braces` advisory remains through Next's ESLint static glob dependencies: [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm). The exact exception expires October 17, 2026. The gate rejects runtime findings, additional advisories, changed affected packages, newly available fixes, and expiry. npm's proposed downgrade to eslint-config-next 14.2.35 is rejected as a remediation strategy; that does not patch braces in the current supported Next toolchain. ESLint 9 is retained for Next's current React plugin compatibility; upgrade that toolchain together when its plugins support ESLint 10.
+
+Current authoritative references: [Next September security release](https://nextjs.org/blog/september-2026-security-release), [React 19.3](https://react.dev/blog/2026/09/09/react-19-3), [Node release support](https://nodejs.org/en/about/previous-releases).
+
+Per-audit frontend evidence is recorded in [docs/frontend-remediation.json](docs/frontend-remediation.json). The workspace-wide acceptance checklist and remediation ledger are in `docs/local-demo`. Production TLS/cookie Secure rollout, multiple replicas/backplanes, cloud access policies, production incident response and broader browser/load certification are follow-ups outside this isolated single-instance demo.

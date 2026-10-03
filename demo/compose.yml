@@ -1,0 +1,134 @@
+name: spotibuds-local-demo
+x-api-environment: &api-environment
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:8080
+  Jwt__Secret: ${JWT_SECRET:?Run New-LocalEnvironment.ps1}
+  Jwt__Issuer: spotibuds-local
+  Jwt__Audience: spotibuds-demo
+  Cors__AllowedOrigins: http://127.0.0.1:3100
+  ServiceAuth__Secret: ${SERVICE_SECRET:?Fresh secret required}
+  ConnectionStrings__MongoDb: mongodb://demo:${MONGO_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=demo-rs
+  AzureStorage__ConnectionString: DefaultEndpointsProtocol=http;AccountName=spotibudsdemo;AccountKey=${AZURITE_KEY};BlobEndpoint=http://azurite:10000/spotibudsdemo;
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports: ["127.0.0.1:55432:5432"]
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Fresh password required}
+      POSTGRES_DB: spotibuds_identity_demo
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U demo -d spotibuds_identity_demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+  mongo:
+    image: mongo:8.0
+    ports: ["127.0.0.1:57017:27017"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: demo
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?Fresh password required}
+      MONGO_REPLICA_KEY: ${MONGO_REPLICA_KEY:?Fresh replica key required}
+    entrypoint: [bash, -c, 'printf %s "$$MONGO_REPLICA_KEY" > /tmp/demo-key; chmod 400 /tmp/demo-key; chown mongodb:mongodb /tmp/demo-key; exec docker-entrypoint.sh mongod --replSet demo-rs --bind_ip_all --keyFile /tmp/demo-key']
+    volumes: [mongo:/data/db]
+    healthcheck:
+      test: [CMD-SHELL, "mongosh --quiet -u demo -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+  mongo-init:
+    image: mongo:8.0
+    depends_on: { mongo: { condition: service_started } }
+    environment: { MONGO_PASSWORD: "${MONGO_PASSWORD:?Fresh password required}" }
+    entrypoint: [bash, -c]
+    command:
+      - >-
+        for i in {1..30}; do
+        mongosh --host mongo --quiet -u demo -p "$$MONGO_PASSWORD" --authenticationDatabase admin
+        --eval 'try { rs.status(); } catch(e) { rs.initiate({_id:"demo-rs",members:[{_id:0,host:"mongo:27017"}]}); }' >/dev/null 2>&1
+        && exit 0;
+        sleep 2;
+        done;
+        echo 'Mongo replica initialization failed after bounded retries'; exit 1
+  redis:
+    image: redis:8-alpine
+    ports: ["127.0.0.1:56379:6379"]
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD:?Fresh password required}" }
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: [redis:/data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 24
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    ports: ["127.0.0.1:10000:10000"]
+    environment: { AZURITE_ACCOUNTS: "spotibudsdemo:${AZURITE_KEY:?Fresh key required}" }
+    command: [azurite-blob, --blobHost, 0.0.0.0, --location, /data, --silent, --skipApiVersionCheck]
+    volumes: [blobs:/data]
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["127.0.0.1:8025:8025"]
+    volumes: [mail:/data]
+    environment: { MP_DATABASE: /data/mailpit.db, MP_MAX_MESSAGES: 1000 }
+  identity:
+    build: { context: ../../Identity }
+    environment:
+      <<: *api-environment
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spotibuds_identity_demo;Username=demo;Password=${POSTGRES_PASSWORD}
+      MongoDB__DatabaseName: spotibuds_demo
+      Frontend__PublicUrl: http://127.0.0.1:3100
+      UserService__BaseUrl: http://user:8080
+      Smtp__Host: mailpit
+      Smtp__Port: 1025
+      Smtp__From: no-reply@spotibuds.local
+      LocalDemo__Enabled: 'true'
+      LocalDemo__AdminUsername: ${ADMIN_USERNAME}
+      LocalDemo__AdminEmail: ${ADMIN_EMAIL}
+      LocalDemo__AdminPassword: ${ADMIN_PASSWORD}
+    ports: ["127.0.0.1:5101:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+      mailpit: { condition: service_started }
+  music:
+    build: { context: ../../Music }
+    environment:
+      <<: *api-environment
+      MongoDb__DatabaseName: spotibuds_music_demo
+      AzureStorage__PublicBaseUrl: http://127.0.0.1:5102
+      IdentityService__BaseUrl: http://identity:8080
+      ConnectionStrings__Redis: redis:6379,password=${REDIS_PASSWORD},abortConnect=false
+    ports: ["127.0.0.1:5102:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      azurite: { condition: service_started }
+  user:
+    build: { context: ../../User }
+    environment:
+      <<: *api-environment
+      MongoDB__DatabaseName: spotibuds_demo
+      AzureStorage__PublicBaseUrl: http://127.0.0.1:5103
+      IdentityService__BaseUrl: http://identity:8080
+      MusicService__BaseUrl: http://music:8080
+    ports: ["127.0.0.1:5103:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      azurite: { condition: service_started }
+  frontend:
+    build:
+      context: ..
+      args:
+        NEXT_PUBLIC_IDENTITY_API: http://127.0.0.1:5101
+        NEXT_PUBLIC_MUSIC_API: http://127.0.0.1:5102
+        NEXT_PUBLIC_USER_API: http://127.0.0.1:5103
+    ports: ["127.0.0.1:3100:3000"]
+    depends_on: [identity, music, user]
+volumes:
+  postgres:
+  mongo:
+  redis:
+  blobs:
+  mail:

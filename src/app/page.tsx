@@ -1,4 +1,5 @@
 "use client";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { identityApi, type LoginRequest } from "@/lib/api";
+import { getSignOutState, SESSION_EVENT, type SignOutState } from "@/lib/session";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState<LoginRequest>({
@@ -19,18 +21,55 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [signOut, setSignOut] = useState<SignOutState | null>(null);
+  const [retryingSignOut, setRetryingSignOut] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     setIsMounted(true);
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("currentUser");
-    if (storedUser) {
-      router.push("/dashboard");
-    }
+    let active = true;
+    identityApi.getCurrentUserWithTokenCheck().then(user => {
+      if (active && user) router.replace("/dashboard");
+    });
+    return () => {
+      active = false;
+    };
   }, [router]);
+
+  useEffect(() => {
+    const read = () => setSignOut(getSignOutState());
+    const readStorage = (event: StorageEvent) => {
+      if (
+        event.key === null ||
+        event.key === "spotibuds:sign-out" ||
+        event.key === "spotibuds:session-change"
+      )
+        read();
+    };
+    read();
+    window.addEventListener(SESSION_EVENT, read);
+    window.addEventListener("storage", readStorage);
+    return () => {
+      window.removeEventListener(SESSION_EVENT, read);
+      window.removeEventListener("storage", readStorage);
+    };
+  }, []);
+
+  const retryServerSignOut = async () => {
+    if (retryingSignOut) return;
+    setRetryingSignOut(true);
+    try {
+      await identityApi.logout();
+    } catch {
+      /* Persisted pending state displays the actual outcome. */
+    } finally {
+      setRetryingSignOut(false);
+      setSignOut(getSignOutState());
+    }
+  };
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -59,25 +98,22 @@ export default function LoginPage() {
       await identityApi.login(formData);
       router.push("/dashboard");
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Login failed";
+      const errorMessage = error instanceof Error ? error.message : "Login failed";
       setErrors({ general: errorMessage });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (field: keyof LoginRequest) => (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const value =
-      e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    // Clear field error when user starts typing
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }));
-    }
-  };
+  const handleInputChange =
+    (field: keyof LoginRequest) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+      setFormData(prev => ({ ...prev, [field]: value }));
+      // Clear field error when user starts typing
+      if (errors[field]) {
+        setErrors(prev => ({ ...prev, [field]: "" }));
+      }
+    };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -96,15 +132,29 @@ export default function LoginPage() {
       {/* Login Form */}
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl gradient-text">
-            Welcome Back
-          </CardTitle>
-          <p className="text-gray-400 mt-2">
-            Sign in to your account to continue
-          </p>
+          <CardTitle className="text-3xl gradient-text">Welcome Back</CardTitle>
+          <p className="text-gray-400 mt-2">Sign in to your account to continue</p>
         </CardHeader>
 
         <CardContent>
+          {signOut && (
+            <div className="mb-4 p-3 rounded-lg border border-purple-400/30 text-purple-100">
+              <p
+                role={signOut.revocationPending || signOut.storageUnavailable ? "alert" : "status"}
+              >
+                {signOut.storageUnavailable
+                  ? "Browser storage is unavailable. Sign in explicitly to continue."
+                  : signOut.revocationPending
+                    ? "Signed out on this device. The server could not revoke this session. Retry server sign-out when Identity is available."
+                    : "Signed out on this device."}
+              </p>
+              {signOut.revocationPending && (
+                <Button onClick={retryServerSignOut} disabled={retryingSignOut} className="mt-2">
+                  {retryingSignOut ? "Retrying server sign-out…" : "Retry server sign-out"}
+                </Button>
+              )}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.general && (
               <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
@@ -114,6 +164,7 @@ export default function LoginPage() {
 
             <Input
               label="Username"
+              autoComplete="username"
               type="text"
               placeholder="Enter your username"
               value={formData.username}
@@ -125,6 +176,7 @@ export default function LoginPage() {
             <div className="relative">
               <Input
                 label="Password"
+                autoComplete="current-password"
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter your password"
                 value={formData.password}
@@ -157,12 +209,7 @@ export default function LoginPage() {
               </Link>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              loading={loading}
-              size="lg"
-            >
+            <Button type="submit" className="w-full" loading={loading} size="lg">
               {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
