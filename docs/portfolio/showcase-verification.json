@@ -1,0 +1,105 @@
+{
+  "recordedDate": "2026-10-04",
+  "verifiedDate": "2026-10-05",
+  "deployedRelease": "20261004T223044Z",
+  "recordedSource": {
+    "Frontend": "36d5dcc065e0d487273d43ea8e2f406248d95fd1",
+    "Identity": "b5373c9bc42c1b15953056b2c7838678af412814",
+    "Music": "410753ac4df86c488202df909daa4744e1a56db6",
+    "User": "60fd4a7ae75fe7fe349dc38f214c8c09bc2bdf60"
+  },
+  "recording": "actual live app, three independent synthetic user sessions; no API/media interception",
+  "browserErrors": [],
+  "viewports": ["1440x900 desktop", "393x852 mobile web, touch input"],
+  "editing": "Scene trims and titles; interactions retain their original speed. Music audio is muted. SRT captions accompany each video.",
+  "data": "Existing catalogue only. Small additive demo activity and normal recording interactions preserve pre-existing data. Accounts, secrets and song files are excluded from this release.",
+  "videoEncoding": [
+    {
+      "file": "Spotibuds-Overview.mp4",
+      "durationSeconds": 104.97,
+      "codec": "H.264",
+      "resolution": "1920x1080",
+      "pixelFormat": "yuv420p",
+      "audioTracks": 0,
+      "decodeErrors": 0,
+      "faststart": true,
+      "chaptersChecked": 18
+    },
+    {
+      "file": "Spotibuds-Walkthrough.mp4",
+      "durationSeconds": 170.43,
+      "codec": "H.264",
+      "resolution": "1920x1080",
+      "pixelFormat": "yuv420p",
+      "audioTracks": 0,
+      "decodeErrors": 0,
+      "faststart": true,
+      "chaptersChecked": 20
+    }
+  ],
+  "frontendValidation": {
+    "tests": 234,
+    "testFiles": 27,
+    "typescript": "pass",
+    "eslint": "pass, zero warnings",
+    "productionBuild": "pass"
+  },
+  "liveChecks": {
+    "date": "2026-10-05",
+    "passed": 31,
+    "checks": [
+      "Frontend /",
+      "Frontend /dashboard",
+      "Frontend /feed",
+      "Frontend /music",
+      "Frontend /playlists",
+      "Frontend /friends",
+      "Frontend /chat",
+      "Frontend /search",
+      "Frontend /user/:id",
+      "identity live",
+      "identity ready",
+      "music live",
+      "music ready",
+      "user live",
+      "user ready",
+      "Synthetic user login",
+      "Catalogue songs",
+      "Catalogue artists",
+      "Catalogue albums",
+      "Profile",
+      "Listening history",
+      "Weekly artists",
+      "Owned playlists",
+      "friend-hub authenticated negotiation",
+      "friend-hub anonymous denial",
+      "notification-hub authenticated negotiation",
+      "notification-hub anonymous denial",
+      "chat-hub authenticated negotiation",
+      "chat-hub anonymous denial",
+      "Notifications",
+      "Conversation list"
+    ],
+    "method": "Read-only HTTPS, readiness, existing-account login, catalogue/profile/library reads and SignalR negotiation; no catalogue or user-data mutations."
+  },
+  "assets": [
+    {
+      "file": "Spotibuds-Overview.mp4",
+      "durationSeconds": 104.97,
+      "bytes": 1992177,
+      "sha256": "9352e4c8446c9f5b4488739b62c49873a9d83592024119938654552a7b1dd7c0"
+    },
+    {
+      "file": "Spotibuds-Walkthrough.mp4",
+      "durationSeconds": 170.43,
+      "bytes": 3718215,
+      "sha256": "6a5f563a829415839c11517d229d4329f929a3f8bd7149a725427fcecd165d55"
+    }
+  ],
+  "limits": [
+    "Single-instance deployment; not a load or multi-replica certification.",
+    "Desktop Edge and mobile viewport checks; not an exhaustive device or accessibility certification.",
+    "Email recovery remains unavailable pending email relay configuration.",
+    "Three artists use initials where a verified picture was unavailable."
+  ]
+}

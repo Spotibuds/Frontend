@@ -1,5 +1,13 @@
 # Spotibuds Frontend
 
+Spotibuds is a social music app built with Next.js, TypeScript and C# services. Listen to music, save collections, discover friends' activity and chat across desktop and mobile.
+
+[![Spotibuds desktop and mobile preview](docs/portfolio/preview.jpg)](https://github.com/Spotibuds/Frontend/releases/tag/portfolio-demo-2026-10-04)
+
+**[Watch the short demo](https://github.com/Spotibuds/Frontend/releases/download/portfolio-demo-2026-10-04/Spotibuds-Overview.mp4)** · **[Watch the full walkthrough](https://github.com/Spotibuds/Frontend/releases/download/portfolio-demo-2026-10-04/Spotibuds-Walkthrough.mp4)** · [Architecture and engineering notes](docs/portfolio/README.md) · [Live app](https://spotibuds-cfd43e7a.swedencentral.cloudapp.azure.com)
+
+The recorded demo uses the deployed app, existing music and separate synthetic user sessions. It shows playback, favorites, playlists, friend requests, live chat, feed reactions and responsive profiles. Videos are muted; captions and verification records accompany the [demo release](https://github.com/Spotibuds/Frontend/releases/tag/portfolio-demo-2026-10-04). Video files are release attachments rather than Git history.
+
 This repository is one of four sibling Git repositories. The complete isolated demo lives in [demo/README.md](demo/README.md); follow that guide to generate local secrets, start all dependencies, migrate, seed and verify the stack. Do not reuse historical cloud endpoints or credentials.
 
 The frontend is at `http://127.0.0.1:3100`; Identity, Music and User use ports `5101`, `5102` and `5103`. All browser calls use those explicit build-time API URLs. Changing the URLs requires rebuilding the browser assets. The local token issuer is `spotibuds-local` and audience is `spotibuds-demo`; Identity issues the access token consumed by all services.
