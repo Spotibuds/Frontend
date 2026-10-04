@@ -1,6 +1,6 @@
 {
   "date": "2026-10-04",
-  "scope": "Portfolio readiness audit and remediation; single-instance demo",
+  "scope": "Product readiness audit and remediation; single-instance demo",
   "reviewedAreas": [
     "Authentication and recovery",
     "Responsive navigation",

@@ -1,6 +1,6 @@
-# Spotibuds portfolio showcase
+# Spotibuds project showcase
 
-Spotibuds brings music listening and social interaction into one app. This showcase targets full-stack developer roles: the recording demonstrates user workflows, while the source and verification records explain how those workflows are implemented.
+Spotibuds brings music listening and social interaction into one app. The recordings demonstrate user workflows, while the source and verification records explain how those workflows are implemented.
 
 [![Desktop listening and mobile chat](preview.jpg)](https://github.com/Spotibuds/Frontend/releases/tag/portfolio-demo-2026-10-04)
 
@@ -52,7 +52,7 @@ flowchart TD
     Media --> Blob
 ```
 
-The deployed environment uses Docker on an Azure VM. This is a single-instance portfolio deployment. Now-playing state uses a bounded in-process cache. Redis is provisioned in the local environment but is not required for media delivery or configured as a SignalR backplane. The separate service repositories are [Identity](https://github.com/Spotibuds/Identity), [Music](https://github.com/Spotibuds/Music) and [User](https://github.com/Spotibuds/User).
+The deployed environment uses Docker on an Azure VM. This is a single-instance demo deployment. Now-playing state uses a bounded in-process cache. Redis is provisioned in the local environment but is not required for media delivery or configured as a SignalR backplane. The separate service repositories are [Identity](https://github.com/Spotibuds/Identity), [Music](https://github.com/Spotibuds/Music) and [User](https://github.com/Spotibuds/User).
 
 ## Engineering decisions
 
@@ -77,15 +77,3 @@ Remaining operational work includes configuring the production email relay for p
 ## Run locally
 
 Follow the [isolated demo guide](../../demo/README.md) for the four sibling repositories, generated local credentials, Docker dependencies and verification commands. That reproducible setup uses generated tone fixtures and fresh local data. It does not depend on the production music files or cloud credentials.
-
-## Suggested CV entry
-
-**Spotibuds — Full-stack social music application**
-
-Next.js, TypeScript, C#, ASP.NET Core, PostgreSQL, MongoDB, SignalR, Docker, Azure
-
-- Built and deployed a responsive music app with favorites, playlists, listening activity, friendship requests and realtime chat.
-- Implemented session renewal, authorized data mutations, persistent chat acknowledgements and progressive media playback across separate frontend and API services.
-- Improved navigation and mobile listening workflows; validated the frontend with 234 tests and documented deployment checks and a desktop/mobile demo.
-
-Use the [public demo release](https://github.com/Spotibuds/Frontend/releases/tag/portfolio-demo-2026-10-04) as the CV's demo link, with the source repository as a second link.
