@@ -415,6 +415,62 @@ describe("session and authenticated requests", () => {
     expect(localStorage.getItem("spotibuds:sign-out")).toBeNull();
   });
 
+  it("allows explicit login after an in-flight anonymous bootstrap expires", async () => {
+    let tail = Promise.resolve();
+    vi.stubGlobal("navigator", {
+      locks: {
+        request: (_name: string, _options: unknown, action: () => Promise<unknown>) => {
+          const result = tail.then(action);
+          tail = result.then(
+            () => undefined,
+            () => undefined
+          );
+          return result;
+        },
+      },
+    });
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(done => (resolve = done)))
+    );
+    const session = await import("../src/lib/session");
+    const bootstrap = session.refreshSession();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    const request = vi.fn(async () => ({ token: token(), user }));
+    const login = session.loginSession(request);
+    expect(request).not.toHaveBeenCalled();
+    resolve(json({ message: "No cookie" }, 401));
+    expect(await bootstrap).toBeNull();
+    await expect(login).resolves.toMatchObject({ user });
+    expect(session.getSessionUser()?.id).toBe(user.id);
+    expect(session.getSignOutState()).toBeNull();
+  });
+
+  it("honors a later logout while explicit login waits for bootstrap", async () => {
+    let resolve!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url.endsWith("/prepare")
+          ? new Promise<Response>(done => (resolve = done))
+          : Promise.resolve(new Response(null, { status: 204 }))
+      )
+    );
+    const session = await import("../src/lib/session");
+    const bootstrap = session.refreshSession();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    const request = vi.fn(async () => ({ token: token(), user }));
+    const login = session.loginSession(request);
+    const rejected = expect(login).rejects.toThrow("session changed");
+    await session.logoutSession();
+    resolve(json({ message: "No cookie" }, 401));
+    await bootstrap;
+    await rejected;
+    expect(request).not.toHaveBeenCalled();
+    expect(session.getAccessToken()).toBeNull();
+  });
+
   it("does not start a queued login after a later local sign-out invalidates it", async () => {
     let start!: () => void;
     vi.stubGlobal("navigator", {

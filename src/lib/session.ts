@@ -102,8 +102,13 @@ async function cookieOperation<T>(signal: AbortSignal, action: () => Promise<T>)
 export async function loginSession<T extends SessionResponse>(
   request: (signal: AbortSignal) => Promise<T>
 ): Promise<T> {
-  const requestedGeneration = generation;
   const requestedIntent = getSignOutState()?.id;
+  // An anonymous bootstrap may expire while login waits for the same cookie
+  // lock. Let that local check settle before capturing the login's ownership.
+  if (refreshPromise) await refreshPromise;
+  if (getSignOutState()?.id !== requestedIntent)
+    throw new Error("The session changed. Please sign in again.");
+  const requestedGeneration = generation;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {

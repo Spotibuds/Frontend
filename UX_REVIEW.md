@@ -58,7 +58,7 @@ The Music upload path removes leading MP3 ID3 artwork/metadata without changing
 MPEG audio bytes. Existing uploads require the backup-preserving repair tool;
 see [Music playback notes](https://github.com/Spotibuds/Music/blob/main/docs/playback-startup.md).
 
-Updated validation: **198 frontend tests**, TypeScript, zero-warning ESLint and
+Updated validation: **200 frontend tests**, TypeScript, zero-warning ESLint and
 the production build pass. Music has **22 passing tests and 7 dependency skips**;
 the Python repair tool has **2 passing tests**. The playback browser runner
 (`scripts/playback-review.mjs`) verifies native generated-WAV playback, home seeking,
@@ -70,3 +70,5 @@ checks covered cookie refresh, catalogue preservation, ranged audio delivery,
 favorites persistence, playlist transactions and cross-account protection.
 Existing MP3 metadata optimization has not been run. Legacy artwork MIME headers
 were corrected after verifying image signatures; artwork and audio bytes stayed intact.
+Live validation also found and fixed explicit login racing an anonymous cookie
+bootstrap, and desktop navigation becoming an open mobile drawer after resizing.
