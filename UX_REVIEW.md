@@ -65,4 +65,8 @@ the Python repair tool has **2 passing tests**. The playback browser runner
 buffer display, next-song element reuse, and uncovered controls at 1440, 390 and
 320 pixels. Final evidence is `.impeccable/review/playback/results.json`.
 The live repair tool audit read one affected track and performed zero writes.
-Deployment and repair of existing live uploads have not been run.
+The UI and playback changes were deployed to Azure on 4 October 2026. Live API
+checks covered cookie refresh, catalogue preservation, ranged audio delivery,
+favorites persistence, playlist transactions and cross-account protection.
+Existing MP3 metadata optimization has not been run. Legacy artwork MIME headers
+were corrected after verifying image signatures; artwork and audio bytes stayed intact.

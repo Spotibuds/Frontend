@@ -56,7 +56,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
   );
   useDeferredEffect(() => {
     const query = window.matchMedia("(max-width: 1023px)");
-    const update = () => setMobile(query.matches);
+    const update = () => {
+      setMobile(query.matches);
+      if (query.matches) setSidebarOpen(false);
+    };
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);

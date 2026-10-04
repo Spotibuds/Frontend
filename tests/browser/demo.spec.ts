@@ -661,11 +661,10 @@ test("playlist detail fits a narrow screen and names song actions", async ({ pag
     })
   ).json()) as { id: string; name: string }[];
   const seeded = playlists.find(playlist => playlist.name === "Demo Favorites")!;
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/playlists/${seeded.id}`);
+  await expect(page.getByRole("heading", { name: "Demo Favorites", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
   const sidebar = page.getByTestId("app-sidebar");
-  if (await page.getByRole("button", { name: "Close sidebar", exact: true }).count())
-    await page.getByRole("button", { name: "Close sidebar", exact: true }).click();
   await expect(sidebar).toHaveAttribute("aria-hidden", "true");
   await expect(sidebar).toHaveAttribute("inert", "");
   await page.keyboard.press("Tab");
