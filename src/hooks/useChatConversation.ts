@@ -22,6 +22,8 @@ export function useChatConversation(chatId: string) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [readError, setReadError] = useState("");
+  const [activityError, setActivityError] = useState("");
+  const [activityRevision, setActivityRevision] = useState(0);
   const [historyError, setHistoryError] = useState("");
   const [historyNeedsReload, setHistoryNeedsReload] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -65,6 +67,45 @@ export function useChatConversation(chatId: string) {
     document.addEventListener("visibilitychange", changed);
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
+  useEffect(() => {
+    if (!isConnected) return;
+    const version = scope.current.version;
+    let active = true;
+    let request = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const syncVisibility = () => {
+      if (timer) clearTimeout(timer);
+      const current = ++request;
+      const visible = !document.hidden;
+      const attempt = async (number: number) => {
+        try {
+          await chatHub.setChatActive(chatId, visible);
+          if (active && current === request && version === scope.current.version)
+            setActivityError("");
+        } catch {
+          if (!active || current !== request || version !== scope.current.version) return;
+          setActivityError(
+            "Chat activity could not sync. Reconnect to update notification preferences."
+          );
+          if (number < 2)
+            timer = setTimeout(
+              () => {
+                void attempt(number + 1);
+              },
+              number === 0 ? 2000 : 5000
+            );
+        }
+      };
+      void attempt(0);
+    };
+    syncVisibility();
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", syncVisibility);
+    };
+  }, [isConnected, chatId, activityRevision]);
   const merge = useCallback((messages: ChatMessage[]) => {
     setChatMessages(previous => {
       const merged = mergeChatMessages(previous, messages);
@@ -418,6 +459,7 @@ export function useChatConversation(chatId: string) {
     setSendError("");
     try {
       await chatHub.joinChat(chatId);
+      setActivityRevision(previous => previous + 1);
     } catch (error) {
       setSendError(
         error instanceof Error ? error.message : "Conversation could not reconnect. Please retry."
@@ -435,7 +477,7 @@ export function useChatConversation(chatId: string) {
     setMessage,
     sending,
     sendError,
-    readError,
+    readError: readError || activityError,
     historyError,
     loadingOlder,
     hasOlder,
@@ -446,6 +488,7 @@ export function useChatConversation(chatId: string) {
     reconnect,
     retryLoad: () => setRevision(previous => previous + 1),
     retryRead: () => {
+      if (activityError) setActivityRevision(previous => previous + 1);
       readFailed.current = false;
       setReadRevision(previous => previous + 1);
     },

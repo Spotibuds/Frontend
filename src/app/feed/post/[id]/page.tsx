@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import type { FeedPost, FeedReaction } from "@/lib/feedTypes";
+import { decodePostRouteId, type FeedPost, type FeedReaction } from "@/lib/feedTypes";
+import { getSessionGeneration, getSessionUser } from "@/lib/session";
 import type { User } from "@/lib/api";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, musicApi, type Song, type Artist } from "@/lib/api";
@@ -114,7 +115,7 @@ const Card = ({ children, className = "" }: { children: React.ReactNode; classNa
 export default function SinglePostPage() {
   const params = useParams();
   const router = useRouter();
-  const postId = params?.id as string;
+  const postId = decodePostRouteId(params?.id);
   const [me] = useState(() => identityApi.getCurrentUser());
   const [post, setPost] = useState<FeedPost | null>(null);
   const [song, setSong] = useState<Song | null>(null);
@@ -130,12 +131,22 @@ export default function SinglePostPage() {
   const { playSong } = useAudio();
 
   useEffect(() => {
-    if (!postId || !me) return;
+    if (!me) return;
+    let active = true;
+    const generation = getSessionGeneration();
+    const owned = () =>
+      active && generation === getSessionGeneration() && getSessionUser()?.id === me.id;
 
     const loadPost = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        setPost(null);
+        setSong(null);
+        setUserProfile(null);
+        setReactions([]);
+        setTopSongs({});
+        if (!postId) throw new Error("This post link is invalid.");
 
         // Load all data in parallel to reduce sequential state updates
         const [postDataResult, artistsResult] = await Promise.allSettled([
@@ -143,6 +154,7 @@ export default function SinglePostPage() {
           musicApi.getArtists(),
         ]);
 
+        if (!owned()) return;
         // Handle post data
         if (postDataResult.status === "fulfilled") {
           const postData = postDataResult.value;
@@ -152,7 +164,8 @@ export default function SinglePostPage() {
             await Promise.allSettled([
               userApi.getReactionsByPost(postId, me.id),
               userApi.getUserProfileByIdentityId(postData.identityUserId),
-              postData.type === "recent_song" && postData.songId
+              (postData.type === "recent_song" || postData.type === "now_playing") &&
+              postData.songId
                 ? musicApi.getSong(postData.songId)
                 : Promise.resolve(null),
               Promise.all(
@@ -164,6 +177,7 @@ export default function SinglePostPage() {
                   }))
               ),
             ]);
+          if (!owned()) return;
           if (reactionResult.status === "fulfilled")
             setReactions(reactionResult.value as FeedReaction[]);
           if (profileResult.status === "fulfilled") setUserProfile(profileResult.value);
@@ -175,7 +189,11 @@ export default function SinglePostPage() {
               )
             );
         } else {
-          setError("Failed to load post");
+          setError(
+            postDataResult.reason instanceof Error
+              ? postDataResult.reason.message
+              : "Failed to load post"
+          );
         }
 
         // Handle artists data
@@ -183,14 +201,16 @@ export default function SinglePostPage() {
           setArtists(artistsResult.value);
         }
       } catch (e) {
-        console.error("Failed to load post:", e);
-        setError("Failed to load post");
+        if (owned()) setError(e instanceof Error ? e.message : "Failed to load post");
       } finally {
-        setIsLoading(false);
+        if (owned()) setIsLoading(false);
       }
     };
 
-    loadPost();
+    void loadPost();
+    return () => {
+      active = false;
+    };
   }, [postId, me]);
 
   if (!me) {
@@ -221,7 +241,9 @@ export default function SinglePostPage() {
       <>
         <div className="px-4 pt-8 max-w-2xl mx-auto text-center">
           <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6">
-            <div className="text-red-400 mb-4">{error || "Post not found"}</div>
+            <div role="alert" className="text-red-400 mb-4">
+              {error || "Post not found"}
+            </div>
             <button
               onClick={() => router.back()}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
@@ -256,12 +278,15 @@ export default function SinglePostPage() {
         </div>
 
         {/* Post content */}
-        {post.type === "recent_song" && (
+        {(post.type === "recent_song" || post.type === "now_playing") && (
           <Card>
             <div className="space-y-6">
               {/* User header */}
               <UserHeader post={post} userProfile={userProfile} />
 
+              {post.type === "now_playing" && (
+                <p className="text-sm font-medium text-purple-300">Now playing</p>
+              )}
               {/* Song display */}
               <div className="flex flex-col lg:flex-row items-center gap-6 bg-white/5 rounded-xl p-4">
                 {/* Album art */}

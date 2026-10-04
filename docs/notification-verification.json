@@ -1,0 +1,84 @@
+{
+  "checkedAt": "2026-10-04T08:30:04.836Z",
+  "environment": "spotibuds-local-demo; production User and Frontend images; single User instance",
+  "verdict": "Notification behavior verified for the local demo; broad burst caveat recorded",
+  "backend": {
+    "passed": 74,
+    "failed": 0,
+    "skipped": 0,
+    "newCases": 31,
+    "rawReport": "demo/results-chat-friends/notifications-ack-final/notifications-ack-final.trx",
+    "sha256": "e9824023afe6520a7fd1765e728230b338685c77ef2dfd4fba7b14f9bad4d762"
+  },
+  "frontend": {
+    "passed": 110,
+    "files": 13,
+    "failed": 0,
+    "skipped": 0,
+    "newCases": 45,
+    "typeCheck": "passed",
+    "lint": "passed; zero warnings",
+    "formatting": "passed"
+  },
+  "browser": {
+    "distinctScenariosWithPassingFinalImageEvidence": 27,
+    "broad": {
+      "passed": 24,
+      "failed": 3,
+      "skipped": 0,
+      "rawReport": "demo/results-notifications-final-confirmed/report.json",
+      "sha256": "65114e9a4b80d6e5aecf16869df322bf0a17ee7177fc821e63db0c024a6aad54"
+    },
+    "targeted": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0,
+      "notificationScenarios": 4,
+      "existingScenarios": 2,
+      "rawReport": "demo/results-notifications-final-targeted/report.json",
+      "sha256": "8fa016dbe702134910ab83c1db4886e7de87227d124fb067862c7ac6cc421288"
+    },
+    "caveats": [
+      "Broad history workflow showed HTTP429 after rapid hard navigation with a reused seeded account; final isolated run passed.",
+      "Lost-refresh-body navigation failed only in burst runs; exact causal path unproven; final isolated run passed.",
+      "Producer fixture awaited an optional playback cleanup request; replaced with actual UI playback and SPA navigation; final run passed."
+    ]
+  },
+  "productionBuilds": {
+    "User": "passed",
+    "Frontend": "passed",
+    "userImageManifest": "sha256:21a6e66ffb1bd6190005fdd16c0519d1eeb42228a4c76eadb0a0b4e0207ee2e3",
+    "frontendImageManifest": "sha256:76e66066e254e051112cc52df7d4be5f4eafa5525510de0da1272cd071fcf1ab"
+  },
+  "runtimeRestart": {
+    "verdict": "passed",
+    "actualUserContainerRestart": true,
+    "automaticReconnectVerified": true,
+    "cleanupVerified": true,
+    "report": "notification-runtime-verification.json",
+    "sha256": "a7e087dfaab2b220faa9e123e9a5eb6f6c87b244724ee67863a16c7c32083cf6"
+  },
+  "manual": {
+    "verified": [
+      "Live persisted notices from a separate ordinary session",
+      "Read pending request remains actionable; acceptance resolves it",
+      "Page/dropdown/badge agree",
+      "Desktop and 390x844 mobile long-text layout",
+      "Keyboard read and Escape/focus restoration"
+    ],
+    "fixturesCleaned": true,
+    "screenshots": [
+      "notification-ui-desktop.png",
+      "notification-ui-mobile.png",
+      "notification-ui-mobile-inbox.png"
+    ]
+  },
+  "originalBrowserReportSha256": "51d67898a03d79f33063f09b1e8203fd58456d7ab2232641d01a560b8ffa47b2",
+  "blockedNotificationVerification": [],
+  "productionOnlyLimits": [
+    "SignalR backplane and shared active-chat presence required for multiple User instances",
+    "No durable push outbox/background delivery retry; persisted snapshots recover temporary transport failure",
+    "Cloud deployment and arbitrary external outages not exercised",
+    "OS desktop alerts depend on explicit browser permission"
+  ]
+}

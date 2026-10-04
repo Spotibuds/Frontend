@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, Chat, User } from "@/lib/api";
-import { notificationService } from "@/lib/notificationService";
-import { notificationHub } from "@/lib/notificationHub";
+import { useNotificationStore } from "@/contexts/NotificationContext";
 import { chatHub } from "@/lib/chatHub";
 
 interface ChatWithParticipants extends Chat {
@@ -15,13 +14,14 @@ interface ChatWithParticipants extends Chat {
 
 export default function ChatPage() {
   const router = useRouter();
+  const notifications = useNotificationStore();
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [chats, setChats] = useState<ChatWithParticipants[]>([]);
   const [friends, setFriends] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
-  // Local toasts removed - global notifications are handled by AppLayout via notificationService
+  // Canonical in-app notifications are owned by NotificationProvider.
 
   const loadUnreadCounts = useCallback(async () => {
     try {
@@ -35,6 +35,14 @@ export default function ChatPage() {
       }));
     }
   }, []);
+
+  useEffect(
+    () =>
+      notifications.subscribeChatCounts(() => {
+        void loadUnreadCounts();
+      }),
+    [notifications, loadUnreadCounts]
+  );
 
   const loadUserChats = useCallback(async (userId: string) => {
     try {
@@ -120,47 +128,9 @@ export default function ChatPage() {
     loadData();
   }, [loadUnreadCounts, loadUserChats, loadUserFriends]);
 
-  // Clear current chat ID when on main chat page
-  useEffect(() => {
-    notificationService.setCurrentChatId(null);
-  }, []);
-
-  // Setup notification hub for message notifications
+  // Message delivery and peer receipts refresh chat-specific unread counts.
   useEffect(() => {
     if (!currentUser?.id) return;
-
-    // Set up message notification handlers
-    notificationHub.setHandlers(
-      {
-        onNewNotification: (notification: {
-          type?: string;
-          data?: { chatId?: string; senderUsername?: string };
-        }) => {
-          if (
-            (notification.type === "Message" || notification.type === "message") &&
-            notification.data
-          ) {
-            // The NotificationHub now forwards message notifications into notificationService directly.
-            // Avoid forwarding again here to prevent duplicate toasts.
-
-            // Still reload chats and unread counts to update the UI with new last message
-            if (currentUser?.id) {
-              loadUserChats(currentUser.id);
-              loadUnreadCounts();
-            }
-          }
-        },
-        onChatUnreadCountUpdate: (data: { chatId: string; unreadCount: number }) => {
-          // Update the unread count for this specific chat
-          setUnreadCounts(prev => ({
-            ...prev,
-            [data.chatId]: data.unreadCount,
-          }));
-        },
-      },
-      "ChatPage"
-    );
-
     // Set up chat hub handlers for real-time updates
     chatHub.setHandlers(
       {
@@ -168,6 +138,12 @@ export default function ChatPage() {
           // Reload chats to update last message and unread counts
           loadUserChats(currentUser.id);
           loadUnreadCounts();
+        },
+        onMessageRead: () => {
+          void loadUnreadCounts();
+        },
+        onAllMessagesRead: () => {
+          void loadUnreadCounts();
         },
         onError: error => {
           console.error("💬 Chat hub error on chat page:", error);
@@ -177,7 +153,6 @@ export default function ChatPage() {
     );
 
     return () => {
-      notificationHub.removeHandlers("ChatPage");
       chatHub.removeHandlers("ChatList");
     };
   }, [currentUser?.id, loadUnreadCounts, loadUserChats]);

@@ -1,36 +1,19 @@
-import type { Notification } from "./api";
+import type { Notification, NotificationResponse } from "./api";
 import { HubConnectionState } from "@microsoft/signalr";
 import { ManagedHub } from "./managedHub";
-// Notification types
-export interface RealtimeNotification {
-  type?: string;
-  Type?: string;
-  title?: string;
-  Title?: string;
-  message?: string;
-  Message?: string;
-  sourceUserId?: string;
-  SourceUserId?: string;
-  sourceUserName?: string;
-  SourceUserName?: string;
-  sourceUserAvatar?: string;
-  SourceUserAvatar?: string;
-  data?: Record<string, unknown>;
-  Data?: Record<string, unknown>;
-  timestamp?: string;
-  Timestamp?: string;
-  actionUrl?: string;
-  ActionUrl?: string;
-}
+import { getSessionGeneration } from "./session";
+export type RealtimeNotification = Notification;
 
 export interface NotificationHandlers {
+  onNotificationsChanged?: (data: { userId: string }) => void;
+  onNotificationDeleted?: (data: { id: string; userId: string }) => void;
   onNewNotification?: (notification: RealtimeNotification) => void;
   onUnreadCountUpdate?: (count: number) => void;
   onChatUnreadCountUpdate?: (data: { chatId: string; unreadCount: number }) => void;
   onNotificationMarkedRead?: (notificationId: string) => void;
   onNotificationHandled?: (notificationId: string) => void;
   onAllNotificationsMarkedRead?: () => void;
-  onNotificationsLoaded?: (data: { notifications: Notification[]; unreadCount: number }) => void;
+  onNotificationsLoaded?: (data: NotificationResponse) => void;
   onError?: (error: string) => void;
   onConnectionStateChange?: (state: HubConnectionState) => void;
 }
@@ -40,8 +23,11 @@ class NotificationHubService {
   private hub = new ManagedHub(
     "notification-hub",
     connection => {
+      const generation = getSessionGeneration();
       const events = {
         NewNotification: "onNewNotification",
+        NotificationsChanged: "onNotificationsChanged",
+        NotificationDeleted: "onNotificationDeleted",
         UnreadCountUpdate: "onUnreadCountUpdate",
         ChatUnreadCountUpdate: "onChatUnreadCountUpdate",
         NotificationMarkedRead: "onNotificationMarkedRead",
@@ -52,6 +38,7 @@ class NotificationHubService {
       } as const;
       for (const [event, key] of Object.entries(events))
         connection.on(event, (...args: unknown[]) => {
+          if (this.hub.connection !== connection || generation !== getSessionGeneration()) return;
           for (const handlers of this.subscribers.values()) {
             const handler = handlers[key as keyof NotificationHandlers] as
               | ((...values: unknown[]) => void)
@@ -67,6 +54,7 @@ class NotificationHubService {
   );
   setHandlers(handlers: NotificationHandlers, componentId = "default") {
     this.subscribers.set(componentId, handlers);
+    handlers.onConnectionStateChange?.(this.hub.state());
   }
   removeHandlers(componentId = "default") {
     this.subscribers.delete(componentId);
@@ -98,6 +86,12 @@ class NotificationHubService {
   }
   markAllAsRead() {
     return this.hub.invoke("MarkAllAsRead");
+  }
+  markAllAsReadThrough(id: string) {
+    return this.hub.invoke("MarkAllAsReadThrough", id);
+  }
+  dismiss(id: string) {
+    return this.hub.invoke("Dismiss", id);
   }
   getConnectionState() {
     return this.hub.state();

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AudioProvider } from "@/lib/audio";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import ConditionalAppLayout from "@/components/layout/ConditionalAppLayout";
 
 export const metadata: Metadata = {
@@ -44,7 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased">
         <ErrorBoundary>
           <AudioProvider>
-            <ConditionalAppLayout>{children}</ConditionalAppLayout>
+            <NotificationProvider>
+              <ConditionalAppLayout>{children}</ConditionalAppLayout>
+            </NotificationProvider>
           </AudioProvider>
         </ErrorBoundary>
       </body>

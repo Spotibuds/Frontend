@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-10-04T08:29:05.367Z",
+  "environment": "spotibuds-local-demo",
+  "ordinaryUsers": 2,
+  "actualUserContainerRestart": true,
+  "automaticReconnectVerified": true,
+  "reconnectingEvents": 1,
+  "reconnectedEvents": 1,
+  "before": {
+    "totalCount": 2,
+    "unreadCount": 1
+  },
+  "after": {
+    "totalCount": 2,
+    "unreadCount": 1
+  },
+  "stableIdentityDigest": "fc4ac84f63e6507b648c069bf4629fbabcd48a6957fc41b6f9bfcfc80ea60005",
+  "cleanupVerified": true,
+  "checks": [
+    "Read and repeated dismissal persist correct counts before restart",
+    "Existing notification connection automatically reconnects with a new connection identity after the actual User container restart",
+    "Actual User container restart preserves canonical IDs, order, read timestamp and total/unread counts",
+    "Automatically reconnected recipient receives canonical persisted ID; message retry creates no second notice or live event",
+    "Both exact ordinary fixture accounts, their chat and recipient notices are removed and profile absence is verified"
+  ],
+  "verdict": "passed"
+}

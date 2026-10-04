@@ -36,11 +36,11 @@ import {
 import { useAudio } from "@/lib/audio";
 import { identityApi, getProxiedImageUrl, processArtists, safeString, userApi } from "@/lib/api";
 import { ToastContainer } from "@/components/ui/Toast";
-import { notificationService } from "@/lib/notificationService";
-import { notificationHub } from "@/lib/notificationHub";
+import { useNotificationStore } from "@/contexts/NotificationContext";
+import { notificationDestination, safeNotificationPath } from "@/lib/notificationState";
 import { chatHub } from "@/lib/chatHub";
 import { friendHubManager } from "@/lib/friendHub";
-import { SESSION_EVENT } from "@/lib/session";
+import { getSessionGeneration, SESSION_EVENT } from "@/lib/session";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -85,10 +85,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const [isLiked, setIsLiked] = useState(false);
   const [likedSongsPlaylistId, setLikedSongsPlaylistId] = useState<string | null>(null);
   const router = useRouter();
+  const notifications = useNotificationStore();
   useEffect(() => {
     const navigate = (event: Event) => {
       const url = (event as CustomEvent).detail;
-      if (typeof url === "string" && /^\/chat\/[a-f0-9-]+$/i.test(url)) router.push(url);
+      if (typeof url === "string" && safeNotificationPath(url)) router.push(url);
     };
     window.addEventListener("spotibuds:navigate", navigate);
     return () => window.removeEventListener("spotibuds:navigate", navigate);
@@ -153,16 +154,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
         setIsLoggedIn(true);
         setIsAdmin(currentUser.roles?.includes("Admin") || false);
 
-        // Enable notification hub when authenticated
-        void notificationHub
-          .enableConnection()
-          .catch(() =>
-            addToast(
-              "Notifications could not connect. Retry after the local User service is ready.",
-              "error"
-            )
-          );
-
         // Enable chat hub when authenticated
         void chatHub
           .enableConnection()
@@ -195,7 +186,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
         }
       } else {
         // No valid user/token, disable notifications and redirect to login
-        notificationHub.disableConnection();
         chatHub.disableConnection();
         void friendHubManager.disconnect();
         setIsLoggedIn(false);
@@ -224,69 +214,39 @@ export default function AppLayout({ children }: AppLayoutProps) {
     return () => {
       active = false;
       window.removeEventListener(SESSION_EVENT, sessionChanged);
-      void notificationHub.disableConnection();
       void chatHub.disableConnection();
       void friendHubManager.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
-  useEffect(() => {
-    // Set up chat notification handler
-    const removeNotificationHandler = notificationService.addNotificationHandler(async message => {
-      try {
-        // Debug: log when AppLayout notification handler is invoked
-
-        console.debug("AppLayout: notification handler invoked", {
-          chatId: message.chatId,
-          messageId: message.messageId,
-          senderId: message.senderId,
-        });
-      } catch {}
-
-      // Get sender information for better notification
-      let senderName = message.senderName || "Unknown";
-      try {
-        if (message.senderId) {
-          const senderProfile = await userApi.getUserProfile(message.senderId);
-          senderName = senderProfile.displayName || senderProfile.username || "Unknown";
-        }
-      } catch (error) {
-        console.warn("Could not fetch sender profile:", error);
-      }
-
-      // Show enhanced toast notification with click action
-      const notificationMessage = `💬 ${senderName}: ${message.content.length > 50 ? message.content.substring(0, 50) + "..." : message.content}`;
-
-      try {
-        console.debug("AppLayout: adding toast", notificationMessage);
-      } catch {}
-
-      addToast(notificationMessage, "info", {
-        label: "Open Chat",
-        onClick: () => {
-          router.push(`/chat/${message.chatId}`);
-        },
-      });
-
-      // Also show browser notification if permission granted
-      notificationService.showBrowserNotification(message, senderName);
-    });
-
-    // Request notification permission on first load
-    notificationService
-      .requestPermission()
-      .then(granted => {
-        if (granted) {
-        } else {
-        }
-      })
-      .catch(console.warn);
-
-    return () => {
-      removeNotificationHandler();
-    };
-  }, [addToast, router]);
+  useEffect(
+    () =>
+      notifications.subscribeIncoming(notification => {
+        const destination = notificationDestination(notification);
+        addToast(
+          `${notification.title}: ${notification.message}`,
+          "info",
+          destination
+            ? {
+                label: "Open notification",
+                onClick: () => {
+                  const generation = getSessionGeneration();
+                  void notifications.openDestination(notification.id).then(path => {
+                    if (
+                      path &&
+                      generation === getSessionGeneration() &&
+                      notifications.getSnapshot().ownerId === notification.targetUserId
+                    )
+                      router.push(path);
+                  });
+                },
+              }
+            : undefined
+        );
+      }),
+    [notifications, addToast, router]
+  );
 
   // Close notifications dropdown when clicking outside
   useEffect(() => {
@@ -365,7 +325,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   const handleLogout = async () => {
     // Disable notifications and chat before logout
-    void notificationHub.disableConnection();
     void chatHub.disableConnection();
     try {
       await identityApi.logout();
@@ -564,19 +523,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {/* Right side items */}
               <div className="flex items-center space-x-4">
                 {/* Notifications */}
-                <NotificationDropdown
-                  userId={user?.id || ""}
-                  isLoggedIn={isLoggedIn}
-                  onNotificationAction={type => {
-                    if (type === "friend_accepted") {
-                      addToast("Friend request accepted!", "success");
-                      // Real-time updates handled by useFriendHub
-                    } else if (type === "friend_declined") {
-                      addToast("Friend request declined", "info");
-                      // Real-time updates handled by useFriendHub
-                    }
-                  }}
-                />
+                <NotificationDropdown userId={user?.id || ""} isLoggedIn={isLoggedIn} />
 
                 {/* Profile Menu */}
                 <div className="relative">

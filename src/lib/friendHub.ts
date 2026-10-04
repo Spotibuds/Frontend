@@ -1,5 +1,4 @@
 import { ManagedHub } from "./managedHub";
-import { notificationService } from "./notificationService";
 import { eventBus } from "./eventBus";
 import type { ReadReceipt } from "./chatHub";
 import { mapChatMessage, type ChatMessage } from "./chatState";
@@ -115,7 +114,6 @@ export class FriendHubManager {
       connection.on("NewMessage", (value: Record<string, unknown>) => {
         const message = mapChatMessage(value);
         if (!message.messageId) return;
-        notificationService.handleMessage(message);
         this.emit("onMessageReceived", message);
       });
       connection.on("MessageSent", (value: Record<string, unknown>) =>

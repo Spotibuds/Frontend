@@ -1,6 +1,5 @@
 import { HubConnectionState } from "@microsoft/signalr";
 import { ManagedHub } from "./managedHub";
-import { notificationService } from "./notificationService";
 import { getSessionUser } from "./session";
 import { mapChatMessage, type ChatMessage } from "./chatState";
 export type { ChatMessage } from "./chatState";
@@ -39,7 +38,6 @@ export class ChatHubService {
         const message = mapChatMessage(value);
         if (!message.messageId) return;
         this.emit(handlers => handlers.onMessageReceived?.(message));
-        notificationService.handleMessage(message);
       });
       connection.on("MessageSent", (value: Record<string, unknown>) =>
         this.emit(handlers => handlers.onMessageSent?.(mapChatMessage(value)))
@@ -101,7 +99,7 @@ export class ChatHubService {
     if (this.joinOperation?.chatId === chatId && this.joinOperation.version === version)
       return this.joinOperation.promise;
     const promise = (async () => {
-      await this.hub.invoke("JoinChat", chatId);
+      await this.hub.invoke("JoinChatWithVisibility", chatId, !document.hidden);
       if (this.desiredChatId === chatId && this.roomVersion === version) {
         this.joinedChatId = chatId;
         this.emit(handlers => handlers.onChatJoined?.(chatId));
@@ -164,6 +162,10 @@ export class ChatHubService {
       );
     this.emit(handlers => handlers.onMessageSent?.(message));
     return message;
+  }
+  setChatActive(chatId: string, visible: boolean) {
+    if (this.joinedChatId !== chatId) return Promise.resolve();
+    return this.hub.invoke("SetChatActive", chatId, visible);
   }
   startTyping(chatId: string) {
     return this.hub.invoke("StartTyping", chatId);

@@ -1106,123 +1106,92 @@ export const adminApi = {
     }),
 };
 
-// Notification types
+// Canonical persisted notification protocol.
 export interface Notification {
   id: string;
   targetUserId: string;
-  sourceUserId?: string;
+  sourceUserId?: string | null;
   type:
     | "FriendRequest"
     | "FriendRequestAccepted"
     | "FriendRequestDeclined"
     | "FriendRemoved"
     | "Message"
-    | "Other";
+    | "Other"
+    | "Follow"
+    | "Reaction";
   status: "Unread" | "Read" | "Handled";
   title: string;
   message: string;
   data: Record<string, unknown>;
-  actionUrl?: string;
-  expiresAt?: string;
+  actionUrl?: string | null;
+  expiresAt?: string | null;
   createdAt: string;
-  readAt?: string;
-  handledAt?: string;
+  readAt?: string | null;
+  handledAt?: string | null;
+  dismissedAt?: string | null;
 }
-
 export interface NotificationResponse {
   notifications: Notification[];
   totalCount: number;
   unreadCount: number;
+  limit: number;
+  skip: number;
+  nextBefore: string | null;
 }
-
-// Notifications API
+export interface NotificationCommandResult {
+  message: string;
+  notification: Notification | null;
+  totalCount: number | null;
+  unreadCount: number | null;
+  throughId: string | null;
+  synchronizationPending: boolean;
+}
 export const notificationsApi = {
-  async getNotifications(userId: string, limit = 50, skip = 0): Promise<NotificationResponse> {
-    try {
-      return await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${userId}?limit=${limit}&skip=${skip}`
-      );
-    } catch (error) {
-      console.error("Failed to get notifications:", error);
-      throw error;
-    }
+  getNotifications(
+    userId: string,
+    limit = 50,
+    skip = 0,
+    before?: string
+  ): Promise<NotificationResponse> {
+    const query = new URLSearchParams({ limit: String(limit), skip: String(skip) });
+    if (before) query.set("before", before);
+    return apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}?${query}`);
   },
-
-  async markAsRead(notificationId: string, userId: string): Promise<boolean> {
-    try {
-      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/read`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to mark notification as read:", error);
-      throw error;
-    }
+  markAsRead(notificationId: string, userId: string): Promise<NotificationCommandResult> {
+    return apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/read`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
   },
-
-  async markAsHandled(notificationId: string, userId: string): Promise<boolean> {
-    try {
-      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/handle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to mark notification as handled:", error);
-      throw error;
-    }
+  markAsHandled(notificationId: string, userId: string): Promise<NotificationCommandResult> {
+    return apiRequest(`${API_CONFIG.USER_API}/api/notifications/${notificationId}/handle`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    });
   },
-
-  async markAllAsRead(userId: string): Promise<boolean> {
-    try {
-      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/read-all`, {
-        method: "POST",
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to mark all notifications as read:", error);
-      throw error;
-    }
+  markAllAsRead(userId: string, throughId?: string): Promise<NotificationCommandResult> {
+    return apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/read-all`, {
+      method: "POST",
+      body: JSON.stringify({ throughId }),
+    });
   },
-
-  async cleanupNotifications(userId: string, daysOld = 30): Promise<boolean> {
-    try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${userId}/cleanup?daysOld=${daysOld}`,
-        { method: "DELETE" }
-      );
-      return true;
-    } catch (error) {
-      console.error("Failed to cleanup notifications:", error);
-      throw error;
-    }
+  cleanupNotifications(userId: string, daysOld = 30): Promise<NotificationCommandResult> {
+    return apiRequest(
+      `${API_CONFIG.USER_API}/api/notifications/${userId}/cleanup?daysOld=${daysOld}`,
+      { method: "DELETE" }
+    );
   },
-
-  async deleteNotification(notificationId: string, userId: string): Promise<boolean> {
-    try {
-      await apiRequest(
-        `${API_CONFIG.USER_API}/api/notifications/${notificationId}?userId=${userId}`,
-        { method: "DELETE" }
-      );
-      return true;
-    } catch (error) {
-      console.error("Failed to delete notification:", error);
-      throw error;
-    }
+  deleteNotification(notificationId: string, userId: string): Promise<NotificationCommandResult> {
+    return apiRequest(
+      `${API_CONFIG.USER_API}/api/notifications/${notificationId}?userId=${userId}`,
+      { method: "DELETE" }
+    );
   },
-
-  async deleteAllNotifications(userId: string): Promise<boolean> {
-    try {
-      await apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/all`, {
-        method: "DELETE",
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to delete all notifications:", error);
-      throw error;
-    }
+  deleteAllNotifications(userId: string, throughId?: string): Promise<NotificationCommandResult> {
+    return apiRequest(`${API_CONFIG.USER_API}/api/notifications/${userId}/all`, {
+      method: "DELETE",
+      body: JSON.stringify({ throughId }),
+    });
   },
 };

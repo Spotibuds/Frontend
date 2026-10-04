@@ -72,9 +72,6 @@ vi.mock("../src/lib/session", () => ({
   getSessionGeneration: () => fixture.generation,
   SESSION_EVENT: "test:session",
 }));
-vi.mock("../src/lib/notificationService", () => ({
-  notificationService: { handleMessage: vi.fn() },
-}));
 beforeEach(() => {
   fixture.connections.length = 0;
   fixture.generation = 0;
@@ -93,9 +90,9 @@ describe("hub lifecycle and acknowledged chat", () => {
     const connection = fixture.connections[0];
     expect(fixture.connections).toHaveLength(1);
     expect(connection.start).toHaveBeenCalledTimes(1);
-    expect(connection.invoke.mock.calls.filter(([method]) => method === "JoinChat")).toHaveLength(
-      1
-    );
+    expect(
+      connection.invoke.mock.calls.filter(([method]) => method === "JoinChatWithVisibility")
+    ).toHaveLength(1);
     expect((await service.sendMessage("chat-a", "hello", "stable-draft-id")).messageId).toBe(
       "saved-message"
     );
@@ -129,9 +126,9 @@ describe("hub lifecycle and acknowledged chat", () => {
     await expect(service.sendMessage("chat-a", "kept draft")).rejects.toThrow("draft");
     connection.state = "Connected";
     await connection.reconnected();
-    expect(connection.invoke.mock.calls.filter(([method]) => method === "JoinChat")).toHaveLength(
-      2
-    );
+    expect(
+      connection.invoke.mock.calls.filter(([method]) => method === "JoinChatWithVisibility")
+    ).toHaveLength(2);
     await service.leaveChat("chat-a");
     await expect(service.sendMessage("chat-a", "kept draft")).rejects.toThrow("draft");
     await service.disconnect();
@@ -294,4 +291,65 @@ it("cannot report an obsolete delayed connection callback as connected after ses
   await startup;
   expect(state.mock.calls.at(-1)?.[0]).toBe("Disconnected");
   expect(state).not.toHaveBeenCalledWith("Connected");
+});
+
+describe("canonical notification wire ownership and chat visibility", () => {
+  it("exposes current connection to a late subscriber and ignores old-account packets", async () => {
+    const { notificationHub } = await import("../src/lib/notificationHub");
+    await notificationHub.enableConnection();
+    const state = vi.fn();
+    const incoming = vi.fn();
+    notificationHub.setHandlers(
+      { onConnectionStateChange: state, onNewNotification: incoming },
+      "canonical"
+    );
+    expect(state).toHaveBeenCalledWith("Connected");
+    const old = fixture.connections[0];
+    fixture.generation++;
+    await notificationHub.disableConnection();
+    await notificationHub.enableConnection();
+    old.handlers.get("NewNotification")?.({ id: "old" } as never);
+    expect(incoming).not.toHaveBeenCalled();
+    fixture.connections[1].handlers.get("NewNotification")?.({ id: "new" } as never);
+    expect(incoming).toHaveBeenCalledTimes(1);
+    await notificationHub.destroy();
+  });
+  it("retains exact hub command arities and canonical invalidation events", async () => {
+    const { notificationHub } = await import("../src/lib/notificationHub");
+    const changed = vi.fn();
+    const deleted = vi.fn();
+    notificationHub.setHandlers({
+      onNotificationsChanged: changed,
+      onNotificationDeleted: deleted,
+    });
+    await notificationHub.enableConnection();
+    const connection = fixture.connections[0];
+    await notificationHub.getNotifications(50, 0);
+    await notificationHub.markAllAsRead();
+    await notificationHub.markAllAsReadThrough("boundary");
+    await notificationHub.dismiss("saved");
+    expect(connection.invoke).toHaveBeenCalledWith("GetNotifications", 50, 0);
+    expect(connection.invoke).toHaveBeenCalledWith("MarkAllAsRead");
+    expect(connection.invoke).toHaveBeenCalledWith("MarkAllAsReadThrough", "boundary");
+    expect(connection.invoke).toHaveBeenCalledWith("Dismiss", "saved");
+    connection.handlers.get("NotificationsChanged")?.({ userId: "alice" } as never);
+    connection.handlers.get("NotificationDeleted")?.({ id: "saved", userId: "alice" } as never);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(deleted).toHaveBeenCalledTimes(1);
+    await notificationHub.destroy();
+  });
+  it("joins a hidden tab without suppressing canonical message notices and updates only joined activity", async () => {
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    const { ChatHubService } = await import("../src/lib/chatHub");
+    const service = new ChatHubService();
+    await service.joinChat("chat-a");
+    const connection = fixture.connections[0];
+    expect(connection.invoke).toHaveBeenCalledWith("JoinChatWithVisibility", "chat-a", false);
+    await service.setChatActive("chat-a", true);
+    expect(connection.invoke).toHaveBeenCalledWith("SetChatActive", "chat-a", true);
+    const count = connection.invoke.mock.calls.length;
+    await service.setChatActive("chat-b", true);
+    expect(connection.invoke).toHaveBeenCalledTimes(count);
+    await service.disconnect();
+  });
 });

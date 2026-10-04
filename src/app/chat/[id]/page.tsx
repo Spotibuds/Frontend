@@ -2,7 +2,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useChatConversation } from "@/hooks/useChatConversation";
-import { notificationService } from "@/lib/notificationService";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import MusicImage from "@/components/ui/MusicImage";
@@ -55,10 +54,7 @@ export default function ChatPage() {
       window.removeEventListener("sidebarToggle", changed);
     };
   }, []);
-  useEffect(() => {
-    notificationService.setCurrentChatId(chatId);
-    return () => notificationService.setCurrentChatId(null);
-  }, [chatId]);
+
   useEffect(() => {
     const tail = chatMessages.at(-1)?.messageId;
     if (tail && tail !== previousTail.current)

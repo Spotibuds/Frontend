@@ -22,3 +22,17 @@ export interface FeedReaction {
   fromUserName?: string;
   createdAt: string;
 }
+
+// App Router parameters may arrive decoded or percent-encoded after client navigation.
+// Decode one path segment before the API performs its own query encoding.
+export function decodePostRouteId(value: string | string[] | undefined): string | null {
+  if (typeof value !== "string" || value.length > 600) return null;
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded.length > 0 && decoded.length <= 200 && !/[\u0000-\u001f\u007f]/.test(decoded)
+      ? decoded
+      : null;
+  } catch {
+    return null;
+  }
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircleIcon,
   XCircleIcon,
@@ -22,14 +22,24 @@ interface ToastProps {
 export function Toast({ message, type, duration = 5000, onClose, action }: ToastProps) {
   const [isVisible, setIsVisible] = useState(true);
 
+  const closeCallback = useRef(onClose);
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(onClose, 300); // Wait for fade out animation
-    }, duration);
-
-    return () => clearTimeout(timer);
-  }, [duration, onClose]);
+    closeCallback.current = onClose;
+  }, [onClose]);
+  const closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const dismiss = useCallback(() => {
+    if (closing.current) return;
+    setIsVisible(false);
+    closing.current = setTimeout(() => closeCallback.current(), 300);
+  }, []);
+  useEffect(() => {
+    const timer = setTimeout(dismiss, duration);
+    return () => {
+      clearTimeout(timer);
+      if (closing.current) clearTimeout(closing.current);
+      closing.current = undefined;
+    };
+  }, [duration, dismiss]);
 
   const getTypeIcon = () => {
     switch (type) {
@@ -47,11 +57,11 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
   const getTypeStyles = () => {
     switch (type) {
       case "success":
-        return "bg-gradient-to-r from-green-500 to-emerald-500 border-green-400/30 text-white shadow-lg shadow-green-500/25";
+        return "bg-gradient-to-r from-green-700 to-emerald-700 border-green-400/30 text-white shadow-lg shadow-green-500/25";
       case "error":
-        return "bg-gradient-to-r from-red-500 to-red-600 border-red-400/30 text-white shadow-lg shadow-red-500/25";
+        return "bg-gradient-to-r from-red-700 to-red-800 border-red-400/30 text-white shadow-lg shadow-red-500/25";
       case "info":
-        return "bg-gradient-to-r from-blue-500 to-purple-500 border-blue-400/30 text-white shadow-lg shadow-blue-500/25";
+        return "bg-gradient-to-r from-blue-700 to-purple-700 border-blue-400/30 text-white shadow-lg shadow-blue-500/25";
       default:
         return "bg-gradient-to-r from-gray-700 to-gray-800 border-gray-600/30 text-white shadow-lg shadow-gray-500/25";
     }
@@ -60,34 +70,27 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
   return (
     <div
       role={type === "error" ? "alert" : "status"}
-      className={`fixed top-4 right-4 z-50 p-4 rounded-xl border backdrop-blur-sm transition-all duration-300 transform ${
-        isVisible ? "opacity-100 translate-x-0 scale-100" : "opacity-0 translate-x-full scale-95"
-      } ${getTypeStyles()} ${
-        action ? "cursor-pointer hover:scale-105 hover:shadow-xl" : "hover:scale-102"
-      }`}
-      onClick={
-        action
-          ? () => {
-              action.onClick();
-              setIsVisible(false);
-              setTimeout(onClose, 300);
-            }
-          : undefined
-      }
+      aria-hidden={!isVisible || undefined}
+      inert={!isVisible}
+      className={`relative w-full max-w-[calc(100vw-2rem)] rounded-xl p-4 shadow-lg transition-opacity duration-300 motion-reduce:transition-none ${isVisible ? "opacity-100" : "pointer-events-none opacity-0"} ${getTypeStyles()}`}
     >
-      <div className="flex items-center space-x-3">
+      <div className="flex min-w-0 items-start gap-3">
         {getTypeIcon()}
-        <span className="text-sm font-semibold flex-1 text-white/95">{message}</span>
-        <div className="flex items-center space-x-2">
+        <span
+          dir="auto"
+          className="min-w-0 flex-1 text-sm font-semibold text-white [overflow-wrap:anywhere]"
+        >
+          {message}
+        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
           {action && (
             <button
               onClick={e => {
                 e.stopPropagation();
                 action.onClick();
-                setIsVisible(false);
-                setTimeout(onClose, 300);
+                dismiss();
               }}
-              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition-all duration-200 transform hover:scale-105 backdrop-blur-sm"
+              className="min-h-11 rounded-lg bg-white/20 px-3 py-2 text-xs font-semibold hover:bg-white/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
             >
               {action.label}
             </button>
@@ -95,10 +98,10 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
           <button
             onClick={e => {
               e.stopPropagation();
-              setIsVisible(false);
-              setTimeout(onClose, 300);
+              dismiss();
             }}
-            className="text-white/80 hover:text-white text-xl leading-none w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-200"
+            aria-label="Dismiss notification"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-xl text-white hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           >
             ×
           </button>
@@ -127,7 +130,7 @@ export function ToastContainer({ toasts, onRemoveToast }: ToastContainerProps) {
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2">
+    <div className="fixed top-20 right-4 z-50 max-h-[calc(100vh-6rem)] w-[min(24rem,calc(100vw-2rem))] space-y-2 overflow-y-auto">
       {toasts.map(toast => (
         <Toast
           key={toast.id}

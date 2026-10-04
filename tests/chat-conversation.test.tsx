@@ -8,6 +8,7 @@ const fixture = vi.hoisted(() => ({
   read: vi.fn(),
   join: vi.fn(),
   leave: vi.fn(),
+  activity: vi.fn(),
 }));
 vi.mock("../src/lib/api", () => ({
   identityApi: { getCurrentUser: () => ({ id: "alice", username: "Alice" }) },
@@ -39,6 +40,7 @@ vi.mock("../src/lib/chatHub", () => ({
     },
     leaveChat: (...args: unknown[]) => fixture.leave(...args),
     sendMessage: (...args: unknown[]) => fixture.send(...args),
+    setChatActive: (...args: unknown[]) => fixture.activity(...args),
     markMessagesReadThrough: (...args: unknown[]) => fixture.read(...args),
   },
 }));
@@ -57,12 +59,16 @@ const realtime = (id: number, senderId = "bob") => ({
   ...apiMessage(id, senderId),
   timestamp: apiMessage(id).sentAt,
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 beforeEach(() => {
   fixture.handlers = {};
   fixture.messages.mockReset().mockResolvedValue([]);
   fixture.send.mockReset();
   fixture.read.mockReset().mockResolvedValue(undefined);
+  fixture.activity.mockReset().mockResolvedValue(undefined);
   fixture.join.mockReset();
   fixture.leave.mockReset().mockResolvedValue(undefined);
 });
@@ -400,12 +406,61 @@ describe("conversation recovery, history and drafts", () => {
     await waitFor(() => expect(view.result.current.isLoading).toBe(false));
     expect(view.result.current.isConnected).toBe(true);
     expect(fixture.read).not.toHaveBeenCalled();
+    expect(fixture.activity).toHaveBeenCalledWith("chat-a", false);
     visibility.mockReturnValue(false);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
     await waitFor(() =>
       expect(fixture.read).toHaveBeenCalledWith("chat-a", apiMessage(1).messageId)
     );
+    expect(fixture.activity).toHaveBeenLastCalledWith("chat-a", true);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
     expect(fixture.read).toHaveBeenCalledTimes(1);
+  });
+  it("retries a failed hidden activity update boundedly without clearing a read error", async () => {
+    const visibility = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    fixture.messages.mockResolvedValue([apiMessage(1)]);
+    fixture.read.mockRejectedValue(new Error("Read failed"));
+    const view = renderHook(() => useChatConversation("chat-a"));
+    await waitFor(() => expect(view.result.current.readError).toContain("Read status"));
+    fixture.activity.mockRejectedValueOnce(new Error("Activity unavailable"));
+    visibility.mockReturnValue(true);
+    vi.useFakeTimers();
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(fixture.activity).toHaveBeenLastCalledWith("chat-a", false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(fixture.activity.mock.calls.filter(([, visible]) => visible === false)).toHaveLength(2);
+    expect(view.result.current.readError).toContain("Read status");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(fixture.activity.mock.calls.filter(([, visible]) => visible === false)).toHaveLength(2);
+    vi.useRealTimers();
+  });
+  it("reconnect actually retries activity when the transport is already joined", async () => {
+    fixture.activity.mockRejectedValue(new Error("Activity unavailable"));
+    const view = renderHook(() => useChatConversation("chat-a"));
+    await waitFor(() => expect(view.result.current.readError).toContain("Chat activity"));
+    fixture.activity.mockResolvedValue(undefined);
+    await act(async () => view.result.current.reconnect());
+    await waitFor(() => expect(view.result.current.readError).toBe(""));
+    expect(fixture.activity).toHaveBeenCalledTimes(2);
+  });
+  it("the visible retry also recovers activity after all bounded attempts fail", async () => {
+    fixture.activity.mockRejectedValue(new Error("Activity unavailable"));
+    const view = renderHook(() => useChatConversation("chat-a"));
+    await waitFor(() => expect(view.result.current.readError).toContain("Chat activity"));
+    vi.useFakeTimers();
+    await act(async () => view.result.current.retryRead());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(fixture.activity).toHaveBeenCalledTimes(4);
+    fixture.activity.mockResolvedValue(undefined);
+    await act(async () => view.result.current.retryRead());
+    expect(fixture.activity).toHaveBeenCalledTimes(5);
+    expect(view.result.current.readError).toBe("");
+    vi.useRealTimers();
   });
 });
