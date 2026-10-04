@@ -45,6 +45,8 @@ interface AudioContextType {
   playHistory: Song[];
 }
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
+const playbackError =
+  "Playback could not start. Check the local media service and press Play to retry.";
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(audioReducer, initialState);
   const latest = useRef(state);
@@ -134,6 +136,14 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   ]);
   const tryPlay = useCallback(() => {
     const audio = audioRef.current;
+    if (!latest.current.currentSong?.fileUrl?.trim()) {
+      if (latest.current.currentSong)
+        dispatch({
+          type: "PATCH",
+          payload: { isPlaying: false, isLoading: false, error: playbackError },
+        });
+      return;
+    }
     if (audio && latest.current.isPlaying)
       void audio.play().catch(() =>
         dispatch({
@@ -141,8 +151,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           payload: {
             isPlaying: false,
             isLoading: false,
-            error:
-              "Playback could not start. Check the local media service and press Play to retry.",
+            error: playbackError,
           },
         })
       );
@@ -156,9 +165,17 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     historyAttempts.current = 0;
     nextHistoryAttempt.current = 30;
     audio.pause();
-    if (!url) {
+    if (!url?.trim()) {
       audio.removeAttribute("src");
       audio.load();
+      dispatch({
+        type: "PATCH",
+        payload: {
+          isPlaying: false,
+          isLoading: false,
+          ...(latest.current.currentSong ? { error: playbackError } : {}),
+        },
+      });
       return;
     }
     // Public playback is always mediated by Music's catalogue allowlist.
@@ -182,7 +199,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const timer = setInterval(() => {
       const audio = audioRef.current;
       const song = latest.current.currentSong;
-      if (!audio || audio.paused || audio.seeking || !song || !owner.current) return;
+      if (
+        !audio ||
+        audio.paused ||
+        audio.seeking ||
+        !song?.fileUrl?.trim() ||
+        !latest.current.isPlaying ||
+        !owner.current
+      )
+        return;
       listeningSeconds.current++;
       if (
         listeningSeconds.current >= nextHistoryAttempt.current &&
@@ -218,7 +243,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const user = getSessionUser();
     const song = state.currentSong;
     if (!user) return;
-    if (!song || !state.isPlaying) {
+    if (!song?.fileUrl?.trim() || !state.isPlaying) {
       void userApi.clearNowPlaying(user.id).catch(() => undefined);
       return;
     }
@@ -315,8 +340,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
           patch({ isLoading: false });
           tryPlay();
         }}
-        onLoadStart={() => patch({ isLoading: Boolean(latest.current.currentSong) })}
-        onWaiting={() => patch({ isLoading: true })}
+        onLoadStart={() =>
+          patch({ isLoading: Boolean(latest.current.currentSong?.fileUrl?.trim()) })
+        }
+        onWaiting={() => patch({ isLoading: Boolean(latest.current.currentSong?.fileUrl?.trim()) })}
         onPlaying={() => patch({ isLoading: false })}
         onSeeking={() => patch({ isSeeking: true })}
         onSeeked={() =>

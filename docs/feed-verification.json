@@ -1,0 +1,253 @@
+{
+  "verifiedAt": "2026-10-04T09:28:46.222Z",
+  "scope": ["Frontend", "User"],
+  "unchangedRepositories": ["Identity", "Music"],
+  "productRulesChanged": false,
+  "frontend": {
+    "passed": 164,
+    "failed": 0,
+    "skipped": 0,
+    "files": 15,
+    "feedTests": 38,
+    "singlePostTests": 16,
+    "audioReducerAndProviderTests": 8,
+    "typeCheck": "passed",
+    "lint": "passed; zero warnings",
+    "format": "passed"
+  },
+  "backend": {
+    "passed": 96,
+    "failed": 0,
+    "skipped": 0,
+    "addedFeedCases": 22,
+    "disposableMongo": true,
+    "saturatedFixture": {
+      "recentPosts": 250,
+      "authors": 12,
+      "derivedCards": 36,
+      "duplicates": 0,
+      "missing": 0
+    }
+  },
+  "finalBrowser": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "scenarios": [
+      {
+        "title": "now-playing feed reaction persists after reload and remains on the history post",
+        "passed": true
+      },
+      {
+        "title": "ordinary users discover all existing card types and persist reactions across desktop/mobile refresh",
+        "passed": true
+      },
+      {
+        "title": "ordinary feed visit loads once; failed continuation retains cards and retry merges unique posts",
+        "passed": true
+      },
+      {
+        "title": "two ordinary users receive canonical follow, reaction, friendship and chat notices through real UI actions",
+        "passed": true
+      }
+    ]
+  },
+  "relatedPassed": [
+    "native playback heartbeat beyond TTL and pause clears live state",
+    "105 distinct persisted history entries",
+    "friend request cancel, decline, accept and remove",
+    "chat history merge, older pages and long reconnect gap"
+  ],
+  "runtime": {
+    "baseline": {
+      "observedAt": "2026-10-04T08:50:24.762Z",
+      "eligibleInLargePage": 10,
+      "smallPagesReturned": 18,
+      "distinctSmallPageCards": 6,
+      "missingCards": 4,
+      "duplicateCards": 12,
+      "ended": true
+    },
+    "final": {
+      "uniquePosts": 10,
+      "existingSourceTypes": [
+        "common_artists",
+        "now_playing",
+        "recent_song",
+        "top_artists_week",
+        "top_songs_week"
+      ],
+      "selfExcluded": true,
+      "finiteExhaustion": true
+    }
+  },
+  "manualUI": {
+    "desktop": true,
+    "mobileViewport": {
+      "width": 390,
+      "height": 844
+    },
+    "horizontalOverflow": false,
+    "reactionTargets": {
+      "width": 44,
+      "height": 44
+    },
+    "summaryTarget": {
+      "width": 44,
+      "height": 44
+    },
+    "dialogFocusAndEscape": true,
+    "realPlayback": true,
+    "refreshVisibleAfterDeepLink": true,
+    "logoutClearsFeedAndPlayer": true,
+    "viewportReset": true,
+    "screenshots": [
+      {
+        "path": "Frontend/docs/feed-verification-desktop.jpg",
+        "phase": "functional build before summary minimum-width-only correction",
+        "sha256": "73d90225b8f99a908432524b8a41f80b48ad95f84ba10fcdf8c70bbfce5e7d45",
+        "format": "jpeg",
+        "captureSize": {
+          "width": 1280,
+          "height": 720
+        }
+      },
+      {
+        "path": "Frontend/docs/feed-verification-mobile.jpg",
+        "phase": "final build",
+        "sha256": "f77c055ca7d46fc90aa12ff74093f651a96794b38940a74ea8877fa274a4925b",
+        "format": "jpeg",
+        "captureSize": {
+          "width": 390,
+          "height": 843
+        }
+      }
+    ]
+  },
+  "productionImages": {
+    "frontend": {
+      "manifestList": "sha256:f6911930f67a48b1c9b51b8b8268508691cb7f63072ddcc4ed2675560d365743",
+      "image": "sha256:1bbf16c04b67a6db65dc5d9bbc318d29dab50a2c790ffb1e7dfa450c2afeef2b"
+    },
+    "user": {
+      "manifestList": "sha256:7a94610197ba4013d67ece387cb2a65cd20a1e311fcd8c4ccc9563ee1f8e07a8",
+      "image": "sha256:6bedcd7c3477864fc5ab75584b90b8eb2a5a8ae0b83847a3ebdfaf6a20955910"
+    }
+  },
+  "cleanup": {
+    "rootExactAccounts": 2,
+    "rootAccountsRemovedAndRead404": true,
+    "recoveredExactFailedRunAccounts": 4,
+    "recoveredAccountsAbsent": true,
+    "passingBrowserFixtureTeardownVerified": true,
+    "volumesAndSeededAccountsPreserved": true
+  },
+  "earlierRuns": [
+    {
+      "report": "feed-equal-clock-red",
+      "failed": 3,
+      "reason": "Equal-clock cache publications crossed prior public-profile authorization; corrected with successful-publication sequence."
+    },
+    {
+      "report": "feed-confirmed",
+      "passed": 83,
+      "failed": 12,
+      "reason": "Disposable index initialization readiness timeout under build load; corrected actual readiness barrier."
+    },
+    {
+      "report": "feed-final",
+      "passed": 74,
+      "failed": 22,
+      "reason": "All22failures were disposable index readiness timeouts during overlapping image build; no feature assertions failed. Isolated final rerun passed96."
+    },
+    {
+      "report": "results-feed-browser",
+      "passed": 1,
+      "failed": 1,
+      "reason": "Live card omitted shared reaction summary/dialog trigger; fixed."
+    },
+    {
+      "report": "results-feed-related-browser",
+      "passed": 5,
+      "failed": 1,
+      "reason": "Notification test attempted reaction on nonvisible shuffled card; explicit scroll fixed test navigation."
+    },
+    {
+      "report": "results-feed-browser-final",
+      "passed": 4,
+      "failed": 1,
+      "reason": "Legacy test selected first live card across shuffled reload and reacted to another author; exact post-ID selection fixed."
+    }
+  ],
+  "limits": [
+    "Best-effort cursor horizon with per-page Mongo snapshots; mutable or expired sources may disappear between pages.",
+    "Live state keeps existing single-instance cache lifetime; service restart expires continuation.",
+    "Legacy comma-separated artist strings keep ambiguous fallback; new history persists exact names."
+  ],
+  "productionSourceSha256": {
+    "Frontend/src/app/feed/page.tsx": "86d0e1022bedf7d07c4ba4f5c5a767c62fa61acc615c92d5bb3e00b5f8771232",
+    "Frontend/src/app/feed/post/[id]/page.tsx": "fd10fd71078fb19b7d8cf10a7dc7bb1433c142b033b1af8db4394a9e85dc1343",
+    "Frontend/src/lib/api.ts": "b18cf932a816b2108a689ea4646bcf27e2b41b75b1943d1b636009f1186822c5",
+    "Frontend/src/lib/audio.tsx": "28c136af9a32f57848a341bf91a45aea5cb1fd83cc2f8f7cc0b1ffd11060b142",
+    "Frontend/src/lib/feedTypes.ts": "7696f81c006c68225ea91e7402fe03cb4c48c5807cb87a827fd63a7c6fa85b0d",
+    "Frontend/src/components/feed/FeedCards.tsx": "1ccb137b7f0af3bab744d3b32900dee3c171977a7f7927b1f2a39c9b974b0d96",
+    "Frontend/src/hooks/useFeed.ts": "f929649e4ff3b91184b301260754940ebb55379b6f5c0a5041e710952da2f5d1",
+    "Frontend/src/lib/feedState.ts": "566ca279cb027e9280f04954bb85a7b9275f1dad12e27ed3e6c74db1e4bd0e52",
+    "User/Controllers/FeedController.cs": "fb31a44d1f57496e63ae4eceba8781110fd4e9ea32567cb84a0e0be3356572b2",
+    "User/Entities/FeedItem.cs": "3007e1a4ec91c479a03b5579d44e3b46f7faa3732207231329594bf8bf3b3d04",
+    "User/Entities/HistoryEvent.cs": "a1191b4d93d067e606152027fa451a71e34fb2e42873f28acc2ae94517f4a41d",
+    "User/Program.cs": "8698b827f66d9022f90d0e4360ee74bf7d9f5683de59dcaee94522eb81ba75b2",
+    "User/Services/HistoryService.cs": "ca7ac680f8b9d66ebde91f4502eaab64d3ecc1781bf286e82a3442ccfdaf1c4a",
+    "User/Services/INowPlayingStore.cs": "4c6ca2354e8328495059364da0e9e61ab916825ed9638fbfb7a87e5849d9f77e",
+    "User/Services/IndexInitializer.cs": "efd04ac13ace245a198de01a0eda7288b6fdc36821f74a2212c9b0b8c709e145",
+    "User/Services/ReactionPostReference.cs": "6003ac269979db752da4ab3caeef5edd65c0fcf900fd7181d74b3d623be141c5",
+    "User/Services/FeedPager.cs": "195949af76aae0baee7951f303d3504b59eb9f0f9a6352f361cee8c60e180b57"
+  },
+  "rawReports": [
+    {
+      "path": "Frontend/demo/results-feed-unit-final/report.json",
+      "sha256": "cf22b85db5f873332eadb986600de27eab9ce7f5ed3b0f41cc23689202e839d7"
+    },
+    {
+      "path": "Frontend/demo/results-feed-browser-confirmed/report.json",
+      "sha256": "96440fc1f9e0cd308c3d86a44e91b7bccb3768445e729529fdaa732b4c622c57"
+    },
+    {
+      "path": "Frontend/demo/results-chat-friends/feed-final-isolated/feed-final-isolated.trx",
+      "sha256": "408040a149156ebdeb8fab037529875b34168c09beee756bdfd4116330eb580f"
+    },
+    {
+      "path": "Frontend/demo/results-chat-friends/feed-ready-confirmed/feed-ready-confirmed.trx",
+      "sha256": "f83af0d3b8ae337078039324f3c725284d382aeab181a9d68c597f34c43ebb46"
+    },
+    {
+      "path": "Frontend/demo/results-chat-friends/feed-equal-clock-red/feed-equal-clock-red.trx",
+      "sha256": "fb6ed5d556fea39e5ae4fbb751f1abcbe2c0de30f4676b62997bcddf8b352e72"
+    },
+    {
+      "path": "Frontend/demo/results-chat-friends/feed-confirmed/feed-confirmed.trx",
+      "sha256": "1e382fdc6ecfcef03c08205d5c1ec44db5bb5f42e98d9e3cd21dd3ec6c8c7bba"
+    },
+    {
+      "path": "Frontend/demo/results-chat-friends/feed-final/feed-final.trx",
+      "sha256": "2a7010d375c7a6a9c8f1b027630b4ac33b43c9a9ca96bd5d1f1686a213b396bd"
+    },
+    {
+      "path": "Frontend/demo/results-feed-browser/report.json",
+      "sha256": "11576e793d7f9028daf0969141677b0fb7262752738f6bd71d49010aa4f2a2d6"
+    },
+    {
+      "path": "Frontend/demo/results-feed-related-browser/report.json",
+      "sha256": "31570c8c84b54842da46d2c1d881514d450968f20befa412a2cdb8908b55db53"
+    },
+    {
+      "path": "Frontend/demo/results-feed-browser-final/report.json",
+      "sha256": "7d4e01588af50d748bd9f510fc7e858c0ab8cd34bc05440dba141c1fc7921060"
+    },
+    {
+      "path": "Frontend/test-results/browser-results.json",
+      "sha256": "51d67898a03d79f33063f09b1e8203fd58456d7ab2232641d01a560b8ffa47b2"
+    }
+  ],
+  "productionSourceHashEncoding": "SHA-256 of locally tested file bytes; Git can normalize CRLF/LF when committing."
+}

@@ -227,6 +227,11 @@ test("two ordinary users receive canonical follow, reaction, friendship and chat
       has: page.locator(`a[href="/user/${reactionRecipient.user.id}"]`),
     });
     await expect(livePost).toHaveCount(1);
+    // Reactions belong to the visible card; the existing feed shuffle can place it later.
+    await livePost.scrollIntoViewIfNeeded();
+    await expect(
+      livePost.getByRole("button", { name: "Add ❤️ reaction", exact: true })
+    ).toBeEnabled();
     await livePost.getByRole("button", { name: "Add ❤️ reaction", exact: true }).click();
     await expect(
       livePost.getByRole("button", { name: "Remove ❤️ reaction", exact: true })

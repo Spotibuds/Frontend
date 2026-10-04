@@ -1099,7 +1099,7 @@ test("now-playing feed reaction persists after reload and remains on the history
     });
   try {
     await page.goto("/feed");
-    let live = page.locator("section").filter({ hasText: "Now Playing" }).first();
+    let live = page.locator(`section[data-feed-post-id="${postId}"]`);
     await live.scrollIntoViewIfNeeded();
     await expect(live.getByRole("button", { name: "Add ❤️ reaction", exact: true })).toBeEnabled();
     const response = page.waitForResponse(
@@ -1107,12 +1107,14 @@ test("now-playing feed reaction persists after reload and remains on the history
         response.url().endsWith("/api/feed/reactions") && response.request().method() === "POST"
     );
     await live.getByRole("button", { name: "Add ❤️ reaction", exact: true }).click();
-    expect((await response).ok()).toBe(true);
+    const acknowledgement = await response;
+    expect(acknowledgement.ok()).toBe(true);
+    savedPostId = ((await acknowledgement.json()) as { postId: string }).postId;
     await expect(
       live.getByRole("button", { name: "Remove ❤️ reaction", exact: true })
     ).toHaveAttribute("aria-pressed", "true");
     await page.reload();
-    live = page.locator("section").filter({ hasText: "Now Playing" }).first();
+    live = page.locator(`section[data-feed-post-id="${postId}"]`);
     await live.scrollIntoViewIfNeeded();
     await expect(
       live.getByRole("button", { name: "Remove ❤️ reaction", exact: true })
@@ -1134,7 +1136,7 @@ test("now-playing feed reaction persists after reload and remains on the history
       headers,
     });
     await page.reload();
-    await expect(page.getByText("Now Playing", { exact: true })).toHaveCount(0);
+    await expect(page.locator(`section[data-feed-post-id="${postId}"]`)).toHaveCount(0);
     const historySlides = (await (
       await page.request.get(
         `http://127.0.0.1:5103/api/feed/slides?identityUserId=${bob.user.id}&limit=50&skip=0`,
@@ -1152,11 +1154,7 @@ test("now-playing feed reaction persists after reload and remains on the history
     ).toBe(true);
     // Weekly aggregate cards may contain the same song and are shuffled beside
     // recent posts. The reaction belongs to the persisted recent-song post.
-    const history = page.locator("section").filter({
-      hasText: "Morning Loop",
-      hasNotText: "Top songs this week",
-      has: page.locator(`a[href="/user/${aliceSession.user.id}"]`),
-    });
+    const history = page.locator(`section[data-feed-post-id="${savedPostId}"]`);
     await expect(history).toHaveCount(1);
     await history.scrollIntoViewIfNeeded();
     await expect(

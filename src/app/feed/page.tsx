@@ -1,1248 +1,201 @@
 "use client";
-
-import { Suspense, useCallback, useEffect, useRef, useState, memo } from "react";
-import Link from "next/link";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import MusicImage from "@/components/ui/MusicImage";
-import { identityApi, musicApi, userApi, type Song, type Artist } from "@/lib/api";
-import { useAudio } from "@/lib/audio";
-import { reactionCache, getCacheKey, type CachedReaction } from "@/lib/reactionCache";
-
-type Slide =
-  | {
-      type: "recent_song";
-      identityUserId: string;
-      postId?: string;
-      username?: string;
-      displayName?: string;
-      songId: string;
-      songTitle?: string;
-      artist?: string;
-      coverUrl?: string;
-      playedAt?: string;
-    }
-  | {
-      type: "now_playing";
-      identityUserId: string;
-      postId?: string;
-      songId: string;
-      songTitle?: string;
-      artist?: string;
-      coverUrl?: string;
-      positionSec?: number;
-      updatedAt?: string;
-    }
-  | {
-      type: "top_artists_week";
-      identityUserId: string;
-      postId?: string;
-      username?: string;
-      displayName?: string;
-      topArtists: Array<{ name: string; count: number }>;
-    }
-  | {
-      type: "common_artists";
-      identityUserId: string;
-      postId?: string;
-      withIdentityUserId: string;
-      username?: string;
-      displayName?: string;
-      commonArtists: string[];
-    }
-  | {
-      type: "top_songs_week";
-      identityUserId: string;
-      postId?: string;
-      username?: string;
-      displayName?: string;
-      topSongs: Array<{ songId?: string; songTitle?: string; artist?: string; count: number }>;
-    };
+import { useFeed } from "@/hooks/useFeed";
+import type { FeedSlide } from "@/lib/feedTypes";
+import { feedSlideKey } from "@/lib/feedState";
+import {
+  FeedCardContext,
+  RecentSongCard,
+  NowPlayingCard,
+  TopSongsCard,
+  TopArtistsCard,
+  CommonArtistsCard,
+  ReactionBar,
+} from "@/components/feed/FeedCards";
 
 function FeedInner() {
   const searchParams = useSearchParams();
-  const [slides, setSlides] = useState<Slide[]>([]);
-  const slidesRef = useRef<Slide[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reactionError, setReactionError] = useState("");
-  const [reacting, setReacting] = useState<Set<string>>(new Set());
-  const [hasMore, setHasMore] = useState(true);
-  const [skip, setSkip] = useState(0);
-
-  const scrollToIndex = useCallback((idx: number) => {
-    const sections = sectionsRef.current.filter(Boolean) as HTMLElement[];
-    if (idx < 0 || idx >= sections.length) return;
-    sections[idx].scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-  // Feed ordering helpers: session-seeded shuffle, author diversity, seen priority
-  const sessionSeedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!sessionSeedRef.current) sessionSeedRef.current = crypto.randomUUID();
-  }, []);
-  const globalKeySetRef = useRef<Set<string>>(new Set()); // de-dupe across loads
-  const lastAuthorRef = useRef<string | null>(null); // boundary de-clump across batches
-
-  // Seen memory with TTL to prioritize unseen posts
-  const SEEN_KEY = "feed_seen_v1";
-  const SEEN_TTL_MS = 72 * 60 * 60 * 1000; // 72h
-  const seenMapRef = useRef<Record<string, number>>({});
-  const loadSeen = useCallback(() => {
-    try {
-      const raw = typeof window !== "undefined" ? localStorage.getItem(SEEN_KEY) : null;
-      if (!raw) return {} as Record<string, number>;
-      const parsed = JSON.parse(raw) as Record<string, number>;
-      const now = Date.now();
-      const filtered: Record<string, number> = {};
-      for (const [k, ts] of Object.entries(parsed)) {
-        if (now - ts < SEEN_TTL_MS) filtered[k] = ts;
-      }
-      return filtered;
-    } catch {
-      return {} as Record<string, number>;
-    }
-  }, [SEEN_TTL_MS]);
-  const saveSeen = () => {
-    try {
-      if (typeof window !== "undefined")
-        localStorage.setItem(SEEN_KEY, JSON.stringify(seenMapRef.current));
-    } catch {}
-  };
-
-  // Utility: slide author and key (for dedupe/seen)
-  const authorOf = (s: Slide) => s.identityUserId;
-  const keyOf = (s: Slide) => {
-    const base = `${s.type}:${s.identityUserId}`;
-    if (s.type === "recent_song") {
-      const rs = s as Extract<Slide, { type: "recent_song" }>;
-      if (rs.postId) return `${base}:post:${rs.postId}`;
-      return `${base}:song:${rs.songId}`;
-    }
-    if (s.type === "top_songs_week") {
-      const topSongsSlide = s as Extract<Slide, { type: "top_songs_week" }>;
-      const names =
-        topSongsSlide.topSongs
-          ?.map(x => (x.songId || x.songTitle || "") + ":" + (x.artist || ""))
-          .join("|") || "";
-      return `${base}:top_songs:${names}`;
-    }
-    if (s.type === "top_artists_week") {
-      const topArtistsSlide = s as Extract<Slide, { type: "top_artists_week" }>;
-      const names =
-        topArtistsSlide.topArtists?.map(x => (x.name || "").toLowerCase()).join("|") || "";
-      return `${base}:top_artists:${names}`;
-    }
-    if (s.type === "common_artists") {
-      const commonArtistsSlide = s as Extract<Slide, { type: "common_artists" }>;
-      const withId = commonArtistsSlide.withIdentityUserId || "";
-      const names =
-        commonArtistsSlide.commonArtists
-          ?.slice(0, 8)
-          .map(x => (x || "").toLowerCase())
-          .join("|") || "";
-      return `${base}:common:${withId}:${names}`;
-    }
-    return base;
-  };
-
-  // PRNG and chunked shuffle
-  const mulberry32 = (a: number) => () => {
-    let t = (a += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-  const hashString = (str: string) => {
-    let h = 2166136261;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
-    }
-    return h >>> 0;
-  };
-  const chunkedShuffle = useCallback((arr: Slide[], seedStr: string, chunkSize = 4) => {
-    if (arr.length <= 1) return arr.slice();
-    const out: Slide[] = [];
-    for (let i = 0; i < arr.length; i += chunkSize) {
-      const chunk = arr.slice(i, i + chunkSize);
-      const rng = mulberry32(hashString(seedStr + ":" + i));
-      // Fisher-Yates
-      for (let j = chunk.length - 1; j > 0; j--) {
-        const k = Math.floor(rng() * (j + 1));
-        [chunk[j], chunk[k]] = [chunk[k], chunk[j]];
-      }
-      out.push(...chunk);
-    }
-    return out;
-  }, []);
-
-  // De-clump by author within a batch and at the boundary with previous author
-  const declumpAuthors = useCallback((batch: Slide[]) => {
-    if (batch.length <= 1) return batch;
-    const res = batch.slice();
-    // boundary check
-    if (lastAuthorRef.current && authorOf(res[0]) === lastAuthorRef.current) {
-      const idx = res.findIndex(s => authorOf(s) !== lastAuthorRef.current);
-      if (idx > 0) {
-        const [swap] = res.splice(idx, 1);
-        res.unshift(swap);
-      }
-    }
-    // internal pass: avoid 3+ in a row
-    for (let i = 1; i < res.length; i++) {
-      const prev = authorOf(res[i - 1]);
-      const cur = authorOf(res[i]);
-      if (prev === cur) {
-        const altIdx = res.findIndex((s, j) => j > i && authorOf(s) !== cur);
-        if (altIdx > i) {
-          const [alt] = res.splice(altIdx, 1);
-          res.splice(i, 0, alt);
-        }
-      }
-    }
-    // update boundary author
-    lastAuthorRef.current = authorOf(res[res.length - 1]);
-    return res;
-  }, []);
-
-  const [songsById, setSongsById] = useState<Record<string, Song | null>>({});
-  const [artists, setArtists] = useState<Artist[]>([]);
-  const [userMetaById, setUserMetaById] = useState<
-    Record<string, { avatarUrl?: string; displayName?: string; username?: string }>
-  >({});
-  const [reactionsBySlide, setReactionsBySlide] = useState<Record<string, CachedReaction[]>>({});
-
-  // Snap container + sections for one-by-one navigation
+  const feed = useFeed();
+  const {
+    me,
+    slides,
+    songs: songsById,
+    profiles: userMetaById,
+    artists,
+    reactions,
+    reacting,
+    reactionFlash,
+    isLoading,
+    isLoadingMore,
+    error,
+    hasMore,
+    load: loadSlides,
+  } = feed;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sectionsRef = useRef<Array<HTMLElement | null>>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [scrollLocked, setScrollLocked] = useState(false);
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
-  const [reactionFlash, setReactionFlash] = useState<Record<number, { emoji: string; at: number }>>(
-    {}
-  );
-
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // Stabilize current user so hooks don't re-create on every render
-  const [me] = useState(() => identityApi.getCurrentUser());
-
-  const preloadSongs = useCallback(async (newSlides: Slide[]) => {
-    const recentSongIds = newSlides
-      .filter(s => s.type === "recent_song")
-      .map(s => (s as Extract<Slide, { type: "recent_song" }>).songId)
-      .filter(Boolean);
-
-    const weekSongIds = newSlides
-      .filter(s => s.type === "top_songs_week")
-      .flatMap(
-        s =>
-          (s as Extract<Slide, { type: "top_songs_week" }>).topSongs
-            .map(t => t.songId)
-            .filter(Boolean) as string[]
-      );
-
-    const allIds = Array.from(new Set([...recentSongIds, ...weekSongIds]));
-    if (!allIds.length) return;
-
-    const results = await Promise.allSettled(allIds.map(id => musicApi.getSong(id)));
-    const map: Record<string, Song | null> = {};
-    results.forEach((r, idx) => {
-      const id = allIds[idx];
-      map[id] = r.status === "fulfilled" ? r.value : null;
-    });
-    setSongsById(prev => ({ ...prev, ...map }));
-  }, []);
-
-  const preloadUserMeta = useCallback(
-    async (newSlides: Slide[]) => {
-      const ids = new Set<string>();
-      newSlides.forEach(s => {
-        ids.add(s.identityUserId);
-        if (s.type === "common_artists") {
-          ids.add((s as Extract<Slide, { type: "common_artists" }>).withIdentityUserId);
-        }
-      });
-      const missing = Array.from(ids).filter(id => !userMetaById[id]);
-      if (!missing.length) return;
-
-      const profiles = await Promise.allSettled(
-        missing.map(id => userApi.getUserProfileByIdentityId(id))
-      );
-      const meta: Record<string, { avatarUrl?: string; displayName?: string; username?: string }> =
-        {};
-      profiles.forEach((res, idx) => {
-        const id = missing[idx];
-        if (res.status === "fulfilled")
-          meta[id] = {
-            avatarUrl: res.value.avatarUrl,
-            displayName: res.value.displayName,
-            username: res.value.username,
-          };
-      });
-      setUserMetaById(prev => ({ ...prev, ...meta }));
-    },
-    [userMetaById]
-  );
-
-  const preloadReactions = useCallback(
-    async (newSlides: Slide[]) => {
-      if (!newSlides.length) return;
-
-      const reactionPromises = newSlides.map(async slide => {
-        try {
-          const slideKey = keyOf(slide);
-          const cacheKey = getCacheKey.slide(slideKey);
-
-          // Check cache first
-          const cached = reactionCache.get(cacheKey);
-          if (cached) {
-            return { slideKey, reactions: cached };
-          }
-
-          if (!slide.postId)
-            throw new Error("This feed item has no reaction identifier. Refresh the feed.");
-          const allReactions = await userApi.getReactionsByPost(slide.postId, me?.id);
-
-          // Store in cache
-          reactionCache.set(cacheKey, allReactions);
-
-          return { slideKey, reactions: allReactions };
-        } catch (error) {
-          setReactionError(
-            error instanceof Error
-              ? error.message
-              : "Reactions could not be loaded. Refresh to retry."
-          );
-          return { slideKey: keyOf(slide), reactions: [] };
-        }
-      });
-
-      const results = await Promise.allSettled(reactionPromises);
-      const newReactions: Record<string, CachedReaction[]> = {};
-
-      results.forEach(result => {
-        if (result.status === "fulfilled" && result.value) {
-          newReactions[result.value.slideKey] = result.value.reactions;
-        }
-      });
-
-      setReactionsBySlide(prev => ({ ...prev, ...newReactions }));
-    },
-    [me?.id]
-  );
-
-  const loadSlides = useCallback(
-    async (reset = false) => {
-      if (!me) {
-        setError("Please log in");
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        if (reset) {
-          setIsLoading(true);
-          setSkip(0);
-          setHasMore(true);
-          setSlides([]);
-          globalKeySetRef.current = new Set();
-          lastAuthorRef.current = null;
-        } else {
-          setIsLoadingMore(true);
-        }
-
-        setError(null);
-        const currentSkip = reset ? 0 : skip;
-        const data = await userApi.getFeedSlides(me.id, 10, currentSkip);
-        const newSlides = Array.isArray(data) ? (data as Slide[]) : [];
-
-        // Build processed batch: de-dupe, prioritize unseen, light shuffle, de-clump
-        if (reset) {
-          seenMapRef.current = loadSeen();
-        }
-        const batchUnique: Slide[] = [];
-        for (const s of newSlides) {
-          const k = keyOf(s);
-          if (globalKeySetRef.current.has(k)) continue; // drop duplicates across pages
-          globalKeySetRef.current.add(k);
-          batchUnique.push(s);
-        }
-
-        // Unseen first within the batch
-        const seed = `${sessionSeedRef.current}:${currentSkip}`;
-        const unseen = batchUnique.filter(s => !(keyOf(s) in seenMapRef.current));
-        const seen = batchUnique.filter(s => keyOf(s) in seenMapRef.current);
-        const shuffledUnseen = chunkedShuffle(unseen, seed, 4);
-        const reordered = declumpAuthors([...shuffledUnseen, ...seen]);
-
-        if (!newSlides.length) setHasMore(false);
-        setSlides(prev => (reset ? reordered : [...prev, ...reordered]));
-        setSkip(currentSkip + newSlides.length);
-
-        // parallel preloads (for processed batch)
-        await Promise.allSettled([
-          preloadSongs(reordered),
-          preloadUserMeta(reordered),
-          preloadReactions(reordered),
-        ]);
-      } catch (e) {
-        console.error("Failed to load slides:", e);
-        setError("Failed to load feed");
-      } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
-      }
-    },
-    [
-      me,
-      skip,
-      preloadSongs,
-      preloadUserMeta,
-      preloadReactions,
-      chunkedShuffle,
-      declumpAuthors,
-      loadSeen,
-    ]
-  );
-
-  // keep a live ref of slides for deep-link fallback logic
-  useEffect(() => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [visiblePost, setVisiblePost] = useState<string | null>(null);
+  const navigationLock = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStart = useRef<number | null>(null);
+  const slidesRef = useRef(slides);
+  const currentRef = useRef(currentIndex);
+  useLayoutEffect(() => {
     slidesRef.current = slides;
-  }, [slides]);
+    currentRef.current = currentIndex;
+  }, [slides, currentIndex]);
+  const scrollToIndex = useCallback((index: number) => {
+    const root = containerRef.current;
+    if (!root) return;
+    const sections = root.querySelectorAll<HTMLElement>("[data-feed-navigation-section]");
+    const target = sections?.[index];
+    if (!target) return;
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    root.scrollTo({
+      top:
+        root.scrollTop +
+        target.getBoundingClientRect().top -
+        root.getBoundingClientRect().top -
+        root.clientTop,
+      behavior: reduced ? "auto" : "smooth",
+    });
+  }, []);
+  const navigate = useCallback(
+    async (step: number) => {
+      const next = Math.max(0, currentRef.current + step);
+      if (next >= slidesRef.current.length && hasMore && !error) await loadSlides(false);
+      scrollToIndex(next);
+    },
+    [hasMore, error, loadSlides, scrollToIndex]
+  );
 
-  // initial load once with safety checks
+  const deepTarget = searchParams?.get("postId") || "";
+  const focusType = searchParams?.get("focusType") || "";
+  const focusTo = searchParams?.get("to") || "";
+  const focusSong = searchParams?.get("songId") || "";
+  const deepRun = useRef(0);
   useEffect(() => {
-    if (!me?.id) {
-      return;
-    }
-
-    // Small delay to ensure user context is fully loaded
-    const timeoutId = setTimeout(() => {
-      loadSlides(true);
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.id]);
-
-  // deep-link: focus a slide based on query params (with fallback)
-  useEffect(() => {
+    if (!deepTarget && !(focusType && focusTo)) return;
+    const run = ++deepRun.current;
     let cancelled = false;
-    const run = async () => {
-      if (!slides.length) return;
-      const postId = searchParams?.get("postId");
-      const type = searchParams?.get("focusType");
-      const to = searchParams?.get("to");
-      const songId = searchParams?.get("songId");
-      // find in current slides
-      const matchIndex = (arr: Slide[]) =>
-        arr.findIndex(s => {
-          // Prefer postId for any slide type
-          if (postId && "postId" in s && s.postId === postId) return true;
-          if (!type || !to) return false;
-          if (s.identityUserId !== to) return false;
-          if (s.type !== (type as Slide["type"])) return false;
-          if (type === "recent_song" && songId) {
-            return (s as Extract<Slide, { type: "recent_song" }>).songId === songId;
-          }
-          return true;
-        });
-      let idx = matchIndex(slides);
-      if (idx >= 0) {
-        setTimeout(() => !cancelled && scrollToIndex(idx), 50);
-        return;
-      }
-      // fallback: attempt to load more until found or no more
-      let attempts = 0;
-      while (attempts < 3 && hasMore && !cancelled) {
-        await loadSlides(false);
-        idx = matchIndex(slidesRef.current || slides);
-        if (idx >= 0) {
-          setTimeout(() => !cancelled && scrollToIndex(idx), 50);
-          break;
+    const match = (slide: FeedSlide) =>
+      deepTarget
+        ? slide.postId === deepTarget
+        : slide.type === focusType &&
+          slide.identityUserId === focusTo &&
+          (!(focusType === "recent_song" && focusSong) ||
+            (slide.type === "recent_song" && slide.songId === focusSong));
+    void (async () => {
+      for (let attempt = 0; attempt <= 3 && !cancelled && deepRun.current === run; attempt++) {
+        const index = slidesRef.current.findIndex(match);
+        if (index >= 0) {
+          requestAnimationFrame(() => {
+            if (!cancelled) scrollToIndex(index);
+          });
+          return;
         }
-        attempts++;
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slides.length]);
-
-  // artists cache once
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const all = await musicApi.getArtists();
-        if (mounted) setArtists(all);
-      } catch (e) {
-        console.warn("Failed to load artists", e);
+        if (!attempt && isLoading) return;
+        if (!hasMore || error || attempt === 3) return;
+        await loadSlides(false);
       }
     })();
     return () => {
-      mounted = false;
+      cancelled = true;
     };
-  }, []);
+  }, [
+    deepTarget,
+    focusType,
+    focusTo,
+    focusSong,
+    isLoading,
+    me?.id,
+    loadSlides,
+    scrollToIndex,
+    hasMore,
+    error,
+  ]);
 
-  // infinite scroll sentinel (within snap container)
   useEffect(() => {
-    const el = sentinelRef.current;
     const root = containerRef.current;
-    if (!el || !root) return;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel || !hasMore || feed.scanPaused || error || isLoadingMore || isLoading)
+      return;
     const observer = new IntersectionObserver(
       entries => {
-        const entry = entries[0];
-        if (entry.isIntersecting && hasMore && !isLoadingMore) {
-          loadSlides(false);
-        }
+        if (entries.some(entry => entry.isIntersecting)) void loadSlides(false);
       },
       { root, rootMargin: "800px", threshold: 0 }
     );
-    observer.observe(el);
+    observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isLoadingMore, loadSlides]);
+  }, [hasMore, feed.scanPaused, error, isLoadingMore, isLoading, slides.length, loadSlides]);
 
-  // track current section in view for prev/next controls
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    const sections = sectionsRef.current.filter(Boolean) as HTMLElement[];
-    if (!sections.length) return;
+    const sections = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-feed-navigation-section]")
+    );
+    const ratios = new Map<Element, number>();
     const observer = new IntersectionObserver(
       entries => {
-        // pick the entry with highest intersection ratio
-        let top: { idx: number; ratio: number } | null = null;
-        for (const e of entries) {
-          const idx = sections.indexOf(e.target as HTMLElement);
-          if (idx >= 0) {
-            const ratio = (e as IntersectionObserverEntry).intersectionRatio || 0;
-            if (!top || ratio > top.ratio) top = { idx, ratio };
-          }
-        }
-        if (top) setCurrentIndex(top.idx);
+        for (const entry of entries)
+          ratios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0);
+        const visible = sections
+          .map((section, index) => ({ section, index, ratio: ratios.get(section) || 0 }))
+          .sort((a, b) => b.ratio - a.ratio)[0];
+        if (!visible || visible.ratio <= 0) return;
+        setCurrentIndex(visible.index);
+        setVisiblePost(visible.section.dataset.feedPostId || null);
       },
-      { root, threshold: [0.4, 0.6, 0.8] }
+      { root, threshold: [0, 0.4, 0.6, 0.8] }
     );
-    sections.forEach(s => observer.observe(s));
+    sections.forEach(section => observer.observe(section));
     return () => observer.disconnect();
-  }, [slides.length]);
-
-  // Mark current slide as seen with TTL persistence
+  }, [slides, hasMore, isLoadingMore, error]);
+  const markSeen = feed.markSeen;
   useEffect(() => {
-    const s = slides[currentIndex];
-    if (!s) return;
-    const k = keyOf(s);
-    seenMapRef.current[k] = Date.now();
-    saveSeen();
-  }, [currentIndex, slides]);
-
-  // Enforce one-post-at-a-time navigation (wheel/touch)
+    const slide = slides.find(item => item.postId === visiblePost);
+    if (slide) markSeen(slide);
+  }, [visiblePost, slides, markSeen]);
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
-    const onWheel = (e: WheelEvent) => {
-      if (scrollLocked) return;
-      const delta = e.deltaY;
-      if (Math.abs(delta) < 24) return;
-      e.preventDefault();
-      setScrollLocked(true);
-      const next = delta > 0 ? currentIndex + 1 : currentIndex - 1;
-      scrollToIndex(next);
-      setTimeout(() => setScrollLocked(false), 650);
+    const advance = (direction: number) => {
+      if (navigationLock.current) return;
+      navigationLock.current = setTimeout(() => {
+        navigationLock.current = null;
+      }, 650);
+      void navigate(direction);
     };
-    const onTouchStart = (e: TouchEvent) => {
-      setTouchStartY(e.touches[0]?.clientY ?? null);
+    const wheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) < 24) return;
+      event.preventDefault();
+      advance(event.deltaY > 0 ? 1 : -1);
     };
-    const onTouchMove = (e: TouchEvent) => {
-      if (scrollLocked || touchStartY == null) return;
-      const dy = (e.touches[0]?.clientY ?? touchStartY) - touchStartY;
-      if (Math.abs(dy) < 32) return;
-      e.preventDefault();
-      setScrollLocked(true);
-      const next = dy < 0 ? currentIndex + 1 : currentIndex - 1;
-      scrollToIndex(next);
-      setTimeout(() => setScrollLocked(false), 650);
-      setTouchStartY(null);
+    const start = (event: TouchEvent) => {
+      touchStart.current = event.touches[0]?.clientY ?? null;
     };
-    root.addEventListener("wheel", onWheel, { passive: false });
-    root.addEventListener("touchstart", onTouchStart, { passive: true });
-    root.addEventListener("touchmove", onTouchMove, { passive: false });
+    const move = (event: TouchEvent) => {
+      if (touchStart.current === null) return;
+      const delta = (event.touches[0]?.clientY ?? touchStart.current) - touchStart.current;
+      if (Math.abs(delta) < 32) return;
+      event.preventDefault();
+      advance(delta < 0 ? 1 : -1);
+      touchStart.current = null;
+    };
+    root.addEventListener("wheel", wheel, { passive: false });
+    root.addEventListener("touchstart", start, { passive: true });
+    root.addEventListener("touchmove", move, { passive: false });
     return () => {
-      root.removeEventListener("wheel", onWheel);
-      root.removeEventListener("touchstart", onTouchStart);
-      root.removeEventListener("touchmove", onTouchMove);
+      root.removeEventListener("wheel", wheel);
+      root.removeEventListener("touchstart", start);
+      root.removeEventListener("touchmove", move);
+      if (navigationLock.current) clearTimeout(navigationLock.current);
+      navigationLock.current = null;
     };
-  }, [currentIndex, scrollLocked, touchStartY, scrollToIndex]);
-
-  const handleReact = useCallback(
-    async (target: Slide, emoji: string, index?: number) => {
-      if (!me) return;
-
-      const slideKey = keyOf(target);
-      if (reacting.has(slideKey) || !target.postId) return;
-      setReacting(previous => new Set(previous).add(slideKey));
-      setReactionError("");
-      const cacheKey = getCacheKey.slide(slideKey);
-      const existingReactions = reactionsBySlide[slideKey] || [];
-
-      // Check if user already reacted with this emoji
-      const hasReacted = existingReactions.some(
-        r => r.emoji === emoji && r.fromIdentityUserId === me.id
-      );
-      const action = hasReacted ? "remove" : "add";
-
-      // Optimistic update
-      const optimisticReactions = reactionCache.optimisticUpdate(cacheKey, me.id, emoji, action, {
-        emoji,
-        fromIdentityUserId: me.id,
-        fromUserName: me.username,
-        toIdentityUserId: target.identityUserId,
-        createdAt: new Date().toISOString(),
-        contextType: target.type,
-        songId:
-          target.type === "recent_song" || target.type === "now_playing"
-            ? target.songId
-            : undefined,
-        songTitle:
-          target.type === "recent_song" || target.type === "now_playing"
-            ? target.songTitle
-            : undefined,
-        artist:
-          target.type === "recent_song" || target.type === "now_playing"
-            ? target.artist
-            : undefined,
-      });
-
-      if (optimisticReactions) {
-        setReactionsBySlide(prev => ({
-          ...prev,
-          [slideKey]: optimisticReactions,
-        }));
-      }
-
-      try {
-        const postId = target.postId;
-        await userApi.sendReaction({
-          toIdentityUserId: target.identityUserId,
-          fromIdentityUserId: me.id,
-          fromUserName: me.username,
-          emoji,
-          postId,
-          contextType: target.type,
-          ...(target.type === "recent_song" || target.type === "now_playing"
-            ? {
-                songId: target.songId,
-                songTitle: target.songTitle,
-                artist: target.artist,
-              }
-            : {}),
-        });
-
-        if (typeof index === "number") {
-          setReactionFlash(prev => ({ ...prev, [index]: { emoji, at: Date.now() } }));
-          setTimeout(() => {
-            setReactionFlash(prev => {
-              const copy = { ...prev };
-              delete copy[index!];
-              return copy;
-            });
-          }, 1200);
-        }
-
-        if (postId) {
-          window.dispatchEvent(new CustomEvent("reaction:refresh", { detail: { postId } }));
-        }
-      } catch (e) {
-        setReactionError(
-          e instanceof Error
-            ? e.message
-            : "Reaction could not be saved. Retry when User is available."
-        );
-
-        // Revert optimistic update on error
-        reactionCache.invalidate(cacheKey);
-        setReactionsBySlide(prev => ({
-          ...prev,
-          [slideKey]: existingReactions,
-        }));
-      } finally {
-        setReacting(previous => {
-          const next = new Set(previous);
-          next.delete(slideKey);
-          return next;
-        });
-      }
-    },
-    [me, reactionsBySlide, reacting]
-  );
-
-  const UserHeader = memo(
-    ({
-      slide,
-      userMeta,
-    }: {
-      slide: Slide;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => {
-      const getSlideDisplayName = (slide: Slide): string | undefined => {
-        switch (slide.type) {
-          case "top_artists_week":
-          case "top_songs_week":
-          case "common_artists":
-            return slide.displayName;
-          default:
-            return undefined;
-        }
-      };
-
-      const getSlideUsername = (slide: Slide): string | undefined => {
-        switch (slide.type) {
-          case "top_artists_week":
-          case "top_songs_week":
-          case "common_artists":
-            return slide.username;
-          default:
-            return undefined;
-        }
-      };
-
-      const name =
-        userMeta?.displayName ||
-        userMeta?.username ||
-        getSlideDisplayName(slide) ||
-        getSlideUsername(slide) ||
-        "User";
-      return (
-        <div className="flex items-center gap-3">
-          <MusicImage
-            src={userMeta?.avatarUrl}
-            alt={name}
-            type="circle"
-            size="medium"
-            className="w-10 h-10"
-          />
-          <Link
-            href={`/user/${slide.identityUserId}`}
-            className="text-white font-medium hover:underline"
-          >
-            {name}
-          </Link>
-        </div>
-      );
-    }
-  );
-  UserHeader.displayName = "UserHeader";
-
-  const Card = ({ children }: { children: React.ReactNode }) => (
-    <div className="relative bg-gray-900/60 border border-gray-800 rounded-2xl p-3 sm:p-4 shadow-md w-full max-w-2xl mx-auto overflow-hidden">
-      {children}
-    </div>
-  );
-
-  const ReactionBar = ({ slide, index }: { slide: Slide; index: number }) => {
-    const flash = reactionFlash[index];
-    const slideKey = keyOf(slide);
-    const existingReactions = reactionsBySlide[slideKey] || [];
-
-    return (
-      <div className="pointer-events-none fixed right-2 sm:right-6 top-1/2 -translate-y-1/2 flex flex-col gap-1 sm:gap-2 items-center z-20">
-        {["👍", "🔥", "❤️", "😂", "👏", "😮"].map(em => {
-          const hasReacted = existingReactions.some(
-            r => r.emoji === em && r.fromIdentityUserId === me?.id
-          );
-          return (
-            <button
-              key={em}
-              onClick={e => {
-                e.stopPropagation();
-                handleReact(slide, em, index);
-              }}
-              className={`pointer-events-auto w-8 h-8 sm:w-10 sm:h-10 rounded-full text-sm sm:text-lg flex items-center justify-center transform-gpu transition-transform duration-150 active:scale-95 ${
-                flash?.emoji === em ? "ring-2 ring-purple-400 animate-pulse" : ""
-              } ${
-                hasReacted
-                  ? "bg-purple-600/50 hover:bg-purple-600/70 text-white"
-                  : "bg-white/10 hover:bg-white/20 text-white/80"
-              }`}
-              style={{ willChange: "transform" }}
-              title={`${hasReacted ? "Remove" : "Add"} ${em} reaction`}
-              aria-label={`${hasReacted ? "Remove" : "Add"} ${em} reaction`}
-              aria-pressed={hasReacted}
-              disabled={reacting.has(slideKey) || !slide.postId}
-            >
-              {em}
-            </button>
-          );
-        })}
-        {flash && (
-          <div className="pointer-events-none mt-2 text-xs px-2 py-1 rounded bg-purple-600/80 text-white">
-            Sent
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const ReactionCluster = ({ slide }: { slide: Slide }) => {
-    const slideKey = keyOf(slide);
-    const reactions = reactionsBySlide[slideKey] || [];
-    const [open, setOpen] = useState(false);
-
-    if (!reactions.length) {
-      return (
-        <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-30">
-          <span className="text-xs text-white/40">💬</span>
-        </div>
-      );
-    }
-
-    const counts = reactions.reduce<Record<string, number>>((acc, r) => {
-      acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-      return acc;
-    }, {});
-    const items = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
-    return (
-      <div>
-        <button
-          className="flex -space-x-2"
-          onClick={() => setOpen(true)}
-          aria-label="View reactions"
-        >
-          {items.map(([em, count]) => (
-            <span
-              key={em}
-              className="relative inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-base"
-            >
-              {em}
-              <span className="absolute -bottom-1 -right-1 text-[10px] bg-purple-600 text-white rounded px-1">
-                {count}
-              </span>
-            </span>
-          ))}
-        </button>
-        {open && (
-          <div
-            className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
-            onClick={() => setOpen(false)}
-          >
-            <div
-              className="bg-gray-900 border border-gray-800 rounded-2xl p-4 w-full max-w-md"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-white font-semibold">Reactions</div>
-                <button className="text-gray-400 hover:text-white" onClick={() => setOpen(false)}>
-                  ✕
-                </button>
-              </div>
-              <div className="max-h-80 overflow-y-auto space-y-2">
-                {reactions.map((r, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between bg-white/5 rounded-lg p-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{r.emoji}</span>
-                      <Link
-                        href={`/user/${r.fromIdentityUserId}`}
-                        className="text-purple-300 hover:underline"
-                      >
-                        {r.fromUserName || "User"}
-                      </Link>
-                    </div>
-                    <span className="text-gray-500 text-xs">
-                      {new Date(r.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const RecentSongCard = memo(
-    ({
-      slide,
-      song,
-      userMeta,
-    }: {
-      slide: Extract<Slide, { type: "recent_song" }>;
-      song: Song | null;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => {
-      const { playSong } = useAudio();
-
-      return (
-        <Card>
-          <div className="relative">
-            {/* Reaction cluster - always visible at top right */}
-            <div className="absolute right-3 top-3 z-10">
-              <ReactionCluster slide={slide} />
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="flex-1">
-                <UserHeader slide={slide} userMeta={userMeta} />
-                <div className="mt-4 flex items-center gap-4">
-                  <button
-                    className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-                    onClick={() => song && playSong(song)}
-                    title="Play"
-                  >
-                    <MusicImage
-                      src={song?.coverUrl || slide.coverUrl}
-                      alt={slide.songTitle || "Song"}
-                      size="large"
-                      className="w-full h-full"
-                    />
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className={`text-white font-semibold ${
-                        slide.songTitle && slide.songTitle.length > 30
-                          ? "text-lg sm:text-xl"
-                          : slide.songTitle && slide.songTitle.length > 20
-                            ? "text-xl sm:text-xl"
-                            : "text-xl"
-                      } ${slide.songTitle && slide.songTitle.length > 40 ? "leading-tight" : ""}`}
-                    >
-                      {slide.songTitle}
-                    </div>
-                    <div className="text-gray-300 text-sm sm:text-base truncate">
-                      {song?.artists?.length
-                        ? song.artists.map((a, i) => (
-                            <Link
-                              key={a.id || `${a.name}-${i}`}
-                              href={a.id ? `/artist/${a.id}` : "#"}
-                              className="hover:underline"
-                            >
-                              {a.name}
-                              {i < (song?.artists?.length || 0) - 1 ? ", " : ""}
-                            </Link>
-                          ))
-                        : slide.artist}
-                    </div>
-                    {song?.album?.id && (
-                      <Link
-                        href={`/album/${song.album.id}`}
-                        className="text-purple-300 text-sm hover:underline"
-                      >
-                        View album
-                      </Link>
-                    )}
-                    {slide.playedAt && (
-                      <div className="text-gray-400 text-xs mt-1">
-                        {new Date(slide.playedAt).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-  );
-  RecentSongCard.displayName = "RecentSongCard";
-
-  const TopArtistsCard = memo(
-    ({
-      slide,
-      userMeta,
-    }: {
-      slide: Extract<Slide, { type: "top_artists_week" }>;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => (
-      <Card>
-        <div className="relative">
-          {/* Reaction cluster - always visible at top right */}
-          <div className="absolute right-3 top-3 z-10">
-            <ReactionCluster slide={slide} />
-          </div>
-          {/* Post label moved to bottom right */}
-          <div className="absolute right-3 bottom-3 z-10">
-            <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
-              Top artists this week
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <UserHeader slide={slide} userMeta={userMeta} />
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-3 pb-10">
-            {slide.topArtists.slice(0, 5).map((a, i) => {
-              const artistDetails = artists.find(
-                ar => ar.name.toLowerCase() === a.name.toLowerCase()
-              );
-              return (
-                <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-                  <div className="w-12 h-12 rounded-lg overflow-hidden">
-                    <MusicImage
-                      src={artistDetails?.imageUrl}
-                      alt={a.name}
-                      size="medium"
-                      className="w-12 h-12"
-                    />
-                  </div>
-                  <div className="text-left flex-1 min-w-0">
-                    {artistDetails?.id ? (
-                      <Link
-                        href={`/artist/${artistDetails.id}`}
-                        className="text-white font-semibold truncate hover:underline"
-                      >
-                        {a.name}
-                      </Link>
-                    ) : (
-                      <div className="text-white font-semibold truncate">{a.name}</div>
-                    )}
-                    <div className="text-gray-300 text-xs">{a.count} plays</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
-    )
-  );
-  TopArtistsCard.displayName = "TopArtistsCard";
-
-  const TopSongsCard = memo(
-    ({
-      slide,
-      songsById,
-      userMeta,
-    }: {
-      slide: Extract<Slide, { type: "top_songs_week" }>;
-      songsById: Record<string, Song | null>;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => {
-      const { playSong } = useAudio();
-
-      return (
-        <Card>
-          <div className="relative">
-            {/* Reaction cluster - always visible at top right */}
-            <div className="absolute right-3 top-3 z-10">
-              <ReactionCluster slide={slide} />
-            </div>
-            {/* Post label moved to bottom right */}
-            <div className="absolute right-3 bottom-3 z-10">
-              <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
-                Top songs this week
-              </div>
-            </div>
-            <div className="flex items-center justify-between">
-              <UserHeader slide={slide} userMeta={userMeta} />
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 pb-10">
-              {slide.topSongs.slice(0, 5).map((ts, i) => {
-                const song = ts.songId ? songsById[ts.songId] : null;
-                const title = song?.title || ts.songTitle || "Unknown Song";
-                const artistName =
-                  song?.artists?.map(a => a.name).join(", ") || ts.artist || "Unknown Artist";
-                return (
-                  <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-                    {song?.album?.id ? (
-                      <Link
-                        href={`/album/${song.album.id}`}
-                        className="w-12 h-12 rounded-lg overflow-hidden"
-                      >
-                        <MusicImage
-                          src={song?.coverUrl}
-                          alt={title}
-                          size="medium"
-                          className="w-12 h-12"
-                        />
-                      </Link>
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg overflow-hidden">
-                        <MusicImage
-                          src={song?.coverUrl}
-                          alt={title}
-                          size="medium"
-                          className="w-12 h-12"
-                        />
-                      </div>
-                    )}
-                    <div className="text-left flex-1 min-w-0">
-                      <div className="text-white font-semibold truncate">{title}</div>
-                      <div className="text-gray-300 text-xs truncate">
-                        {song?.artists?.length
-                          ? song.artists.map((a, j: number) => (
-                              <Link
-                                key={a.id || `${a.name}-${j}`}
-                                href={a.id ? `/artist/${a.id}` : "#"}
-                                className="hover:underline"
-                              >
-                                {a.name}
-                                {j < (song?.artists?.length || 0) - 1 ? ", " : ""}
-                              </Link>
-                            ))
-                          : artistName}
-                        <span className="text-gray-500"> • {ts.count} plays</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (song) playSong(song);
-                      }}
-                      className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20"
-                    >
-                      Play
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </Card>
-      );
-    }
-  );
-  TopSongsCard.displayName = "TopSongsCard";
-
-  const NowPlayingCard = memo(
-    ({
-      slide,
-      song,
-      userMeta,
-    }: {
-      slide: Extract<Slide, { type: "now_playing" }>;
-      song: Song | null;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => {
-      const { playSong } = useAudio();
-
-      return (
-        <Card>
-          <div className="flex items-start gap-4">
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <UserHeader slide={slide} userMeta={userMeta} />
-                <span className="text-green-300 text-xs bg-green-500/10 border border-green-400/30 px-2 py-0.5 rounded">
-                  Now Playing
-                </span>
-              </div>
-              <div className="mt-4 flex items-center gap-4">
-                <button
-                  className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
-                  onClick={() => song && playSong(song)}
-                  title="Play"
-                >
-                  <MusicImage
-                    src={song?.coverUrl || slide.coverUrl}
-                    alt={slide.songTitle || "Song"}
-                    size="large"
-                    className="w-full h-full"
-                  />
-                </button>
-                <div className="min-w-0">
-                  <div className="text-white text-xl font-semibold truncate">
-                    {slide.songTitle || "Listening now"}
-                  </div>
-                  <div className="text-gray-200 truncate">
-                    {song?.artists?.length
-                      ? song!.artists.map((a, i: number) => (
-                          <Link
-                            key={a.id || `${a.name}-${i}`}
-                            href={a.id ? `/artist/${a.id}` : "#"}
-                            className="hover:underline"
-                          >
-                            {a.name}
-                            {i < (song?.artists?.length || 0) - 1 ? ", " : ""}
-                          </Link>
-                        ))
-                      : slide.artist}
-                  </div>
-                  {song?.album?.id && (
-                    <Link
-                      href={`/album/${song.album.id}`}
-                      className="text-emerald-300 text-sm hover:underline"
-                    >
-                      View album
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </Card>
-      );
-    }
-  );
-  NowPlayingCard.displayName = "NowPlayingCard";
-
-  const CommonArtistsCard = memo(
-    ({
-      slide,
-      userMeta,
-    }: {
-      slide: Extract<Slide, { type: "common_artists" }>;
-      userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
-    }) => (
-      <Card>
-        <div className="relative">
-          {/* Reaction cluster - always visible at top right */}
-          <div className="absolute right-3 top-3 z-10">
-            <ReactionCluster slide={slide} />
-          </div>
-          {/* Post label moved to bottom right */}
-          <div className="absolute right-3 bottom-3 z-10">
-            <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
-              Artists in common
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <UserHeader slide={slide} userMeta={userMeta} />
-          </div>
-          <div className="mt-4 grid grid-cols-1 gap-3 pb-10">
-            {slide.commonArtists.slice(0, 5).map((artist, i) => {
-              const artistDetails = artists.find(
-                ar => ar.name.toLowerCase() === artist.toLowerCase()
-              );
-              return (
-                <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
-                  <div className="w-12 h-12 rounded-lg overflow-hidden">
-                    <MusicImage
-                      src={artistDetails?.imageUrl}
-                      alt={artist}
-                      size="medium"
-                      className="w-12 h-12"
-                    />
-                  </div>
-                  <div className="text-left flex-1 min-w-0">
-                    {artistDetails?.id ? (
-                      <Link
-                        href={`/artist/${artistDetails.id}`}
-                        className="text-white font-semibold truncate hover:underline"
-                      >
-                        {artist}
-                      </Link>
-                    ) : (
-                      <div className="text-white font-semibold truncate">{artist}</div>
-                    )}
-                    <div className="text-gray-300 text-xs">Shared artist</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
-    )
-  );
-  CommonArtistsCard.displayName = "CommonArtistsCard";
-
+  }, [navigate, slides.length]);
   if (!me) {
     return (
       <>
@@ -1254,15 +207,61 @@ function FeedInner() {
   }
 
   return (
-    <>
-      <div className="relative">
-        {reactionError && (
-          <p role="alert" className="p-3 text-red-300">
-            {reactionError}
+    <FeedCardContext.Provider
+      value={{ me, artists, reacting, reactionFlash, reactions, handleReact: feed.react }}
+    >
+      <div className="relative flex min-h-0 h-[calc(100dvh-9rem-1px)] flex-col">
+        <div className="mx-auto w-full max-w-2xl shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <h1 className="text-xl font-semibold text-white">Feed</h1>
+          <button
+            onClick={() => {
+              void loadSlides(true);
+              setCurrentIndex(0);
+            }}
+            disabled={isLoading || isLoadingMore}
+            className="min-h-11 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            Refresh feed
+          </button>
+        </div>
+        {feed.enrichmentError && (
+          <div role="alert" className="mx-auto max-w-2xl shrink-0 px-4 py-2 text-amber-200">
+            {feed.enrichmentError}
+            <button onClick={() => void feed.retryDetails()} className="min-h-11 px-3 underline">
+              Retry unavailable details
+            </button>
+          </div>
+        )}
+        {reactions[slides[currentIndex]?.postId || ""]?.error && (
+          <div role="alert" className="mx-auto max-w-2xl shrink-0 px-4 py-2 text-red-300">
+            {reactions[slides[currentIndex].postId!].error}
+            <button
+              onClick={() => void feed.retryReaction(slides[currentIndex], true)}
+              className="min-h-11 px-3 underline"
+            >
+              Reload reactions
+            </button>
+          </div>
+        )}
+        {isLoading && slides.length > 0 && (
+          <p role="status" className="shrink-0 text-center text-gray-300">
+            Refreshing feed…
           </p>
         )}
+        {error && slides.length > 0 && (
+          <div role="alert" className="mx-auto max-w-2xl shrink-0 px-4 py-2 text-red-300">
+            {error}
+            <button onClick={() => void feed.retryLoad()} className="min-h-11 px-3 underline">
+              Retry loading feed
+            </button>
+          </div>
+        )}
         {isLoading && !slides.length ? (
-          <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+          <div
+            role="status"
+            aria-label="Loading feed"
+            className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 space-y-4 w-full max-w-2xl mx-auto"
+          >
             {[...Array(3)].map((_, i) => (
               <div
                 key={i}
@@ -1273,8 +272,11 @@ function FeedInner() {
               </div>
             ))}
           </div>
-        ) : error ? (
-          <div className="px-4 pt-4 text-center text-red-400">
+        ) : error && slides.length === 0 ? (
+          <div
+            role="alert"
+            className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 text-center text-red-300"
+          >
             {error}
             <div className="mt-3">
               <button
@@ -1285,19 +287,32 @@ function FeedInner() {
               </button>
             </div>
           </div>
-        ) : slides.length === 0 ? (
-          <div className="px-4 pt-4 text-center text-gray-300">
-            No content yet. Follow friends to see their activity.
+        ) : slides.length === 0 && !hasMore ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 text-center text-gray-300">
+            No public listening activity yet. Public music posts will appear here when people
+            listen.
           </div>
         ) : (
           <>
             <div
               ref={containerRef}
-              className="h-[calc(100vh-8rem)] overflow-y-auto overflow-x-hidden snap-y snap-mandatory"
+              tabIndex={0}
+              aria-label="Feed posts. Use Up and Down arrows to move between posts."
+              onKeyDown={event => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  void navigate(event.key === "ArrowDown" ? 1 : -1);
+                }
+              }}
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain snap-y snap-mandatory"
             >
               {slides.map((slide, idx) => (
                 <section
-                  key={idx}
+                  key={feedSlideKey(slide)}
+                  data-feed-post-id={slide.postId}
+                  data-feed-type={slide.type}
+                  data-feed-navigation-section
                   ref={el => {
                     sectionsRef.current[idx] = el;
                   }}
@@ -1306,14 +321,14 @@ function FeedInner() {
                   {slide.type === "recent_song" && (
                     <RecentSongCard
                       slide={slide}
-                      song={songsById[slide.songId] || null}
+                      song={songsById[slide.songId]}
                       userMeta={userMetaById[slide.identityUserId]}
                     />
                   )}
                   {slide.type === "now_playing" && (
                     <NowPlayingCard
                       slide={slide}
-                      song={songsById[slide.songId] || null}
+                      song={songsById[slide.songId]}
                       userMeta={userMetaById[slide.identityUserId]}
                     />
                   )}
@@ -1341,8 +356,15 @@ function FeedInner() {
 
               {/* Loading card in its own snap section */}
               {isLoadingMore && (
-                <section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
-                  <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3 sm:p-4 animate-pulse w-full max-w-2xl">
+                <section
+                  data-feed-navigation-section
+                  className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24"
+                >
+                  <div
+                    role="status"
+                    aria-label="Loading more posts"
+                    className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3 sm:p-4 animate-pulse w-full max-w-2xl"
+                  >
                     <div className="h-4 bg-gray-800 rounded w-1/3"></div>
                     <div className="mt-4 h-28 bg-gray-800 rounded"></div>
                   </div>
@@ -1351,7 +373,10 @@ function FeedInner() {
 
               {/* End-of-feed section */}
               {!hasMore && (
-                <section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
+                <section
+                  data-feed-navigation-section
+                  className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24"
+                >
                   <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 text-center text-gray-300 w-full max-w-2xl">
                     You&apos;re all caught up. No more posts for now.
                   </div>
@@ -1360,8 +385,20 @@ function FeedInner() {
 
               {/* Sentinel at the bottom for preloading more */}
               {hasMore && (
-                <section className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24">
-                  <div ref={sentinelRef} className="h-1 w-full" />
+                <section
+                  data-feed-navigation-section
+                  className="snap-start min-h-full flex items-center justify-center px-4 pr-16 sm:pr-24"
+                >
+                  <div className="text-center text-gray-300">
+                    <div ref={sentinelRef} className="h-1 w-full" />
+                    <button
+                      disabled={isLoadingMore || !!error}
+                      onClick={() => void loadSlides(false)}
+                      className="min-h-11 rounded-lg bg-white/10 px-4 py-2 disabled:opacity-50"
+                    >
+                      Load more posts
+                    </button>
+                  </div>
                 </section>
               )}
             </div>
@@ -1371,15 +408,15 @@ function FeedInner() {
               <button
                 className="pointer-events-auto px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-40"
                 disabled={currentIndex <= 0}
-                onClick={() => scrollToIndex(currentIndex - 1)}
+                onClick={() => void navigate(-1)}
                 aria-label="Previous post"
               >
                 ▲
               </button>
               <button
                 className="pointer-events-auto px-3 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-40"
-                disabled={currentIndex >= slides.length - 1 && !hasMore}
-                onClick={() => scrollToIndex(currentIndex + 1)}
+                disabled={currentIndex >= slides.length && !hasMore}
+                onClick={() => void navigate(1)}
                 aria-label="Next post"
               >
                 ▼
@@ -1388,7 +425,7 @@ function FeedInner() {
           </>
         )}
       </div>
-    </>
+    </FeedCardContext.Provider>
   );
 }
 

@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { decodePostRouteId, type FeedPost, type FeedReaction } from "@/lib/feedTypes";
-import { getSessionGeneration, getSessionUser } from "@/lib/session";
+import { decodePostRouteId, type FeedPost } from "@/lib/feedTypes";
+import { getSessionGeneration, getSessionUser, SESSION_EVENT } from "@/lib/session";
 import type { User } from "@/lib/api";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, musicApi, type Song, type Artist } from "@/lib/api";
+import { PostReactions } from "@/components/feed/FeedCards";
 import { useAudio } from "@/lib/audio";
 
 // Enhanced user display component
@@ -49,59 +50,6 @@ const UserHeader = ({ post, userProfile }: { post: FeedPost; userProfile?: User 
   );
 };
 
-// Enhanced reaction cluster with better UI
-const ReactionCluster = ({
-  reactions,
-  onOpen,
-}: {
-  reactions: FeedReaction[];
-  onOpen: () => void;
-}) => {
-  if (!reactions.length) {
-    return (
-      <div className="flex items-center gap-2 text-gray-400 text-sm">
-        <span>💬</span>
-        <span>No reactions yet</span>
-      </div>
-    );
-  }
-
-  const counts = reactions.reduce<Record<string, number>>((acc, r) => {
-    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
-    return acc;
-  }, {});
-
-  const items = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="flex -space-x-1">
-        {items.map(([emoji, count]) => (
-          <div
-            key={emoji}
-            className="relative inline-flex items-center justify-center w-10 h-10 rounded-full bg-gray-800/60 border-2 border-gray-700 text-lg hover:scale-110 transition-transform cursor-pointer"
-            onClick={() => onOpen()}
-            title={`${count} ${emoji} reaction${count > 1 ? "s" : ""}`}
-          >
-            {emoji}
-            <span className="absolute -bottom-1 -right-1 text-[10px] bg-purple-600 text-white rounded-full w-5 h-5 flex items-center justify-center font-bold">
-              {count}
-            </span>
-          </div>
-        ))}
-      </div>
-      <button
-        onClick={() => onOpen()}
-        className="text-gray-400 hover:text-white text-sm transition-colors"
-      >
-        {reactions.length} reaction{reactions.length !== 1 ? "s" : ""}
-      </button>
-    </div>
-  );
-};
-
 // Enhanced Card component with gradient border
 const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <div
@@ -116,7 +64,19 @@ export default function SinglePostPage() {
   const params = useParams();
   const router = useRouter();
   const postId = decodePostRouteId(params?.id);
-  const [me] = useState(() => identityApi.getCurrentUser());
+  const [owner, setOwner] = useState(() => ({
+    me: identityApi.getCurrentUser(),
+    generation: getSessionGeneration(),
+  }));
+  const me = owner.me;
+  const ownerKey = `${me?.id || ""}:${owner.generation}:${postId || ""}`;
+  const [loadedOwner, setLoadedOwner] = useState("");
+  useEffect(() => {
+    const sync = () =>
+      setOwner({ me: identityApi.getCurrentUser(), generation: getSessionGeneration() });
+    window.addEventListener(SESSION_EVENT, sync);
+    return () => window.removeEventListener(SESSION_EVENT, sync);
+  }, []);
   const [post, setPost] = useState<FeedPost | null>(null);
   const [song, setSong] = useState<Song | null>(null);
   const [artists, setArtists] = useState<Artist[]>([]);
@@ -124,11 +84,8 @@ export default function SinglePostPage() {
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reactions, setReactions] = useState<
-    Array<{ emoji: string; fromIdentityUserId: string; fromUserName?: string; createdAt: string }>
-  >([]);
-  const [showReactionModal, setShowReactionModal] = useState(false);
   const { playSong } = useAudio();
+  const canPlaySong = Boolean(song?.fileUrl?.trim());
 
   useEffect(() => {
     if (!me) return;
@@ -144,7 +101,7 @@ export default function SinglePostPage() {
         setPost(null);
         setSong(null);
         setUserProfile(null);
-        setReactions([]);
+        setLoadedOwner("");
         setTopSongs({});
         if (!postId) throw new Error("This post link is invalid.");
 
@@ -159,27 +116,23 @@ export default function SinglePostPage() {
         if (postDataResult.status === "fulfilled") {
           const postData = postDataResult.value;
           setPost(postData);
+          setLoadedOwner(ownerKey);
 
-          const [reactionResult, profileResult, songResult, topSongResult] =
-            await Promise.allSettled([
-              userApi.getReactionsByPost(postId, me.id),
-              userApi.getUserProfileByIdentityId(postData.identityUserId),
-              (postData.type === "recent_song" || postData.type === "now_playing") &&
-              postData.songId
-                ? musicApi.getSong(postData.songId)
-                : Promise.resolve(null),
-              Promise.all(
-                (postData.topSongs || [])
-                  .filter(item => item.songId)
-                  .map(async item => ({
-                    id: item.songId!,
-                    song: await musicApi.getSong(item.songId!).catch(() => null),
-                  }))
-              ),
-            ]);
+          const [profileResult, songResult, topSongResult] = await Promise.allSettled([
+            userApi.getUserProfileByIdentityId(postData.identityUserId),
+            (postData.type === "recent_song" || postData.type === "now_playing") && postData.songId
+              ? musicApi.getSong(postData.songId)
+              : Promise.resolve(null),
+            Promise.all(
+              (postData.topSongs || [])
+                .filter(item => item.songId)
+                .map(async item => ({
+                  id: item.songId!,
+                  song: await musicApi.getSong(item.songId!).catch(() => null),
+                }))
+            ),
+          ]);
           if (!owned()) return;
-          if (reactionResult.status === "fulfilled")
-            setReactions(reactionResult.value as FeedReaction[]);
           if (profileResult.status === "fulfilled") setUserProfile(profileResult.value);
           if (songResult.status === "fulfilled") setSong(songResult.value);
           if (topSongResult.status === "fulfilled")
@@ -211,9 +164,9 @@ export default function SinglePostPage() {
     return () => {
       active = false;
     };
-  }, [postId, me]);
+  }, [postId, me, owner.generation, ownerKey]);
 
-  if (!me) {
+  if (!me || !getSessionUser()) {
     return (
       <>
         <div className="min-h-[60vh] flex items-center justify-center">
@@ -223,7 +176,12 @@ export default function SinglePostPage() {
     );
   }
 
-  if (isLoading) {
+  if (
+    isLoading ||
+    owner.generation !== getSessionGeneration() ||
+    getSessionUser()?.id !== me.id ||
+    (post && loadedOwner !== ownerKey)
+  ) {
     return (
       <>
         <div className="px-4 pt-8 max-w-2xl mx-auto">
@@ -292,8 +250,10 @@ export default function SinglePostPage() {
                 {/* Album art */}
                 <button
                   className="w-40 h-40 rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex-shrink-0 hover:scale-105 transition-transform group"
-                  onClick={() => song && playSong(song)}
+                  onClick={() => song && canPlaySong && playSong(song)}
                   title="Play song"
+                  aria-label={`Play ${song?.title?.trim() || post.songTitle?.trim() || "song"}`}
+                  disabled={!canPlaySong}
                 >
                   <div className="relative w-full h-full">
                     <MusicImage
@@ -317,8 +277,10 @@ export default function SinglePostPage() {
                 </button>
 
                 {/* Song info */}
-                <div className="flex-1 text-center lg:text-left">
-                  <h1 className="text-white text-3xl font-bold mb-2">{post.songTitle}</h1>
+                <div className="flex-1 min-w-0 text-center lg:text-left">
+                  <h1 className="break-words text-white text-3xl font-bold mb-2">
+                    {post.songTitle}
+                  </h1>
                   <div className="text-gray-300 text-xl mb-3">
                     {song?.artists?.length ? (
                       song.artists.map((a, i: number) => (
@@ -336,6 +298,11 @@ export default function SinglePostPage() {
                     )}
                   </div>
 
+                  {!canPlaySong && (
+                    <p className="text-gray-300 text-sm">
+                      Playback unavailable. The post remains available.
+                    </p>
+                  )}
                   {/* Additional info */}
                   <div className="flex flex-col gap-2">
                     {song?.album?.id && (
@@ -383,7 +350,7 @@ export default function SinglePostPage() {
 
               {/* Reactions */}
               <div className="border-t border-gray-700/50 pt-4">
-                <ReactionCluster reactions={reactions} onOpen={() => setShowReactionModal(true)} />
+                <PostReactions key={ownerKey} postId={postId!} ownerId={me.id} />
               </div>
             </div>
           </Card>
@@ -434,7 +401,7 @@ export default function SinglePostPage() {
 
               {/* Reactions */}
               <div className="border-t border-gray-700/50 pt-4">
-                <ReactionCluster reactions={reactions} onOpen={() => setShowReactionModal(true)} />
+                <PostReactions key={ownerKey} postId={postId!} ownerId={me.id} />
               </div>
             </div>
           </Card>
@@ -461,7 +428,8 @@ export default function SinglePostPage() {
             <div className="grid grid-cols-1 gap-3">
               {post.topSongs?.slice(0, 5).map((ts, i: number) => {
                 const songData = ts.songId ? topSongs[ts.songId] : null;
-                const title = songData?.title || ts.songTitle || "Unknown Song";
+                const canPlay = Boolean(songData?.fileUrl?.trim());
+                const title = songData?.title?.trim() || ts.songTitle?.trim() || "Unknown Song";
                 const artistName =
                   songData?.artists?.map(a => a.name).join(", ") || ts.artist || "Unknown Artist";
                 return (
@@ -500,13 +468,20 @@ export default function SinglePostPage() {
                           : artistName}
                         <span className="text-gray-500"> • {ts.count} plays</span>
                       </div>
+                      {!canPlay && (
+                        <p className="text-gray-300 text-sm">
+                          Playback unavailable. The post remains available.
+                        </p>
+                      )}
                     </div>
                     <button
                       onClick={e => {
                         e.stopPropagation();
-                        if (songData) playSong(songData);
+                        if (songData && canPlay) playSong(songData);
                       }}
-                      className="px-3 py-1 text-sm rounded-lg bg-white/10 hover:bg-white/20"
+                      disabled={!canPlay}
+                      aria-label={`Play ${title}`}
+                      className="min-h-11 px-3 py-2 text-sm rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50"
                     >
                       Play
                     </button>
@@ -514,7 +489,7 @@ export default function SinglePostPage() {
                 );
               })}
             </div>
-            <ReactionCluster reactions={reactions} onOpen={() => setShowReactionModal(true)} />
+            <PostReactions key={ownerKey} postId={postId!} ownerId={me.id} />
           </Card>
         )}
 
@@ -568,79 +543,8 @@ export default function SinglePostPage() {
                 );
               })}
             </div>
-            <ReactionCluster reactions={reactions} onOpen={() => setShowReactionModal(true)} />
+            <PostReactions key={ownerKey} postId={postId!} ownerId={me.id} />
           </Card>
-        )}
-
-        {/* Enhanced Reaction Modal */}
-        {showReactionModal && (
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => setShowReactionModal(false)}
-          >
-            <div
-              className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700/50 rounded-2xl shadow-2xl w-full max-w-lg"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-700/50">
-                <div className="flex items-center gap-3">
-                  <div className="text-white font-semibold text-lg">Reactions</div>
-                  <div className="bg-purple-600/20 text-purple-300 px-2 py-1 rounded-full text-sm font-medium">
-                    {reactions.length}
-                  </div>
-                </div>
-                <button
-                  className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg"
-                  onClick={() => setShowReactionModal(false)}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Reactions List */}
-              <div className="max-h-96 overflow-y-auto p-4">
-                <div className="space-y-3">
-                  {reactions.map((r, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center justify-between bg-white/5 hover:bg-white/10 rounded-xl p-3 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="text-2xl">{r.emoji}</div>
-                        <div className="flex flex-col">
-                          <Link
-                            href={`/user/${r.fromIdentityUserId}`}
-                            className="text-white font-medium hover:text-purple-300 transition-colors"
-                            onClick={() => setShowReactionModal(false)}
-                          >
-                            {r.fromUserName || "User"}
-                          </Link>
-                          <div className="text-gray-400 text-xs">
-                            {new Date(r.createdAt).toLocaleString()}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {reactions.length === 0 && (
-                  <div className="text-center py-8 text-gray-400">
-                    <div className="text-4xl mb-2">😊</div>
-                    <div>No reactions yet</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </>

@@ -1,4 +1,9 @@
-import type { FeedPost } from "./feedTypes";
+import type {
+  FeedPost,
+  FeedPageResponse,
+  FeedReactionSummary,
+  FeedReactionPeople,
+} from "./feedTypes";
 import { API_CONFIG } from "./config";
 import { apiRequest } from "./request";
 import { getSessionUser, ensureAccessToken, loginSession, logoutSession } from "./session";
@@ -713,6 +718,23 @@ export const userApi = {
       `${API_CONFIG.USER_API}/api/feed/slides?identityUserId=${identityUserId}&limit=${limit}&skip=${skip}`
     ),
 
+  getFeedPage: (identityUserId: string, limit = 10, cursor?: string | null, signal?: AbortSignal) =>
+    apiRequest<FeedPageResponse>(
+      `${API_CONFIG.USER_API}/api/feed/slides/page?identityUserId=${encodeURIComponent(identityUserId)}&limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { signal }
+    ),
+
+  getFeedReactionSummary: (postId: string, signal?: AbortSignal) =>
+    apiRequest<FeedReactionSummary>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/summary?postId=${encodeURIComponent(postId)}`,
+      { signal }
+    ),
+  getFeedReactionPeople: (postId: string, cursor?: string | null, signal?: AbortSignal) =>
+    apiRequest<FeedReactionPeople>(
+      `${API_CONFIG.USER_API}/api/feed/reactions/people?postId=${encodeURIComponent(postId)}&limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      { signal }
+    ),
+
   // Reactions
   sendReaction: (payload: {
     toIdentityUserId: string;
@@ -725,7 +747,7 @@ export const userApi = {
     artist?: string;
     postId?: string;
   }) =>
-    apiRequest<{ success: boolean; message: string; action: "added" | "removed" }>(
+    apiRequest<{ success: boolean; message: string; action: "added" | "removed"; postId: string }>(
       `${API_CONFIG.USER_API}/api/feed/reactions`,
       {
         method: "POST",

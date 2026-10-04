@@ -36,3 +36,73 @@ export function decodePostRouteId(value: string | string[] | undefined): string 
     return null;
   }
 }
+
+export interface FeedPageResponse {
+  items: FeedSlide[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+export interface FeedReactionSummary {
+  postId: string;
+  total: number;
+  counts: Array<{ emoji: string; count: number }>;
+  myEmojis: string[];
+}
+export interface FeedReactionPeople {
+  items: Array<FeedReaction & { postId?: string; toIdentityUserId: string }>;
+  nextCursor: string | null;
+  hasMore: boolean;
+  total: number;
+}
+
+export type FeedSlide =
+  | {
+      type: "recent_song";
+      identityUserId: string;
+      postId?: string;
+      username?: string;
+      displayName?: string;
+      songId: string;
+      songTitle?: string;
+      artist?: string;
+      coverUrl?: string;
+      playedAt?: string;
+    }
+  | {
+      type: "now_playing";
+      identityUserId: string;
+      postId?: string;
+      username?: string;
+      displayName?: string;
+      songId: string;
+      songTitle?: string;
+      artist?: string;
+      coverUrl?: string;
+      positionSec?: number;
+      updatedAt?: string;
+    }
+  | {
+      type: "top_artists_week";
+      identityUserId: string;
+      postId?: string;
+      username?: string;
+      displayName?: string;
+      topArtists: Array<{ name: string; count: number }>;
+    }
+  | {
+      type: "common_artists";
+      identityUserId: string;
+      postId?: string;
+      withIdentityUserId: string;
+      username?: string;
+      displayName?: string;
+      commonArtists: string[];
+    }
+  | {
+      type: "top_songs_week";
+      identityUserId: string;
+      postId?: string;
+      username?: string;
+      displayName?: string;
+      topSongs: Array<{ songId?: string; songTitle?: string; artist?: string; count: number }>;
+    };
