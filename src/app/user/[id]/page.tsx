@@ -19,6 +19,7 @@ import {
 import { userApi, identityApi, safeString, type Artist, type User } from "@/lib/api";
 import { Playlist } from "@/lib/playlist";
 import { useFriendHub } from "@/hooks/useFriendHub";
+import { useFriendshipStatus } from "@/hooks/useFriendshipStatus";
 
 import { eventBus } from "@/lib/eventBus";
 
@@ -64,12 +65,6 @@ export default function UserProfilePage() {
   const [hydratedTopArtists, setHydratedTopArtists] = useState<
     Array<{ id: string; name: string; imageUrl?: string; count: number }>
   >([]);
-  const [friendshipStatus, setFriendshipStatus] = useState<{
-    status: string;
-    friendshipId?: string;
-    requesterId?: string;
-    addresseeId?: string;
-  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,10 +95,16 @@ export default function UserProfilePage() {
   const [isLoadingPopup, setIsLoadingPopup] = useState(false);
 
   // Initialize friend hub for real-time notifications
-  useFriendHub({
+  const { isConnected } = useFriendHub({
     userId: currentUser?.id,
     autoConnect: !!currentUser?.id,
   });
+  const {
+    status: friendshipStatus,
+    error: friendshipError,
+    loading: friendshipLoading,
+    refresh: loadFriendshipStatus,
+  } = useFriendshipStatus(currentUser?.id, profileUser?.identityUserId, isConnected);
 
   const isOwnProfile = currentUser && profileUser && currentUser.id === profileUser.identityUserId;
 
@@ -341,19 +342,6 @@ export default function UserProfilePage() {
         } catch (error) {
           console.error("Failed to load friends count:", error);
         }
-
-        if (activeUser && userData.identityUserId !== activeUser.id) {
-          try {
-            const status = await userApi.getFriendshipStatus(
-              activeUser.id,
-              userData.identityUserId
-            );
-            setFriendshipStatus(status);
-          } catch (error) {
-            console.warn("Failed to get friendship status:", error);
-            setFriendshipStatus(null);
-          }
-        }
       } catch (error) {
         console.error("Failed to load user profile:", error);
         setError("Failed to load user profile");
@@ -364,16 +352,6 @@ export default function UserProfilePage() {
     },
     [loadReactions]
   ); // Remove currentUser from dependencies since we pass the user as parameter
-
-  const loadFriendshipStatus = useCallback(async (currentUserId: string, targetUserId: string) => {
-    try {
-      const status = await userApi.getFriendshipStatus(currentUserId, targetUserId);
-      setFriendshipStatus(status);
-    } catch (error) {
-      console.warn("Failed to load friendship status:", error);
-      setFriendshipStatus({ status: "none" });
-    }
-  }, []);
 
   useDeferredEffect(() => {
     const user = identityApi.getCurrentUser();
@@ -387,39 +365,14 @@ export default function UserProfilePage() {
 
     if (userId) {
       loadUserProfile(userId, user); // Pass the user directly
-      if (user.id !== userId) {
-        loadFriendshipStatus(user.id, userId);
-      }
     } else {
       router.replace(`/user/${user.id}`);
     }
-  }, [userId, router, loadUserProfile, loadFriendshipStatus]);
-
-  // Separate useEffect for event listener to avoid dependency issues
-  useEffect(() => {
-    const handleFriendshipStatusChanged = (...args: unknown[]) => {
-      const [userId1, userId2] = args as [string, string];
-
-      if (
-        currentUser &&
-        profileUser &&
-        ((userId1 === currentUser.id && userId2 === profileUser.identityUserId) ||
-          (userId2 === currentUser.id && userId1 === profileUser.identityUserId))
-      ) {
-        loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
-      } else {
-      }
-    };
-
-    eventBus.on("friendshipStatusChanged", handleFriendshipStatusChanged);
-
-    return () => {
-      eventBus.off("friendshipStatusChanged", handleFriendshipStatusChanged);
-    };
-  }, [currentUser, profileUser, loadFriendshipStatus]);
+  }, [userId, router, loadUserProfile]);
 
   const handleSendFriendRequest = async () => {
-    if (!currentUser || !profileUser) return;
+    if (!currentUser || !profileUser || !friendshipStatus || friendshipLoading || friendshipError)
+      return;
 
     // Prevent sending friend request to yourself
     if (isOwnProfile) {
@@ -432,7 +385,7 @@ export default function UserProfilePage() {
     setShowSuccessMessage(false);
     try {
       await userApi.sendFriendRequest(currentUser.id, profileUser.identityUserId);
-      await loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
+      await loadFriendshipStatus();
       setShowSuccessMessage(true);
       // Hide success message after 3 seconds
       setTimeout(() => setShowSuccessMessage(false), 3000);
@@ -442,10 +395,7 @@ export default function UserProfilePage() {
       // Handle specific error cases
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       setActionError(errorMessage);
-      if (errorMessage.includes("Friend request already exists")) {
-        // Refresh friendship status to show current state
-        await loadFriendshipStatus(currentUser.id, profileUser.identityUserId);
-      }
+      await loadFriendshipStatus();
     } finally {
       setIsLoadingAction(false);
     }
@@ -460,17 +410,14 @@ export default function UserProfilePage() {
     setActionError("");
     try {
       await userApi.acceptFriendRequest(friendshipStatus.friendshipId, currentUser.id);
-      await loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
-      // Refresh friendship status instead of full page reload
-      setTimeout(() => {
-        loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
-      }, 1000);
+      await loadFriendshipStatus();
     } catch (error) {
       setActionError(
         error instanceof Error
           ? error.message
           : "Friend request could not be accepted. Please retry."
       );
+      await loadFriendshipStatus();
     } finally {
       setIsLoadingAction(false);
     }
@@ -485,17 +432,14 @@ export default function UserProfilePage() {
     setActionError("");
     try {
       await userApi.declineFriendRequest(friendshipStatus.friendshipId, currentUser.id);
-      await loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
-      // Refresh friendship status instead of full page reload
-      setTimeout(() => {
-        loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
-      }, 1000);
+      await loadFriendshipStatus();
     } catch (error) {
       setActionError(
         error instanceof Error
           ? error.message
           : "Friend request could not be declined. Please retry."
       );
+      await loadFriendshipStatus();
     } finally {
       setIsLoadingAction(false);
     }
@@ -510,11 +454,32 @@ export default function UserProfilePage() {
     setActionError("");
     try {
       await userApi.removeFriend(friendshipStatus.friendshipId, currentUser.id);
-      await loadFriendshipStatus(currentUser.id, profileUser!.identityUserId);
+      await loadFriendshipStatus();
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Friend could not be removed. Please retry."
       );
+      await loadFriendshipStatus();
+    } finally {
+      setIsLoadingAction(false);
+    }
+  };
+
+  const handleCancelFriendRequest = async () => {
+    if (!currentUser || !friendshipStatus?.friendshipId) return;
+    setIsLoadingAction(true);
+    setActionError("");
+    try {
+      await userApi.cancelFriendRequest(friendshipStatus.friendshipId);
+      await loadFriendshipStatus();
+      eventBus.emit("friendshipStatusChanged", currentUser.id, profileUser!.identityUserId);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Friend request could not be cancelled. Please retry."
+      );
+      await loadFriendshipStatus();
     } finally {
       setIsLoadingAction(false);
     }
@@ -583,7 +548,13 @@ export default function UserProfilePage() {
       );
     }
 
-    const status = friendshipStatus?.status || "none";
+    if (!friendshipStatus)
+      return (
+        <Button disabled>
+          {friendshipLoading ? "Loading friendship status..." : "Friendship status unavailable"}
+        </Button>
+      );
+    const status = friendshipStatus.status;
 
     switch (status) {
       case "accepted":
@@ -606,7 +577,7 @@ export default function UserProfilePage() {
               onClick={handleRemoveFriend}
               variant="outline"
               className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300"
-              disabled={isLoadingAction}
+              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
             >
               Remove Friend
             </Button>
@@ -634,6 +605,14 @@ export default function UserProfilePage() {
               </svg>
               Friend Request Sent
             </Button>
+            <Button
+              aria-label={`Cancel friend request to ${profileUser?.username || "user"}`}
+              onClick={handleCancelFriendRequest}
+              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
+              variant="outline"
+            >
+              Cancel request
+            </Button>
             <p className="text-sm text-gray-400 text-center">
               Waiting for {profileUser?.displayName || profileUser?.username} to respond
             </p>
@@ -650,7 +629,7 @@ export default function UserProfilePage() {
             <Button
               onClick={handleAcceptFriendRequest}
               className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              disabled={isLoadingAction}
+              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
             >
               <CheckIcon className="w-5 h-5 mr-2" />
               Accept Request
@@ -659,7 +638,7 @@ export default function UserProfilePage() {
               onClick={handleDeclineFriendRequest}
               variant="outline"
               className="border-gray-500 text-gray-400 hover:bg-gray-500 hover:text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300"
-              disabled={isLoadingAction}
+              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
             >
               <XMarkIcon className="w-5 h-5 mr-2" />
               Decline
@@ -691,7 +670,7 @@ export default function UserProfilePage() {
           <Button
             onClick={handleSendFriendRequest}
             className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            disabled={isLoadingAction}
+            disabled={isLoadingAction || friendshipLoading || !!friendshipError}
           >
             {isLoadingAction ? (
               <>
@@ -731,7 +710,7 @@ export default function UserProfilePage() {
           <Button
             onClick={handleSendFriendRequest}
             className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            disabled={isLoadingAction}
+            disabled={isLoadingAction || friendshipLoading || !!friendshipError}
           >
             {isLoadingAction ? (
               <>
@@ -893,6 +872,17 @@ export default function UserProfilePage() {
                 {actionError && (
                   <p role="alert" className="mt-3 text-red-300">
                     {actionError}
+                  </p>
+                )}
+                {friendshipError && !isOwnProfile && (
+                  <p role="alert" className="mt-3 text-red-300">
+                    {friendshipError}{" "}
+                    <button
+                      disabled={friendshipLoading}
+                      onClick={() => void loadFriendshipStatus()}
+                    >
+                      Retry friendship status
+                    </button>
                   </p>
                 )}
 

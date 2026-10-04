@@ -173,6 +173,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
             )
           );
 
+        void friendHubManager
+          .connect(currentUser.id)
+          .catch(() =>
+            addToast("Friend updates could not connect. Open Friends to reconnect.", "error")
+          );
+
         // Load full user profile to get avatar and other details
         try {
           const fullProfile = await userApi.getCurrentUserProfile();
@@ -191,6 +197,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         // No valid user/token, disable notifications and redirect to login
         notificationHub.disableConnection();
         chatHub.disableConnection();
+        void friendHubManager.disconnect();
         setIsLoggedIn(false);
         setUser(null);
       }

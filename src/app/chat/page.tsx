@@ -20,14 +20,19 @@ export default function ChatPage() {
   const [friends, setFriends] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
   // Local toasts removed - global notifications are handled by AppLayout via notificationService
 
   const loadUnreadCounts = useCallback(async () => {
     try {
       const counts = await userApi.getUnreadMessageCounts();
       setUnreadCounts(counts);
+      setLoadErrors(previous => ({ ...previous, unread: "" }));
     } catch (error) {
-      console.error("Failed to load unread counts:", error);
+      setLoadErrors(previous => ({
+        ...previous,
+        unread: error instanceof Error ? error.message : "Unread counts could not be loaded.",
+      }));
     }
   }, []);
 
@@ -59,8 +64,12 @@ export default function ChatPage() {
       }));
 
       setChats(chatsWithProfiles);
+      setLoadErrors(previous => ({ ...previous, chats: "" }));
     } catch (error) {
-      console.error("Failed to load user chats:", error);
+      setLoadErrors(previous => ({
+        ...previous,
+        chats: error instanceof Error ? error.message : "Conversations could not be loaded.",
+      }));
     }
   }, []);
 
@@ -72,8 +81,12 @@ export default function ChatPage() {
       const friendProfiles = await userApi.getUserProfilesBatch(friendIds);
 
       setFriends(friendProfiles);
+      setLoadErrors(previous => ({ ...previous, friends: "" }));
     } catch (error) {
-      console.error("Failed to load friends:", error);
+      setLoadErrors(previous => ({
+        ...previous,
+        friends: error instanceof Error ? error.message : "Friends could not be loaded.",
+      }));
     }
   }, []); // No dependencies for loadUserFriends
 
@@ -82,6 +95,7 @@ export default function ChatPage() {
       try {
         const user = identityApi.getCurrentUser();
         if (user) {
+          setCurrentUser(user);
           // Get the full user profile with IdentityUserId for proper API calls
           const userProfile = await userApi.getCurrentUserProfile();
           setCurrentUser(userProfile || user);
@@ -90,6 +104,14 @@ export default function ChatPage() {
           const userId = userProfile?.id || user.id;
           await Promise.all([loadUserChats(userId), loadUserFriends(userId), loadUnreadCounts()]);
         }
+      } catch (error) {
+        setLoadErrors(previous => ({
+          ...previous,
+          profile:
+            error instanceof Error
+              ? error.message
+              : "Your account could not be loaded. Please retry.",
+        }));
       } finally {
         setIsLoading(false);
       }
@@ -140,20 +162,23 @@ export default function ChatPage() {
     );
 
     // Set up chat hub handlers for real-time updates
-    chatHub.setHandlers({
-      onMessageReceived: () => {
-        // Reload chats to update last message and unread counts
-        loadUserChats(currentUser.id);
-        loadUnreadCounts();
+    chatHub.setHandlers(
+      {
+        onMessageReceived: () => {
+          // Reload chats to update last message and unread counts
+          loadUserChats(currentUser.id);
+          loadUnreadCounts();
+        },
+        onError: error => {
+          console.error("💬 Chat hub error on chat page:", error);
+        },
       },
-      onError: error => {
-        console.error("💬 Chat hub error on chat page:", error);
-      },
-    });
+      "ChatList"
+    );
 
     return () => {
       notificationHub.removeHandlers("ChatPage");
-      chatHub.removeHandlers();
+      chatHub.removeHandlers("ChatList");
     };
   }, [currentUser?.id, loadUnreadCounts, loadUserChats]);
 
@@ -168,7 +193,13 @@ export default function ChatPage() {
       const chat = await userApi.createOrGetChat([currentUser.id, friendId]);
       router.push(`/chat/${chat.chatId}`);
     } catch (error) {
-      console.error("Failed to create chat:", error);
+      setLoadErrors(previous => ({
+        ...previous,
+        create:
+          error instanceof Error
+            ? error.message
+            : "Conversation could not be started. Please retry.",
+      }));
     }
   };
 
@@ -211,6 +242,24 @@ export default function ChatPage() {
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Messages</h1>
         </div>
 
+        {Object.values(loadErrors).some(Boolean) && (
+          <p role="alert" className="text-red-300">
+            {Object.values(loadErrors).filter(Boolean).join(" ")}{" "}
+            <button
+              onClick={() => {
+                setLoadErrors({});
+                if (currentUser)
+                  void Promise.all([
+                    loadUserChats(currentUser.id),
+                    loadUserFriends(currentUser.id),
+                    loadUnreadCounts(),
+                  ]);
+              }}
+            >
+              Retry conversations
+            </button>
+          </p>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Active Chats */}
           <div className="lg:col-span-2">
@@ -298,12 +347,12 @@ export default function ChatPage() {
                       );
                     })}
                   </div>
-                ) : (
+                ) : !Object.values(loadErrors).some(Boolean) ? (
                   <div className="text-center py-12">
                     <div className="text-gray-400 text-lg mb-2">No conversations yet</div>
                     <p className="text-gray-500">Start a conversation with your friends!</p>
                   </div>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           </div>
@@ -357,12 +406,12 @@ export default function ChatPage() {
                       </div>
                     ))}
                   </div>
-                ) : (
+                ) : !Object.values(loadErrors).some(Boolean) ? (
                   <div className="text-center py-8">
                     <div className="text-gray-400 mb-2">No friends yet</div>
                     <p className="text-gray-500 text-sm">Add friends to start chatting!</p>
                   </div>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           </div>

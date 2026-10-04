@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-04",
+  "timezone": "Europe/Istanbul",
+  "scope": ["Frontend", "User"],
+  "unchangedRepositories": ["Identity", "Music"],
+  "backend": {
+    "command": "pwsh -NoProfile -File Frontend/demo/Test-ChatFriends.ps1 -RunName final-reproducible",
+    "passed": 43,
+    "failed": 0,
+    "skipped": 0,
+    "newChatCases": 10,
+    "newFriendRequestCases": 14,
+    "trxCountersValidated": true,
+    "usesRealMongoTransactionsHttpAndSignalR": true
+  },
+  "frontend": {
+    "unitPassed": 65,
+    "unitFailed": 0,
+    "testFiles": 11,
+    "typeCheck": "passed",
+    "eslint": "passed with zero warnings",
+    "prettier": "passed",
+    "productionBuild": "passed with explicit loopback API configuration",
+    "targetedContractAndRecoveryReviews": "passed"
+  },
+  "broadBrowserRun": {
+    "command": "npx.cmd playwright test --reporter=list,json --output=demo/results-chat-friends-full-browser",
+    "jsonOutputEnvironment": "PLAYWRIGHT_JSON_OUTPUT_NAME=demo/results-chat-friends-full-browser/report.json",
+    "passed": 23,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "sourceStage": "Before the last profile target guard and repeated reconnect ordering safeguards",
+    "reportCountersValidated": true
+  },
+  "finalImageBrowserRun": {
+    "command": "npx.cmd playwright test --grep 'friend requests update|chat merges delayed|accepted private friend|two ordinary users follow' --reporter=list,json --output=demo/results-chat-friends-final-image",
+    "jsonOutputEnvironment": "PLAYWRIGHT_JSON_OUTPUT_NAME=demo/results-chat-friends-final-image/report.json",
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "sourceStage": "Final frozen source after both focused reviews and the 65-test frontend gate",
+    "reportCountersValidated": true,
+    "offlineArrivalsRecoveredInOrderWithoutDuplicates": 80,
+    "newCasesAssertDisposableChatAndAccountCleanup": true
+  },
+  "localImages": {
+    "userBuild": "passed",
+    "finalFrontendBuild": "passed",
+    "readiness": "frontend and all three APIs passed",
+    "databaseResetOrReseed": false,
+    "changedContainersOnly": true
+  },
+  "historicalProof": {
+    "earlierBrowserCases": 21,
+    "rawReportPreserved": true,
+    "sha256": "51D67898A03D79F33063F09B1E8203FD58456D7AB2232641D01A560B8FFA47B2",
+    "earlierAuditLedgerUnchanged": true
+  },
+  "baselineReproductions": "See chat-friend-discovery.json for the four failing browser reproductions and fixture cleanup assertions.",
+  "visualProof": "chat-friend-ui.png",
+  "secretsIncluded": false,
+  "limits": "Local single-instance User service and Mongo replica set; multi-instance deployments and external network conditions were not verified."
+}

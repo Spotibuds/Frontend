@@ -1,7 +1,9 @@
-import { HubConnection } from "@microsoft/signalr";
 import { ManagedHub } from "./managedHub";
 import { notificationService } from "./notificationService";
-// Types for friend and chat functionality
+import { eventBus } from "./eventBus";
+import type { ReadReceipt } from "./chatHub";
+import { mapChatMessage, type ChatMessage } from "./chatState";
+export type { ChatMessage } from "./chatState";
 export interface FriendRequest {
   requestId: string;
   senderId: string;
@@ -9,7 +11,6 @@ export interface FriendRequest {
   senderAvatar?: string;
   timestamp: string;
 }
-
 export interface Friend {
   id: string;
   username: string;
@@ -17,18 +18,6 @@ export interface Friend {
   isOnline: boolean;
   lastSeen?: string;
 }
-
-export interface ChatMessage {
-  chatId: string;
-  messageId: string;
-  senderId: string;
-  senderName: string;
-  senderAvatar?: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-}
-
 export interface Chat {
   id: string;
   participants: string[];
@@ -37,347 +26,184 @@ export interface Chat {
   lastMessage?: string;
   unreadCount: number;
 }
-
-class FriendHubManager {
-  private connection: HubConnection | null = null;
-  private isConnecting = false;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 2000;
+export interface FriendChange {
+  requestId: string;
+  friendId: string;
+  friendName?: string;
+  friendAvatar?: string;
+}
+export interface FriendSent {
+  requestId: string;
+  targetUserId: string;
+  timestamp: string;
+}
+export interface FriendHubHandlers {
+  onFriendRequestReceived?: (request: FriendRequest) => void;
+  onFriendRequestAccepted?: (change: FriendChange) => void;
+  onFriendRequestDeclined?: (change: FriendChange) => void;
+  onFriendRequestCancelled?: (change: FriendChange) => void;
+  onFriendRequestSent?: (request: FriendSent) => void;
+  onFriendAdded?: (change: FriendChange) => void;
+  onFriendRemoved?: (change: FriendChange) => void;
+  onFriendStatusChanged?: (status: { friendId: string; isOnline: boolean }) => void;
+  onOnlineFriendsReceived?: (ids: string[]) => void;
+  onMessageReceived?: (message: ChatMessage) => void;
+  onMessageSent?: (message: ChatMessage) => void;
+  onMessageRead?: (receipt: { messageId: string; chatId?: string; userId: string }) => void;
+  onAllMessagesRead?: (receipt: ReadReceipt) => void;
+  onChatCreated?: (chat: Chat) => void;
+  onError?: (error: string) => void;
+  onConnectionStateChanged?: (state: string) => void;
+}
+function change(value: Record<string, unknown>): FriendChange {
+  return {
+    requestId: String(value.requestId || value.friendshipId || ""),
+    friendId: String(value.friendId || value.removedFriendId || ""),
+    friendName: typeof value.friendName === "string" ? value.friendName : undefined,
+    friendAvatar: typeof value.friendAvatar === "string" ? value.friendAvatar : undefined,
+  };
+}
+export class FriendHubManager {
+  private subscribers = new Set<FriendHubHandlers>();
   private currentUserId: string | null = null;
-
-  // Event handlers
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendRequestReceived: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendRequestAccepted: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendRequestDeclined: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendRequestSent: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendAdded: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendRemoved: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onFriendStatusChanged: ((data: any) => void) | null = null;
-
-  private onMessageReceived: ((message: ChatMessage) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onMessageSent: ((data: any) => void) | null = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private onMessageRead: ((data: any) => void) | null = null;
-  private onChatCreated: ((chat: Chat) => void) | null = null;
-  private onError: ((error: string) => void) | null = null;
-  private onConnectionStateChanged: ((state: string) => void) | null = null;
-  private onOnlineFriendsReceived: ((onlineFriends: string[]) => void) | null = null;
-
+  private onlineFriends: string[] = [];
   private hub = new ManagedHub(
     "friend-hub",
     connection => {
-      this.connection = connection;
-      this.setupEventHandlers();
+      connection.on("FriendRequestReceived", (value: Record<string, unknown>) => {
+        const request = {
+          requestId: String(value.requestId || ""),
+          senderId: String(value.requesterId || value.senderId || ""),
+          senderName: String(value.requesterUsername || value.senderName || "Unknown User"),
+          senderAvatar:
+            typeof value.requesterAvatar === "string" ? value.requesterAvatar : undefined,
+          timestamp: String(value.requestedAt || value.timestamp || ""),
+        };
+        if (request.requestId && request.senderId) {
+          this.changedFriendship(request.senderId);
+          this.emit("onFriendRequestReceived", request);
+        }
+      });
+      const transitions = {
+        FriendRequestAccepted: "onFriendRequestAccepted",
+        FriendRequestDeclined: "onFriendRequestDeclined",
+        FriendRequestCancelled: "onFriendRequestCancelled",
+        FriendAdded: "onFriendAdded",
+        FriendRemoved: "onFriendRemoved",
+      } as const;
+      for (const [event, handler] of Object.entries(transitions))
+        connection.on(event, (value: Record<string, unknown>) => {
+          const changed = change(value);
+          this.changedFriendship(changed.friendId);
+          this.emit(handler, changed);
+        });
+      connection.on("FriendRequestSent", (value: Record<string, unknown>) => {
+        const request = {
+          requestId: String(value.requestId || value.friendshipId || ""),
+          targetUserId: String(value.targetUserId || value.addresseeId || ""),
+          timestamp: String(value.requestedAt || value.timestamp || ""),
+        };
+        this.changedFriendship(request.targetUserId);
+        this.emit("onFriendRequestSent", request);
+      });
+      connection.on("FriendStatusChanged", value => this.emit("onFriendStatusChanged", value));
+      connection.on("OnlineFriends", (ids: string[]) => {
+        this.onlineFriends = ids;
+        this.emit("onOnlineFriendsReceived", ids);
+      });
+      // ChatCommands publishes NewMessage on this hub, using the same DTO as ChatHub.
+      connection.on("NewMessage", (value: Record<string, unknown>) => {
+        const message = mapChatMessage(value);
+        if (!message.messageId) return;
+        notificationService.handleMessage(message);
+        this.emit("onMessageReceived", message);
+      });
+      connection.on("MessageSent", (value: Record<string, unknown>) =>
+        this.emit("onMessageSent", mapChatMessage(value))
+      );
+      connection.on("MessageRead", value => this.emit("onMessageRead", value));
+      connection.on("AllMessagesRead", value => this.emit("onAllMessagesRead", value));
+      connection.on("ChatCreated", value =>
+        this.emit("onChatCreated", { ...value, id: value.chatId || value.id, unreadCount: 0 })
+      );
+      connection.on("Error", error => this.emit("onError", String(error)));
     },
-    () => undefined,
-    state => this.onConnectionStateChanged?.(state)
+    async () => {
+      await this.hub.invoke("GetOnlineFriends");
+    },
+    state => this.emit("onConnectionStateChanged", state)
   );
-  async connect(userId: string): Promise<void> {
+  private changedFriendship(friendId: string) {
+    if (this.currentUserId && friendId)
+      eventBus.emit("friendshipStatusChanged", this.currentUserId, friendId);
+  }
+  private emit<K extends keyof FriendHubHandlers>(
+    key: K,
+    value: Parameters<NonNullable<FriendHubHandlers[K]>>[0]
+  ) {
+    for (const handlers of this.subscribers) {
+      const handler = handlers[key] as ((argument: typeof value) => void) | undefined;
+      handler?.(value);
+    }
+  }
+  subscribe(handlers: FriendHubHandlers) {
+    this.subscribers.add(handlers);
+    handlers.onConnectionStateChanged?.(this.hub.state());
+    handlers.onOnlineFriendsReceived?.(this.onlineFriends);
+    return () => {
+      this.subscribers.delete(handlers);
+    };
+  }
+  async connect(userId: string) {
     if (this.currentUserId && this.currentUserId !== userId) await this.disconnect();
     this.currentUserId = userId;
     await this.hub.start();
-    this.connection = this.hub.connection;
   }
-
-  private setupEventHandlers(): void {
-    if (!this.connection) return;
-
-    // Friend request events
-    this.connection.on("FriendRequestReceived", (request: FriendRequest) => {
-      if (this.onFriendRequestReceived) {
-        this.onFriendRequestReceived(request);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendRequestAccepted", (data: any) => {
-      if (this.onFriendRequestAccepted) {
-        this.onFriendRequestAccepted(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendRequestDeclined", (data: any) => {
-      if (this.onFriendRequestDeclined) {
-        this.onFriendRequestDeclined(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendRequestSent", (data: any) => {
-      if (this.onFriendRequestSent) {
-        this.onFriendRequestSent(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendAdded", (data: any) => {
-      if (this.onFriendAdded) {
-        this.onFriendAdded(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendRemoved", (data: any) => {
-      if (this.onFriendRemoved) {
-        this.onFriendRemoved(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("FriendStatusChanged", (data: any) => {
-      if (this.onFriendStatusChanged) {
-        this.onFriendStatusChanged(data);
-      }
-    });
-
-    // Online friends event
-    this.connection.on("OnlineFriends", (onlineFriends: string[]) => {
-      if (this.onOnlineFriendsReceived) {
-        this.onOnlineFriendsReceived(onlineFriends);
-      }
-    });
-
-    // Chat events
-    this.connection.on("MessageReceived", (message: ChatMessage) => {
-      // Handle notifications through the notification service
-      notificationService.handleMessage(message);
-
-      if (this.onMessageReceived) {
-        this.onMessageReceived(message);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("MessageSent", (data: any) => {
-      if (this.onMessageSent) {
-        this.onMessageSent(data);
-      }
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.connection.on("MessageRead", (data: any) => {
-      if (this.onMessageRead) {
-        this.onMessageRead(data);
-      }
-    });
-
-    this.connection.on("ChatCreated", (chat: Chat) => {
-      if (this.onChatCreated) {
-        this.onChatCreated(chat);
-      }
-    });
-
-    // Connection events
-    this.connection.onclose(error => {
-      this.onConnectionStateChanged?.("Disconnected");
-      if (error) {
-        console.error("Friend Hub connection closed with error:", error);
-        this.onError?.("Connection lost. Attempting to reconnect...");
-      }
-    });
-  }
-
-  // Friend Management Methods
-  async sendFriendRequest(targetUserId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("SendFriendRequest", targetUserId);
-    } catch (error) {
-      console.error("Error sending friend request:", error);
-      throw error;
-    }
-  }
-
-  async acceptFriendRequest(requestId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("AcceptFriendRequest", requestId);
-    } catch (error) {
-      console.error("Error accepting friend request:", error);
-      throw error;
-    }
-  }
-
-  async declineFriendRequest(requestId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("DeclineFriendRequest", requestId);
-    } catch (error) {
-      console.error("Error declining friend request:", error);
-      throw error;
-    }
-  }
-
-  async removeFriend(friendId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("RemoveFriend", friendId);
-    } catch (error) {
-      console.error("Error removing friend:", error);
-      throw error;
-    }
-  }
-
-  // Chat Methods
-  async sendMessage(chatId: string, message: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("SendMessage", chatId, message);
-    } catch (error) {
-      console.error("Error sending message:", error);
-      throw error;
-    }
-  }
-
-  async markMessageAsRead(messageId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("MarkMessageAsRead", messageId);
-    } catch (error) {
-      console.error("Error marking message as read:", error);
-      throw error;
-    }
-  }
-
-  async createChat(friendId: string): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("CreateChat", friendId);
-    } catch (error) {
-      console.error("Error creating chat:", error);
-      throw error;
-    }
-  }
-
-  async getOnlineFriends(): Promise<void> {
-    if (!this.connection || this.connection.state !== "Connected") {
-      throw new Error("Not connected to Friend Hub");
-    }
-
-    try {
-      await this.connection.invoke("GetOnlineFriends"); // Changed from invoke to send
-    } catch (error) {
-      console.error("Error getting online friends:", error);
-      throw error;
-    }
-  }
-
-  // Connection Management
-  async disconnect(): Promise<void> {
+  async disconnect() {
     this.currentUserId = null;
-    this.connection = null;
+    this.onlineFriends = [];
     await this.hub.stop();
   }
-
-  // Event Handler Setters
-  setOnFriendRequestReceived(handler: ((request: FriendRequest) => void) | null): void {
-    this.onFriendRequestReceived = handler;
+  sendFriendRequest(targetUserId: string) {
+    return this.hub.invoke("SendFriendRequest", targetUserId);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendRequestAccepted(handler: ((data: any) => void) | null): void {
-    this.onFriendRequestAccepted = handler;
+  acceptFriendRequest(requestId: string) {
+    return this.hub.invoke("AcceptFriendRequest", requestId);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendRequestDeclined(handler: ((data: any) => void) | null): void {
-    this.onFriendRequestDeclined = handler;
+  declineFriendRequest(requestId: string) {
+    return this.hub.invoke("DeclineFriendRequest", requestId);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendRequestSent(handler: ((data: any) => void) | null): void {
-    this.onFriendRequestSent = handler;
+  removeFriend(friendId: string) {
+    return this.hub.invoke("RemoveFriend", friendId);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendAdded(handler: ((data: any) => void) | null): void {
-    this.onFriendAdded = handler;
+  async sendMessage(chatId: string, content: string) {
+    const value = await this.hub.invoke<Record<string, unknown>>(
+      "SendMessage",
+      chatId,
+      content,
+      crypto.randomUUID()
+    );
+    const message = mapChatMessage(value);
+    this.emit("onMessageSent", message);
+    return message;
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendRemoved(handler: ((data: any) => void) | null): void {
-    this.onFriendRemoved = handler;
+  markMessageAsRead(messageId: string) {
+    return this.hub.invoke("MarkMessageAsRead", messageId);
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnFriendStatusChanged(handler: ((data: any) => void) | null): void {
-    this.onFriendStatusChanged = handler;
+  createChat(friendId: string) {
+    return this.hub.invoke("CreateChat", friendId);
   }
-
-  setOnMessageReceived(handler: ((message: ChatMessage) => void) | null): void {
-    this.onMessageReceived = handler;
+  getOnlineFriends() {
+    return this.hub.invoke("GetOnlineFriends");
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnMessageSent(handler: ((data: any) => void) | null): void {
-    this.onMessageSent = handler;
+  getConnectionState() {
+    return this.hub.state();
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  setOnMessageRead(handler: ((data: any) => void) | null): void {
-    this.onMessageRead = handler;
+  isConnected() {
+    return this.hub.state() === "Connected";
   }
-
-  setOnChatCreated(handler: ((chat: Chat) => void) | null): void {
-    this.onChatCreated = handler;
-  }
-
-  setOnError(handler: ((error: string) => void) | null): void {
-    this.onError = handler;
-  }
-
-  setOnConnectionStateChanged(handler: ((state: string) => void) | null): void {
-    this.onConnectionStateChanged = handler;
-  }
-
-  setOnOnlineFriendsReceived(handler: ((onlineFriends: string[]) => void) | null): void {
-    this.onOnlineFriendsReceived = handler;
-  }
-
-  // Utility Methods
-  getConnectionState(): string {
-    return this.connection?.state || "Disconnected";
-  }
-
-  isConnected(): boolean {
-    return this.connection?.state === "Connected";
-  }
-
-  getCurrentUserId(): string | null {
+  getCurrentUserId() {
     return this.currentUserId;
   }
 }
-
-// Create singleton instance
 export const friendHubManager = new FriendHubManager();

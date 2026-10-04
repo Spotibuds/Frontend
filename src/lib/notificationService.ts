@@ -1,5 +1,6 @@
 // Global notification service for chat messages
-import { ChatMessage } from "./friendHub";
+import type { ChatMessage } from "./chatState";
+import { getSessionUser } from "./session";
 
 type NotificationHandler = (message: ChatMessage) => void;
 
@@ -60,10 +61,7 @@ class NotificationService {
     }
 
     // Don't show notification for own messages
-    const currentUser =
-      typeof window !== "undefined"
-        ? JSON.parse(localStorage.getItem("currentUser") || "null")
-        : null;
+    const currentUser = getSessionUser();
     if (currentUser && message.senderId === currentUser.id) {
       return;
     }

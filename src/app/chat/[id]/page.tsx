@@ -1,426 +1,79 @@
 "use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { userApi, identityApi } from "../../../lib/api";
-import { notificationService } from "../../../lib/notificationService";
-import { chatHub, ChatMessage as ChatHubMessage } from "../../../lib/chatHub";
-
-import { Button } from "../../../components/ui/Button";
-import { Input } from "../../../components/ui/Input";
-import { Toast } from "../../../components/ui/Toast";
-import MusicImage from "../../../components/ui/MusicImage";
-interface User {
-  id: string;
-  username: string;
-  displayName?: string;
-  avatarUrl?: string;
-}
-
-interface Chat {
-  chatId: string;
-  isGroup: boolean;
-  name?: string;
-  participants: string[];
-  lastActivity: string;
-  lastMessageId?: string;
-}
-
-interface ChatMessage {
-  messageId: string;
-  chatId: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  timestamp: string;
-  isRead: boolean;
-}
+import { useChatConversation } from "@/hooks/useChatConversation";
+import { notificationService } from "@/lib/notificationService";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import MusicImage from "@/components/ui/MusicImage";
 
 export default function ChatPage() {
   const params = useParams();
   const chatId = params.id as string;
-
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [otherParticipant, setOtherParticipant] = useState<User | null>(null);
-  const [chat, setChat] = useState<Chat | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const {
+    currentUser,
+    otherParticipant,
+    chat,
+    chatMessages,
+    isLoading,
+    loadError,
+    message,
+    setMessage,
+    sending,
+    sendError,
+    readError,
+    historyError,
+    loadingOlder,
+    hasOlder,
+    connectionState,
+    isConnected,
+    handleSendMessage,
+    loadOlder,
+    reconnect,
+    retryLoad,
+    retryRead,
+    refreshMessages,
+  } = useChatConversation(chatId);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const [toasts, setToasts] = useState<
-    Array<{ id: string; message: string; type: "success" | "error" | "info" }>
-  >([]);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const addToast = useCallback((message: string, type: "success" | "error" | "info") => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, 5000);
-  }, []);
-
-  const removeToast = useCallback((id: string) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id));
-  }, []);
-
-  // Sidebar state management
+  const previousTail = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const handleSidebarChange = () => {
-      const savedSidebarState = localStorage.getItem("sidebarOpen");
-      if (savedSidebarState !== null) {
-        setSidebarOpen(JSON.parse(savedSidebarState));
-      }
-    };
-
-    // Initial load
-    handleSidebarChange();
-
-    // Listen for storage changes (cross-window) and custom events (same window)
-    window.addEventListener("storage", handleSidebarChange);
-    window.addEventListener("sidebarToggle", handleSidebarChange);
-
-    return () => {
-      window.removeEventListener("storage", handleSidebarChange);
-      window.removeEventListener("sidebarToggle", handleSidebarChange);
-    };
-  }, []);
-
-  const handleMessageReceived = useCallback((message: ChatMessage) => {
-    // Validate message structure
-    if (!message.messageId) {
-      console.warn("Received message without messageId:", message);
-      return;
-    }
-
-    // Add incoming message to local state, but check for duplicates first
-    setChatMessages(prev => {
-      const exists = prev.some(m => m.messageId === message.messageId);
-      if (!exists) {
-        return [...prev, message].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-      }
-      return prev;
-    });
-  }, []);
-
-  const handleMessageSent = useCallback((message: ChatMessage) => {
-    // Validate message structure
-    if (!message.messageId) {
-      console.warn("Sent message without messageId:", message);
-      return;
-    }
-
-    // Add sent message to local state (in case it wasn't already added)
-    setChatMessages(prev => {
-      const exists = prev.some(m => m.messageId === message.messageId);
-      if (!exists) {
-        return [...prev, message].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-      }
-      return prev;
-    });
-  }, []);
-
-  const handleMessageRead = useCallback((messageId: string) => {
-    // Mark message as read in local state
-    setChatMessages(prev =>
-      prev.map(m => (m.messageId === messageId ? { ...m, isRead: true } : m))
-    );
-  }, []);
-
-  const [connectionState, setConnectionState] = useState(chatHub.getConnectionState());
-  const [joined, setJoined] = useState(false);
-  const [sending, setSending] = useState(false);
-  const draftId = useRef<string | null>(null);
-  const isConnected = connectionState === "Connected" && joined;
-
-  // Load current user and chat data
-  useEffect(() => {
-    const loadData = async () => {
+    const changed = () => {
       try {
-        // Get current user from identity API
-        const user = identityApi.getCurrentUser();
-        if (!user) {
-          addToast("User not authenticated", "error");
-          return;
-        }
-
-        // Profile mappings use the canonical Identity GUID for participants and senders.
-        const userProfile = await userApi.getCurrentUserProfile();
-        const currentUserData = userProfile || {
-          id: user.id,
-          username: user.username,
-        };
-
-        setCurrentUser(currentUserData);
-
-        // Load chat data
-        const chatData = await userApi.getChat(chatId);
-
-        // Use the chatData directly since it matches the Chat type from api.ts
-        setChat(chatData);
-
-        // Load other participant's profile
-        const otherParticipantId = chatData.participants.find(p => p !== currentUserData.id);
-        if (otherParticipantId) {
-          try {
-            const [otherUser] = await userApi.getUserProfilesBatch([otherParticipantId]);
-            if (!otherUser) throw new Error("Chat participant could not be loaded.");
-            setOtherParticipant(otherUser);
-          } catch (error) {
-            console.error("Failed to fetch other participant profile:", error);
-            // Set fallback user info
-            setOtherParticipant({
-              id: otherParticipantId,
-              username: `User ${otherParticipantId.slice(0, 8)}`,
-              displayName: `User ${otherParticipantId.slice(0, 8)}`,
-            });
-          }
-        }
-
-        // Load chat messages
-        const messages = await userApi.getChatMessages(chatId);
-        // Convert API messages to ChatMessage format, filtering out invalid messages
-        const formattedMessages: ChatMessage[] = messages
-          .filter(msg => msg.messageId) // Only keep messages with valid messageId
-          .map(msg => ({
-            messageId: msg.messageId,
-            chatId: msg.chatId,
-            senderId: msg.senderId,
-            senderName: msg.senderName || "Unknown User",
-            content: msg.content,
-            timestamp: msg.sentAt,
-            isRead: msg.isRead ?? msg.readBy.some(read => read.userId !== msg.senderId),
-          }));
-        // Sort messages by timestamp ascending (oldest first)
-        const sortedMessages = formattedMessages.sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        setChatMessages(sortedMessages);
-
-        // Mark all messages in this chat as read
-        try {
-          await userApi.markAllMessagesAsRead(chatId);
-        } catch (error) {
-          console.error("Failed to mark messages as read:", error);
-        }
-      } catch (error) {
-        console.error("Failed to load chat data:", error);
-        addToast("Failed to load chat", "error");
-      } finally {
-        setIsLoading(false);
+        const value = localStorage.getItem("sidebarOpen");
+        if (value !== null) setSidebarOpen(JSON.parse(value));
+      } catch {
+        setSidebarOpen(false);
       }
     };
-
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]); // Remove addToast from dependencies to prevent infinite loops
-
-  const handleSendMessage = useCallback(async () => {
-    if (!message.trim() || !currentUser || sending) return;
-    const draft = message;
-    draftId.current ||= crypto.randomUUID();
-    setSending(true);
-
-    try {
-      // Send message via Chat Hub for real-time delivery
-      const acknowledgement = await chatHub.sendMessage(chatId, draft.trim(), draftId.current);
-      handleMessageSent(acknowledgement);
-      setMessage(current => (current === draft ? "" : current));
-      draftId.current = null;
-      inputRef.current?.focus();
-    } catch (error) {
-      console.error("Failed to send message:", error);
-      addToast(
-        error instanceof Error ? error.message : "Failed to send message. Your draft was kept.",
-        "error"
-      );
-    } finally {
-      setSending(false);
-    }
-  }, [message, currentUser, chatId, addToast, sending, handleMessageSent]);
-
+    changed();
+    window.addEventListener("storage", changed);
+    window.addEventListener("sidebarToggle", changed);
+    return () => {
+      window.removeEventListener("storage", changed);
+      window.removeEventListener("sidebarToggle", changed);
+    };
+  }, []);
+  useEffect(() => {
+    notificationService.setCurrentChatId(chatId);
+    return () => notificationService.setCurrentChatId(null);
+  }, [chatId]);
+  useEffect(() => {
+    const tail = chatMessages.at(-1)?.messageId;
+    if (tail && tail !== previousTail.current)
+      messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
+    previousTail.current = tail;
+  }, [chatMessages]);
   const handleKeyPress = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSendMessage();
+    (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+        event.preventDefault();
+        void handleSendMessage();
       }
     },
     [handleSendMessage]
   );
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  // Set current chat ID for notification service
-  useEffect(() => {
-    if (chatId) {
-      notificationService.setCurrentChatId(chatId);
-    }
-
-    return () => {
-      notificationService.setCurrentChatId(null);
-    };
-  }, [chatId]);
-
-  // Setup chat hub for this specific chat
-  useEffect(() => {
-    if (!chatId || !currentUser?.id) return;
-
-    // Set up chat hub handlers for real-time messages
-    chatHub.setHandlers({
-      onConnectionStateChange: state => {
-        setConnectionState(state);
-        if (state !== "Connected") setJoined(false);
-      },
-      onChatJoined: () => setJoined(true),
-      onMessageRead: handleMessageRead,
-      onMessageReceived: (message: ChatHubMessage) => {
-        // Only handle messages for this chat
-        if (message.chatId === chatId) {
-          // Convert to local format and add to messages
-          const formattedMessage: ChatMessage = {
-            messageId: message.messageId,
-            chatId: message.chatId,
-            senderId: message.senderId,
-            senderName: message.senderName,
-            content: message.content,
-            timestamp: message.timestamp,
-            isRead: message.isRead,
-          };
-
-          handleMessageReceived(formattedMessage);
-        }
-      },
-      onMessageSent: (message: ChatHubMessage) => {
-        // Handle message sent confirmation
-        if (message.chatId === chatId) {
-          const formattedMessage: ChatMessage = {
-            messageId: message.messageId,
-            chatId: message.chatId,
-            senderId: message.senderId,
-            senderName: message.senderName,
-            content: message.content,
-            timestamp: message.timestamp,
-            isRead: message.isRead,
-          };
-
-          handleMessageSent(formattedMessage);
-        }
-      },
-      onError: error => {
-        console.error("💬 Chat hub error in chat page:", error);
-        if (!error.includes("transport") && !error.includes("WebSocket")) {
-          addToast(`Chat error: ${error}`, "error");
-        }
-      },
-    });
-
-    // Join the chat room
-    void chatHub
-      .joinChat(chatId)
-      .catch(error =>
-        addToast(
-          error instanceof Error ? error.message : "Chat join failed. Retry reconnecting.",
-          "error"
-        )
-      );
-
-    return () => {
-      // Leave the chat room when component unmounts
-      void chatHub.leaveChat(chatId).catch(() => undefined);
-      chatHub.removeHandlers();
-    };
-  }, [
-    chatId,
-    currentUser?.id,
-    handleMessageReceived,
-    handleMessageSent,
-    handleMessageRead,
-    addToast,
-  ]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [chatMessages, scrollToBottom]);
-
-  // Track which messages have been marked as read to avoid infinite loops
-  const processedMessagesRef = useRef(new Set<string>());
-  const pendingRetryRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    // Mark messages as read when chat is opened and SignalR is connected
-    if (chatMessages.length > 0 && currentUser && isConnected) {
-      const unreadMessages = chatMessages.filter(
-        msg =>
-          !msg.isRead &&
-          msg.senderId !== currentUser.id &&
-          !processedMessagesRef.current.has(msg.messageId)
-      );
-
-      unreadMessages.forEach(async msg => {
-        // Skip messages without valid messageId
-        if (!msg.messageId) {
-          console.warn("Skipping message mark as read - missing messageId:", msg);
-          return;
-        }
-
-        // Mark this message as being processed
-        processedMessagesRef.current.add(msg.messageId);
-
-        try {
-          // Mark as read via SignalR for real-time updates
-          await chatHub.markMessageAsRead(msg.messageId);
-
-          // Update local state
-          setChatMessages(prev =>
-            prev.map(m => (m.messageId === msg.messageId ? { ...m, isRead: true } : m))
-          );
-        } catch (error) {
-          console.error("Failed to mark message as read:", error);
-          // Remove from processed set on error so it can be retried, and queue for reconnect
-          processedMessagesRef.current.delete(msg.messageId);
-          pendingRetryRef.current.add(msg.messageId);
-        }
-      });
-    }
-  }, [chatMessages, currentUser, isConnected]);
-
-  // Retry any failed read acknowledgements once the connection is back
-  useEffect(() => {
-    if (!isConnected || !currentUser) return;
-    if (pendingRetryRef.current.size === 0) return;
-
-    const retry = async () => {
-      const ids = Array.from(pendingRetryRef.current);
-      for (const id of ids) {
-        // Skip invalid messageIds
-        if (!id) {
-          pendingRetryRef.current.delete(id);
-          continue;
-        }
-
-        try {
-          await chatHub.markMessageAsRead(id);
-          setChatMessages(prev => prev.map(m => (m.messageId === id ? { ...m, isRead: true } : m)));
-          pendingRetryRef.current.delete(id);
-          processedMessagesRef.current.add(id);
-        } catch {
-          // Keep it in the retry set; will retry on next reconnect
-        }
-      }
-    };
-
-    retry();
-  }, [isConnected, currentUser, setChatMessages]);
 
   if (isLoading) {
     return (
@@ -434,6 +87,16 @@ export default function ChatPage() {
       </>
     );
   }
+
+  if (loadError)
+    return (
+      <div className="p-6">
+        <p role="alert" className="text-red-300">
+          {loadError}
+        </p>
+        <Button onClick={retryLoad}>Retry conversation</Button>
+      </div>
+    );
 
   if (!currentUser) {
     return (
@@ -508,7 +171,11 @@ export default function ChatPage() {
                       className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
                     ></span>
                     <span className="text-gray-400">
-                      {connectionState === "Connected" ? "Online" : connectionState}
+                      {isConnected
+                        ? "Connected"
+                        : connectionState === "Connected"
+                          ? "Joining conversation"
+                          : connectionState}
                     </span>
                   </div>
                 </div>
@@ -517,7 +184,21 @@ export default function ChatPage() {
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2 sm:space-y-3 lg:space-y-4">
+          <div
+            role="log"
+            aria-label="Conversation messages"
+            className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2 sm:space-y-3 lg:space-y-4"
+          >
+            {hasOlder && (
+              <Button onClick={loadOlder} disabled={loadingOlder}>
+                {loadingOlder ? "Loading older messages..." : "Load older messages"}
+              </Button>
+            )}
+            {historyError && (
+              <p role="alert" className="text-red-300">
+                {historyError} <button onClick={refreshMessages}>Retry loading messages</button>
+              </p>
+            )}
             {chatMessages.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 mx-auto mb-4 bg-gray-700 rounded-full flex items-center justify-center">
@@ -563,17 +244,29 @@ export default function ChatPage() {
                         <span className="text-xs sm:text-sm font-medium opacity-90">
                           {isOwnMessage ? "You" : msg.senderName}
                         </span>
-                        <span className="text-xs opacity-60">
+                        <time
+                          dateTime={msg.timestamp}
+                          title={new Date(msg.timestamp).toLocaleString()}
+                          className="text-xs opacity-60"
+                        >
                           {new Date(msg.timestamp).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
-                        </span>
+                        </time>
                       </div>
-                      <p className="text-sm sm:text-base leading-relaxed">{msg.content}</p>
+                      <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+                        {msg.content}
+                      </p>
                       {isOwnMessage && (
                         <div className="flex justify-end mt-2">
-                          <span className="text-xs opacity-60">{msg.isRead ? "✓✓" : "✓"}</span>
+                          <span
+                            aria-label={msg.isRead ? "Read" : "Sent"}
+                            title={msg.isRead ? "Read" : "Sent"}
+                            className="text-xs opacity-60"
+                          >
+                            {msg.isRead ? "✓✓" : "✓"}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -593,14 +286,16 @@ export default function ChatPage() {
                   ref={inputRef}
                   value={message}
                   onChange={e => setMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyPress}
                   placeholder="Type a message..."
                   className="w-full bg-gray-800 border-gray-600 text-white placeholder-gray-400 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
                 />
               </div>
               <Button
                 aria-label="Send message"
-                onClick={handleSendMessage}
+                onClick={() => {
+                  void handleSendMessage().then(() => inputRef.current?.focus());
+                }}
                 disabled={!message.trim() || !isConnected || sending}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                 size="sm"
@@ -615,21 +310,24 @@ export default function ChatPage() {
                 </svg>
               </Button>
             </div>
+            {sendError && (
+              <p role="alert" className="text-red-300 mt-2">
+                {sendError}
+              </p>
+            )}
+            {readError && (
+              <p role="alert" className="text-amber-300 mt-2">
+                {readError} <button onClick={retryRead}>Retry read status</button>
+              </p>
+            )}
             {!isConnected && (
-              <p className="text-xs text-red-400 mt-2">Disconnected - messages won&apos;t send</p>
+              <p className="text-xs text-amber-300 mt-2">
+                Live chat is disconnected. Your draft is kept.{" "}
+                <button onClick={() => void reconnect()}>Reconnect conversation</button>
+              </p>
             )}
           </div>
         </div>
-
-        {/* Toasts */}
-        {toasts.map(toast => (
-          <Toast
-            key={toast.id}
-            message={toast.message}
-            type={toast.type}
-            onClose={() => removeToast(toast.id)}
-          />
-        ))}
       </div>
     </>
   );

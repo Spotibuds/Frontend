@@ -156,6 +156,13 @@ export interface FriendRequest {
   requesterAvatar?: string;
   requestedAt: string;
 }
+export interface SentFriendRequest {
+  requestId: string;
+  addresseeId: string;
+  addresseeUsername: string;
+  addresseeAvatar?: string;
+  requestedAt: string;
+}
 
 export interface Friend {
   id: string;
@@ -420,10 +427,16 @@ export const userApi = {
 
   getUserProfilesBatch: async (userIds: string[]): Promise<User[]> => {
     try {
-      const userDtos = await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/batch`, {
-        method: "POST",
-        body: JSON.stringify({ userIds }),
-      });
+      const ids = [...new Set(userIds)];
+      const userDtos: UserDto[] = [];
+      for (let offset = 0; offset < ids.length; offset += 50) {
+        userDtos.push(
+          ...(await apiRequest<UserDto[]>(`${API_CONFIG.USER_API}/api/users/batch`, {
+            method: "POST",
+            body: JSON.stringify({ userIds: ids.slice(offset, offset + 50) }),
+          }))
+        );
+      }
 
       return userDtos.map(userData => ({
         id: userData.identityUserId, // Use IdentityUserId for consistency with API calls
@@ -515,6 +528,15 @@ export const userApi = {
   getPendingFriendRequests: (userId: string) =>
     apiRequest<FriendRequest[]>(`${API_CONFIG.USER_API}/api/friends/pending/${userId}`),
 
+  getSentFriendRequests: (userId: string) =>
+    apiRequest<SentFriendRequest[]>(`${API_CONFIG.USER_API}/api/friends/sent/${userId}`),
+
+  cancelFriendRequest: (requestId: string) =>
+    apiRequest<{ message: string }>(
+      `${API_CONFIG.USER_API}/api/friends/${requestId}?pendingOnly=true`,
+      { method: "DELETE" }
+    ),
+
   getFriendshipStatus: (userId1: string, userId2: string) =>
     apiRequest<FriendshipStatus>(
       `${API_CONFIG.USER_API}/api/friends/status?userId1=${userId1}&userId2=${userId2}`
@@ -532,9 +554,9 @@ export const userApi = {
   getUserChats: (userId: string) =>
     apiRequest<Chat[]>(`${API_CONFIG.USER_API}/api/chats/user/${userId}`),
 
-  getChatMessages: (chatId: string, page = 1, pageSize = 50) =>
+  getChatMessages: (chatId: string, page = 1, pageSize = 50, before?: string) =>
     apiRequest<Message[]>(
-      `${API_CONFIG.USER_API}/api/chats/${chatId}/messages?page=${page}&pageSize=${pageSize}`
+      `${API_CONFIG.USER_API}/api/chats/${chatId}/messages?page=${page}&pageSize=${pageSize}${before ? `&before=${encodeURIComponent(before)}` : ""}`
     ),
 
   sendMessage: (chatId: string, content: string, type = "Text", replyToId?: string) =>

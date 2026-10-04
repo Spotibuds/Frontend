@@ -1,8 +1,15 @@
-import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { friendHubManager, FriendRequest, Friend, ChatMessage, Chat } from "../lib/friendHub";
-import { eventBus } from "../lib/eventBus";
-
+import {
+  friendHubManager,
+  type FriendRequest,
+  type Friend,
+  type ChatMessage,
+  type Chat,
+  type FriendChange,
+  type FriendSent,
+} from "../lib/friendHub";
+import { mergeChatMessages } from "../lib/chatState";
+import { useDeferredEffect } from "./useDeferredEffect";
 interface UseFriendHubOptions {
   userId?: string;
   autoConnect?: boolean;
@@ -11,7 +18,6 @@ interface UseFriendHubOptions {
   onMessageSent?: (message: ChatMessage) => void;
   onMessageRead?: (messageId: string) => void;
 }
-
 interface FriendHubState {
   isConnected: boolean;
   connectionState: string;
@@ -22,555 +28,230 @@ interface FriendHubState {
   onlineFriends: string[];
   error: string | null;
   lastFriendRequestReceived?: FriendRequest;
-  lastFriendRequestAccepted?: {
-    requestId: string;
-    friendId: string;
-    friendName: string;
-    friendAvatar?: string;
-  };
-  lastFriendRequestDeclined?: { requestId: string };
-  lastFriendRequestSent?: { requestId: string; targetUserId: string; timestamp: string };
-  lastFriendAdded?: { friendId: string; friendName: string; friendAvatar?: string };
-  lastFriendRemoved?: { friendId: string };
+  lastFriendRequestAccepted?: FriendChange;
+  lastFriendRequestDeclined?: FriendChange;
+  lastFriendRequestCancelled?: FriendChange;
+  lastFriendRequestSent?: FriendSent;
+  lastFriendAdded?: FriendChange;
+  lastFriendRemoved?: FriendChange;
 }
-
+const initialState: FriendHubState = {
+  isConnected: false,
+  connectionState: "Disconnected",
+  friends: [],
+  friendRequests: [],
+  chats: [],
+  messages: {},
+  onlineFriends: [],
+  error: null,
+};
 export const useFriendHub = (options: UseFriendHubOptions = {}) => {
-  const {
-    userId,
-    autoConnect = true,
-    onError,
-    onMessageReceived,
-    onMessageSent,
-    onMessageRead,
-  } = options;
-
-  const [state, setState] = useState<FriendHubState>({
-    isConnected: false,
-    connectionState: "Disconnected",
-    friends: [],
-    friendRequests: [],
-    chats: [],
-    messages: {},
-    onlineFriends: [],
-    error: null,
-    lastFriendRequestReceived: undefined,
-    lastFriendRequestAccepted: undefined,
-    lastFriendRequestDeclined: undefined,
-    lastFriendRequestSent: undefined,
-    lastFriendAdded: undefined,
-    lastFriendRemoved: undefined,
+  const { userId, autoConnect = true } = options;
+  const callbacks = useRef(options);
+  useEffect(() => {
+    callbacks.current = options;
   });
-
-  const connectionTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
-
-  // Stabilize callback functions to prevent infinite loops
-  const stableOnError = useCallback(
-    (error: string) => {
-      onError?.(error);
-    },
-    [onError]
-  );
-
-  const stableOnMessageReceived = useCallback(
-    (message: ChatMessage) => {
-      onMessageReceived?.(message);
-    },
-    [onMessageReceived]
-  );
-
-  const stableOnMessageSent = useCallback(
-    (message: ChatMessage) => {
-      onMessageSent?.(message);
-    },
-    [onMessageSent]
-  );
-
-  const stableOnMessageRead = useCallback(
-    (messageId: string) => {
-      onMessageRead?.(messageId);
-    },
-    [onMessageRead]
-  );
-
-  // Connection Management
-  const connect = useCallback(async () => {
-    if (!userId) {
-      setState(prev => ({ ...prev, error: "User ID is required to connect" }));
-      return;
-    }
-
+  const [state, setState] = useState<FriendHubState>(initialState);
+  const perform = useCallback(async (operation: () => Promise<unknown>) => {
     try {
-      setState(prev => ({ ...prev, error: null }));
-      await friendHubManager.connect(userId);
+      await operation();
+      setState(previous => ({ ...previous, error: null }));
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to connect";
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
-    }
-  }, [userId, stableOnError]);
-
-  const disconnect = useCallback(async () => {
-    try {
-      await friendHubManager.disconnect();
-    } catch (error) {
-      console.error("Error disconnecting:", error);
-    }
-  }, []);
-
-  // Friend Management
-  const sendFriendRequest = useCallback(
-    async (targetUserId: string) => {
-      try {
-        await friendHubManager.sendFriendRequest(targetUserId);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to send friend request";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const acceptFriendRequest = useCallback(
-    async (requestId: string) => {
-      try {
-        await friendHubManager.acceptFriendRequest(requestId);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to accept friend request";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const declineFriendRequest = useCallback(
-    async (requestId: string) => {
-      try {
-        await friendHubManager.declineFriendRequest(requestId);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to decline friend request";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const removeFriend = useCallback(
-    async (friendId: string) => {
-      try {
-        await friendHubManager.removeFriend(friendId);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Failed to remove friend";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  // Chat Management
-  const sendMessage = useCallback(
-    async (chatId: string, message: string) => {
-      try {
-        await friendHubManager.sendMessage(chatId, message);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Failed to send message";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const markMessageAsRead = useCallback(
-    async (messageId: string) => {
-      try {
-        await friendHubManager.markMessageAsRead(messageId);
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Failed to mark message as read";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const createChat = useCallback(
-    async (friendId: string) => {
-      try {
-        await friendHubManager.createChat(friendId);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Failed to create chat";
-        setState(prev => ({ ...prev, error: errorMessage }));
-        stableOnError(errorMessage);
-        throw error;
-      }
-    },
-    [stableOnError]
-  );
-
-  const getOnlineFriends = useCallback(async () => {
-    try {
-      await friendHubManager.getOnlineFriends();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to get online friends";
-      setState(prev => ({ ...prev, error: errorMessage }));
-      stableOnError(errorMessage);
+      const message =
+        error instanceof Error ? error.message : "Connection unavailable. Please retry.";
+      setState(previous => ({ ...previous, error: message }));
+      callbacks.current.onError?.(message);
       throw error;
     }
-  }, [stableOnError]);
-
-  // Create a stable reference for getOnlineFriends that doesn't cause re-renders
-  const stableGetOnlineFriends = useCallback(() => {
-    friendHubManager.getOnlineFriends().catch(console.error);
   }, []);
-
-  // Utility Functions
-  const getChatMessages = useCallback(
-    (chatId: string): ChatMessage[] => {
-      return state.messages[chatId] || [];
-    },
-    [state.messages]
-  );
-
-  const getChat = useCallback(
-    (chatId: string): Chat | undefined => {
-      return state.chats.find(chat => chat.id === chatId);
-    },
-    [state.chats]
-  );
-
-  const getFriend = useCallback(
-    (friendId: string): Friend | undefined => {
-      return state.friends.find(friend => friend.id === friendId);
-    },
-    [state.friends]
-  );
-
-  const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: null }));
-  }, []);
-
-  const clearLastEvents = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      lastFriendRequestReceived: undefined,
-      lastFriendRequestAccepted: undefined,
-      lastFriendRequestDeclined: undefined,
-      lastFriendRequestSent: undefined,
-      lastFriendRemoved: undefined,
-    }));
-  }, []);
-
-  // Setup event handlers
-  useEffect(() => {
-    // Set up online friends event handler FIRST
-    friendHubManager.setOnOnlineFriendsReceived(onlineFriends => {
-      setState(prev => ({
-        ...prev,
-        onlineFriends,
-      }));
-    });
-
-    // Connection state changes
-    friendHubManager.setOnConnectionStateChanged(connectionState => {
-      setState(prev => ({
-        ...prev,
-        connectionState,
-        isConnected: connectionState === "Connected",
-      }));
-
-      // Get online friends when connected with a small delay to ensure handlers are set up
-      if (connectionState === "Connected") {
-        setTimeout(() => {
-          stableGetOnlineFriends();
-        }, 100);
-      }
-    });
-
-    // Friend request events
-    friendHubManager.setOnFriendRequestReceived(request => {
-      setState(prev => ({
-        ...prev,
-        friendRequests: [...prev.friendRequests, request],
-        lastFriendRequestReceived: request,
-      }));
-    });
-
-    friendHubManager.setOnFriendRequestAccepted(data => {
-      setState(prev => ({
-        ...prev,
-        friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
-        friends: [
-          ...prev.friends,
-          {
-            id: data.friendId || data.FriendId,
-            username: data.friendName || data.FriendName,
-            avatarUrl: data.friendAvatar || data.FriendAvatar,
-            isOnline: false,
-          },
-        ],
-        lastFriendRequestAccepted: {
-          requestId: data.requestId || data.RequestId,
-          friendId: data.friendId || data.FriendId,
-          friendName: data.friendName || data.FriendName,
-          friendAvatar: data.friendAvatar || data.FriendAvatar,
-        },
-      }));
-
-      // Emit friendship status changed event for user profile page updates
-      const friendId = data.friendId || data.FriendId;
-      if (userId && friendId) {
-        eventBus.emit("friendshipStatusChanged", userId, friendId);
-      } else {
-      }
-    });
-
-    friendHubManager.setOnFriendRequestDeclined(data => {
-      setState(prev => {
-        // Get the declined request before removing it
-        const declinedRequest = prev.friendRequests.find(req => req.requestId === data.requestId);
-
-        // Emit friendship status changed event for user profile page updates
-        if (userId && declinedRequest) {
-          eventBus.emit("friendshipStatusChanged", userId, declinedRequest.senderId);
-        }
-
-        return {
-          ...prev,
-          friendRequests: prev.friendRequests.filter(req => req.requestId !== data.requestId),
-          lastFriendRequestDeclined: { requestId: data.requestId },
-        };
-      });
-    });
-
-    friendHubManager.setOnFriendAdded(data => {
-      setState(prev => ({
-        ...prev,
-        friends: [
-          ...prev.friends,
-          {
-            id: data.friendId || data.FriendId,
-            username: data.friendName || data.FriendName,
-            avatarUrl: data.friendAvatar || data.FriendAvatar,
-            isOnline: false,
-          },
-        ],
-        lastFriendAdded: {
-          friendId: data.friendId || data.FriendId,
-          friendName: data.friendName || data.FriendName,
-          friendAvatar: data.friendAvatar || data.FriendAvatar,
-        },
-      }));
-
-      // Emit friendship status changed event for user profile page updates
-      const friendId = data.friendId || data.FriendId;
-      if (userId && friendId) {
-        eventBus.emit("friendshipStatusChanged", userId, friendId);
-      } else {
-      }
-    });
-
-    friendHubManager.setOnFriendRequestSent(data => {
-      setState(prev => ({
-        ...prev,
-        lastFriendRequestSent: {
-          requestId: data.requestId,
-          targetUserId: data.targetUserId,
-          timestamp: data.timestamp,
-        },
-      }));
-
-      // Emit friendship status changed event for user profile page updates
-      if (userId && data.targetUserId) {
-        eventBus.emit("friendshipStatusChanged", userId, data.targetUserId);
-      }
-    });
-
-    friendHubManager.setOnFriendRemoved(data => {
-      const removedFriendId = data.RemovedFriendId || data.removedFriendId; // Handle both cases
-      setState(prev => ({
-        ...prev,
-        friends: prev.friends.filter(friend => friend.id !== removedFriendId),
-        chats: prev.chats.filter(chat => !chat.participants.includes(removedFriendId)),
-        lastFriendRemoved: { friendId: removedFriendId },
-      }));
-
-      // Emit friendship status changed event for user profile page updates
-      if (userId && removedFriendId) {
-        eventBus.emit("friendshipStatusChanged", userId, removedFriendId);
-      } else {
-      }
-    });
-
-    friendHubManager.setOnFriendStatusChanged(data => {
-      setState(prev => ({
-        ...prev,
-        friends: prev.friends.map(friend =>
-          friend.id === data.friendId ? { ...friend, isOnline: data.isOnline } : friend
-        ),
-      }));
-    });
-
-    // Chat events
-    friendHubManager.setOnMessageReceived(message => {
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [message.chatId]: [...(prev.messages[message.chatId] || []), message],
-        },
-        chats: prev.chats.map(chat =>
-          chat.id === message.chatId
-            ? {
-                ...chat,
-                lastMessage: message.content,
-                lastMessageAt: message.timestamp,
-                unreadCount: chat.unreadCount + 1,
-              }
-            : chat
-        ),
-      }));
-
-      // Call the callback if provided
-      stableOnMessageReceived(message);
-    });
-
-    friendHubManager.setOnMessageSent(data => {
-      // Create a properly formatted message object
-      const sentMessage: ChatMessage = {
-        chatId: data.chatId,
-        messageId: data.messageId,
-        senderId: data.senderId || userId || "", // Use senderId from data
-        senderName: data.senderName || "You", // Use senderName from data
-        content: data.content,
-        timestamp: data.timestamp,
-        isRead: false,
-      };
-
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [data.chatId]: [...(prev.messages[data.chatId] || []), sentMessage],
-        },
-      }));
-
-      // Call the callback if provided
-      stableOnMessageSent(sentMessage);
-    });
-
-    friendHubManager.setOnMessageRead(data => {
-      setState(prev => ({
-        ...prev,
-        messages: {
-          ...prev.messages,
-          [data.chatId]: (prev.messages[data.chatId] || []).map(msg =>
-            msg.messageId === data.messageId ? { ...msg, isRead: true } : msg
-          ),
-        },
-      }));
-
-      // Call the callback if provided
-      stableOnMessageRead(data.messageId);
-    });
-
-    friendHubManager.setOnChatCreated(chat => {
-      setState(prev => ({
-        ...prev,
-        chats: [...prev.chats, { ...chat, unreadCount: 0 }],
-      }));
-    });
-
-    // Error handling
-    friendHubManager.setOnError(error => {
-      setState(prev => ({ ...prev, error }));
-      stableOnError(error);
-    });
-
-    return () => {
-      // Cleanup event handlers
-      friendHubManager.setOnFriendRequestReceived(null);
-      friendHubManager.setOnFriendRequestAccepted(null);
-      friendHubManager.setOnFriendRequestDeclined(null);
-      friendHubManager.setOnFriendRequestSent(null);
-      friendHubManager.setOnFriendRemoved(null);
-      friendHubManager.setOnFriendStatusChanged(null);
-      friendHubManager.setOnMessageReceived(null);
-      friendHubManager.setOnMessageSent(null);
-      friendHubManager.setOnMessageRead(null);
-      friendHubManager.setOnChatCreated(null);
-      friendHubManager.setOnError(null);
-      friendHubManager.setOnConnectionStateChanged(null);
-    };
-  }, [
-    userId,
-    stableOnError,
-    stableOnMessageReceived,
-    stableOnMessageSent,
-    stableOnMessageRead,
-    stableGetOnlineFriends,
-  ]);
-
-  // Auto-connect on mount
+  const connect = useCallback(async () => {
+    if (!userId) return;
+    await perform(() => friendHubManager.connect(userId));
+  }, [userId, perform]);
   useDeferredEffect(() => {
-    if (autoConnect && userId) {
-      connect();
-    }
-
-    return () => {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      const currentTimeout = connectionTimeoutRef.current;
-      if (currentTimeout) {
-        clearTimeout(currentTimeout);
-      }
+    setState(initialState);
+    if (!userId) return;
+    const transition = (
+      key:
+        | "lastFriendRequestAccepted"
+        | "lastFriendRequestDeclined"
+        | "lastFriendRequestCancelled"
+        | "lastFriendAdded"
+        | "lastFriendRemoved",
+      change: FriendChange
+    ) => {
+      setState(previous => ({
+        ...previous,
+        [key]: change,
+        friendRequests: previous.friendRequests.filter(
+          request => request.requestId !== change.requestId
+        ),
+        friends:
+          key === "lastFriendRemoved"
+            ? previous.friends.filter(friend => friend.id !== change.friendId)
+            : (key === "lastFriendRequestAccepted" || key === "lastFriendAdded") && change.friendId
+              ? [
+                  ...previous.friends.filter(friend => friend.id !== change.friendId),
+                  {
+                    id: change.friendId,
+                    username: change.friendName || "Unknown User",
+                    avatarUrl: change.friendAvatar,
+                    isOnline: previous.onlineFriends.includes(change.friendId),
+                  },
+                ]
+              : previous.friends,
+      }));
     };
-  }, [autoConnect, userId, connect]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      disconnect();
+    const receive = (message: ChatMessage, sent: boolean) => {
+      setState(previous => ({
+        ...previous,
+        messages: {
+          ...previous.messages,
+          [message.chatId]: mergeChatMessages(previous.messages[message.chatId] || [], [message]),
+        },
+        chats: previous.chats.map(chat => {
+          if (chat.id !== message.chatId) return chat;
+          const duplicate = previous.messages[message.chatId]?.some(
+            saved => saved.messageId === message.messageId
+          );
+          const newer =
+            !chat.lastMessageAt || Date.parse(message.timestamp) >= Date.parse(chat.lastMessageAt);
+          return {
+            ...chat,
+            ...(newer ? { lastMessage: message.content, lastMessageAt: message.timestamp } : {}),
+            unreadCount:
+              !sent && message.senderId !== userId && !duplicate
+                ? chat.unreadCount + 1
+                : chat.unreadCount,
+          };
+        }),
+      }));
+      if (sent) callbacks.current.onMessageSent?.(message);
+      else callbacks.current.onMessageReceived?.(message);
     };
-  }, [disconnect]);
-
+    const unsubscribe = friendHubManager.subscribe({
+      onConnectionStateChanged: connectionState =>
+        setState(previous => ({
+          ...previous,
+          connectionState,
+          isConnected: connectionState === "Connected",
+        })),
+      onOnlineFriendsReceived: onlineFriends =>
+        setState(previous => ({ ...previous, onlineFriends })),
+      onFriendRequestReceived: request => {
+        setState(previous => ({
+          ...previous,
+          friendRequests: [
+            ...previous.friendRequests.filter(saved => saved.requestId !== request.requestId),
+            request,
+          ],
+          lastFriendRequestReceived: request,
+        }));
+      },
+      onFriendRequestAccepted: change => transition("lastFriendRequestAccepted", change),
+      onFriendRequestDeclined: change => transition("lastFriendRequestDeclined", change),
+      onFriendRequestCancelled: change => transition("lastFriendRequestCancelled", change),
+      onFriendAdded: change => transition("lastFriendAdded", change),
+      onFriendRemoved: change => transition("lastFriendRemoved", change),
+      onFriendRequestSent: request => {
+        setState(previous => ({ ...previous, lastFriendRequestSent: request }));
+      },
+      onFriendStatusChanged: status =>
+        setState(previous => ({
+          ...previous,
+          onlineFriends: status.isOnline
+            ? [...new Set([...previous.onlineFriends, status.friendId])]
+            : previous.onlineFriends.filter(id => id !== status.friendId),
+          friends: previous.friends.map(friend =>
+            friend.id === status.friendId ? { ...friend, isOnline: status.isOnline } : friend
+          ),
+        })),
+      onMessageReceived: message => receive(message, false),
+      onMessageSent: message => receive(message, true),
+      onMessageRead: receipt => {
+        if (receipt.userId === userId) return;
+        setState(previous => ({
+          ...previous,
+          messages: Object.fromEntries(
+            Object.entries(previous.messages).map(([id, messages]) => [
+              id,
+              messages.map(message =>
+                message.messageId === receipt.messageId ? { ...message, isRead: true } : message
+              ),
+            ])
+          ),
+        }));
+        callbacks.current.onMessageRead?.(receipt.messageId);
+      },
+      onAllMessagesRead: receipt => {
+        if (receipt.userId === userId || !receipt.throughMessageId || !receipt.throughSentAt)
+          return;
+        setState(previous => ({
+          ...previous,
+          messages: {
+            ...previous.messages,
+            [receipt.chatId]: (previous.messages[receipt.chatId] || []).map(message => {
+              const before =
+                Date.parse(message.timestamp) < Date.parse(receipt.throughSentAt!) ||
+                (Date.parse(message.timestamp) === Date.parse(receipt.throughSentAt!) &&
+                  message.messageId <= receipt.throughMessageId!);
+              return message.senderId === userId && before ? { ...message, isRead: true } : message;
+            }),
+          },
+        }));
+      },
+      onChatCreated: chat =>
+        setState(previous => ({
+          ...previous,
+          chats: [...previous.chats.filter(saved => saved.id !== chat.id), chat],
+        })),
+      onError: error => {
+        setState(previous => ({ ...previous, error }));
+        callbacks.current.onError?.(error);
+      },
+    });
+    if (autoConnect)
+      void friendHubManager.connect(userId).catch(error => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Friend updates could not connect. Please retry.";
+        setState(previous => ({ ...previous, error: message }));
+        callbacks.current.onError?.(message);
+      });
+    // Subscription cleanup must not stop the shared session-owned connection.
+    return unsubscribe;
+  }, [userId, autoConnect]);
   return {
-    // State
     ...state,
-
-    // Connection Management
     connect,
-    disconnect,
-
-    // Friend Management
-    sendFriendRequest,
-    acceptFriendRequest,
-    declineFriendRequest,
-    removeFriend,
-
-    // Chat Management
-    sendMessage,
-    markMessageAsRead,
-    createChat,
-    getOnlineFriends,
-
-    // Utility Functions
-    getChatMessages,
-    getChat,
-    getFriend,
-    clearError,
-    clearLastEvents,
+    disconnect: () => friendHubManager.disconnect(),
+    sendFriendRequest: (id: string) => perform(() => friendHubManager.sendFriendRequest(id)),
+    acceptFriendRequest: (id: string) => perform(() => friendHubManager.acceptFriendRequest(id)),
+    declineFriendRequest: (id: string) => perform(() => friendHubManager.declineFriendRequest(id)),
+    removeFriend: (id: string) => perform(() => friendHubManager.removeFriend(id)),
+    sendMessage: (chatId: string, content: string) =>
+      perform(() => friendHubManager.sendMessage(chatId, content)),
+    markMessageAsRead: (id: string) => perform(() => friendHubManager.markMessageAsRead(id)),
+    createChat: (id: string) => perform(() => friendHubManager.createChat(id)),
+    getOnlineFriends: () => perform(() => friendHubManager.getOnlineFriends()),
+    getChatMessages: (id: string) => state.messages[id] || [],
+    getChat: (id: string) => state.chats.find(chat => chat.id === id),
+    getFriend: (id: string) => state.friends.find(friend => friend.id === id),
+    clearError: useCallback(() => setState(previous => ({ ...previous, error: null })), []),
+    clearLastEvents: useCallback(
+      () =>
+        setState(previous => ({
+          ...previous,
+          lastFriendRequestReceived: undefined,
+          lastFriendRequestAccepted: undefined,
+          lastFriendRequestDeclined: undefined,
+          lastFriendRequestCancelled: undefined,
+          lastFriendRequestSent: undefined,
+          lastFriendAdded: undefined,
+          lastFriendRemoved: undefined,
+        })),
+      []
+    ),
   };
 };

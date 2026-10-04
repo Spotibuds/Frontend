@@ -60,21 +60,35 @@ export class ManagedHub {
           .build();
         this.connection = connection;
         this.setup(connection);
-        connection.onreconnecting(() => this.changed(HubConnectionState.Reconnecting));
+        connection.onreconnecting(() => {
+          if (this.connection === connection && version === this.version)
+            this.changed(HubConnectionState.Reconnecting);
+        });
         connection.onreconnected(async () => {
-          if (!this.enabled || version !== this.version) {
+          if (!this.enabled || version !== this.version || this.connection !== connection) {
             await connection.stop();
             return;
           }
           try {
             await this.connected();
-            this.changed(HubConnectionState.Connected);
+            if (
+              this.enabled &&
+              this.connection === connection &&
+              version === this.version &&
+              generation === getSessionGeneration()
+            )
+              this.changed(HubConnectionState.Connected);
+            else await connection.stop();
           } catch {
-            this.changed(HubConnectionState.Disconnected);
+            if (this.connection === connection && version === this.version)
+              this.changed(HubConnectionState.Disconnected);
             await connection.stop();
           }
         });
-        connection.onclose(() => this.changed(HubConnectionState.Disconnected));
+        connection.onclose(() => {
+          if (this.connection === connection && version === this.version)
+            this.changed(HubConnectionState.Disconnected);
+        });
       }
       const connection = this.connection;
       if (connection.state !== HubConnectionState.Disconnected) return;
@@ -86,9 +100,17 @@ export class ManagedHub {
           return;
         }
         await this.connected();
-        this.changed(HubConnectionState.Connected);
+        if (
+          this.enabled &&
+          this.connection === connection &&
+          version === this.version &&
+          generation === getSessionGeneration()
+        )
+          this.changed(HubConnectionState.Connected);
+        else await connection.stop();
       } catch (error) {
-        this.changed(HubConnectionState.Disconnected);
+        if (this.connection === connection && version === this.version)
+          this.changed(HubConnectionState.Disconnected);
         throw error;
       }
     })();
@@ -106,7 +128,7 @@ export class ManagedHub {
   }
   async stop(): Promise<void> {
     this.enabled = false;
-    this.version++;
+    const version = ++this.version;
     const connection = this.connection;
     this.connection = null;
     this.startPromise = null;
@@ -116,7 +138,8 @@ export class ManagedHub {
       await operation;
     } finally {
       if (this.stopPromise === operation) this.stopPromise = null;
-      this.changed(HubConnectionState.Disconnected);
+      if (version === this.version && !this.connection)
+        this.changed(HubConnectionState.Disconnected);
     }
   }
   state() {

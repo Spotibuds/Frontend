@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-04",
+  "scope": "Baseline browser reproduction and final-review recovery reproduction, with fresh disposable ordinary accounts and asserted cleanup",
+  "reproductions": [
+    {
+      "name": "Outgoing friend request cannot be cancelled through the UI",
+      "command": "npx.cmd playwright test tests/browser/chat-friends.spec.ts --grep 'friend requests update' --reporter=list --output=demo/results-chat-friends-baseline",
+      "exitCode": 1,
+      "actual": "After a successful UI send, the expected outgoing cancel control had zero matches.",
+      "cleanup": "Both task accounts were deleted; Identity and User lookup assertions confirmed404."
+    },
+    {
+      "name": "Delayed initial history overwrites a live message",
+      "command": "npx.cmd playwright test tests/browser/chat-friends.spec.ts --grep 'chat merges delayed' --reporter=list --output=demo/results-chat-history-baseline",
+      "exitCode": 1,
+      "actual": "The test held an already fetched history response, observed ChatJoined and the new ReceiveMessage wire event, then released history. Persisted historical messages rendered, but the live message had zero UI matches.",
+      "cleanup": "The disposable chat and both task accounts were deleted; detail/profile lookup assertions confirmed404."
+    },
+    {
+      "name": "Reconnect restores only one page after a long offline interval",
+      "build": "First remediation image, before the final-review cursor catch-up fix",
+      "command": "npx.cmd playwright test tests/browser/chat-friends.spec.ts --grep 'chat merges delayed' --reporter=list --output=demo/results-chat-long-gap-discovery",
+      "exitCode": 1,
+      "actual": "After the browser disconnected and 80 new messages were persisted, reconnection rendered exactly 50 of the expected 80. Repeated locator checks confirmed the missing 30; the unsent draft and resumed connection remained visible.",
+      "cleanup": "The disposable chat and both task accounts were deleted; detail/profile lookup assertions confirmed404."
+    },
+    {
+      "name": "Accepted friend remains actionable as Add in retained search results",
+      "build": "First remediation image, before the final-review search action fix",
+      "command": "npx.cmd playwright test tests/browser/chat-friends.spec.ts --grep 'friend requests update' --reporter=list --output=demo/results-chat-retained-friend-discovery",
+      "exitCode": 1,
+      "actual": "Both users showed the accepted friendship, but the sender's retained search card still had one enabled Add button. Repeated checks expected no Add action; the final regression also requires the disabled Friends action.",
+      "cleanup": "Both task accounts were deleted; Identity and User lookup assertions confirmed404."
+    }
+  ],
+  "testFixtureCorrection": "An earlier history attempt used both account logins in one cookie jar, correctly revoking the preceding account session and receiving401. The fixture now uses independent API cookie contexts. That attempt was a test setup error, not an application defect.",
+  "databaseReset": false,
+  "seededResourcesModified": false,
+  "secretsIncluded": false
+}

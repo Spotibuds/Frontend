@@ -156,3 +156,142 @@ describe("hub lifecycle and acknowledged chat", () => {
     expect(service.getConnectionState()).toBe("Disconnected");
   });
 });
+
+describe("independent realtime subscribers and canonical friendship contracts", () => {
+  it("keeps another chat subscriber when one view unmounts and ignores own read receipts", async () => {
+    const { ChatHubService } = await import("../src/lib/chatHub");
+    const service = new ChatHubService();
+    await service.enableConnection();
+    const first = vi.fn();
+    const second = vi.fn();
+    const read = vi.fn();
+    service.setHandlers({ onMessageReceived: first }, "first");
+    service.setHandlers({ onMessageReceived: second, onAllMessagesRead: read }, "second");
+    service.removeHandlers("first");
+    const connection = fixture.connections[0];
+    connection.handlers.get("ReceiveMessage")?.({
+      messageId: "saved",
+      chatId: "chat-a",
+      senderId: "bob",
+      content: "hi",
+      sentAt: "2026-10-04T00:00:00Z",
+    } as never);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    connection.handlers.get("AllMessagesRead")?.({
+      chatId: "chat-a",
+      userId: "alice",
+      throughMessageId: "saved",
+    } as never);
+    expect(read).not.toHaveBeenCalled();
+    connection.handlers.get("AllMessagesRead")?.({
+      chatId: "chat-a",
+      userId: "bob",
+      throughMessageId: "saved",
+      throughSentAt: "2026-10-04T00:00:00Z",
+    } as never);
+    expect(read).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "bob", throughMessageId: "saved" })
+    );
+    await service.disconnect();
+  });
+  it("undoes a room join completed after navigation without marking the old room active", async () => {
+    const { ChatHubService } = await import("../src/lib/chatHub");
+    const service = new ChatHubService();
+    await service.enableConnection();
+    const connection = fixture.connections[0];
+    let finish!: () => void;
+    connection.invoke.mockImplementationOnce(async () => {
+      await new Promise<void>(resolve => {
+        finish = resolve;
+      });
+      return undefined;
+    });
+    const oldJoin = service.joinChat("chat-a");
+    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+    await service.leaveChat("chat-a");
+    await service.joinChat("chat-b");
+    finish();
+    await oldJoin;
+    expect(service.getCurrentChatId()).toBe("chat-b");
+    expect(connection.invoke).toHaveBeenCalledWith("LeaveChat", "chat-a");
+    await service.disconnect();
+  });
+  it("normalizes canonical requester fields and terminal friendship IDs for every subscriber", async () => {
+    const { FriendHubManager } = await import("../src/lib/friendHub");
+    const manager = new FriendHubManager();
+    const received = vi.fn();
+    const removed = vi.fn();
+    const cancelled = vi.fn();
+    const other = vi.fn();
+    const stop = manager.subscribe({
+      onFriendRequestReceived: received,
+      onFriendRemoved: removed,
+      onFriendRequestCancelled: cancelled,
+    });
+    manager.subscribe({ onFriendRequestReceived: other });
+    await manager.connect("alice");
+    const connection = fixture.connections[0];
+    const value = {
+      requestId: "request-1",
+      requesterId: "bob",
+      requesterUsername: "Bob",
+      requestedAt: "2026-10-04T00:00:00Z",
+    };
+    connection.handlers.get("FriendRequestReceived")?.(value as never);
+    expect(received).toHaveBeenCalledWith({
+      requestId: "request-1",
+      senderId: "bob",
+      senderName: "Bob",
+      senderAvatar: undefined,
+      timestamp: value.requestedAt,
+    });
+    connection.handlers.get("FriendRemoved")?.({
+      friendId: "bob",
+      friendshipId: "request-1",
+    } as never);
+    expect(removed).toHaveBeenCalledWith(
+      expect.objectContaining({ friendId: "bob", requestId: "request-1" })
+    );
+    connection.handlers.get("FriendRequestCancelled")?.({
+      friendId: "bob",
+      requestId: "request-1",
+    } as never);
+    expect(cancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ friendId: "bob", requestId: "request-1" })
+    );
+    stop();
+    connection.handlers.get("FriendRequestReceived")?.(value as never);
+    expect(received).toHaveBeenCalledTimes(1);
+    expect(other).toHaveBeenCalledTimes(2);
+    const late = vi.fn();
+    manager.subscribe({ onConnectionStateChanged: late });
+    expect(late).toHaveBeenCalledWith("Connected");
+    expect(connection.stop).not.toHaveBeenCalled();
+    await manager.disconnect();
+  });
+});
+
+it("cannot report an obsolete delayed connection callback as connected after session teardown", async () => {
+  const { ManagedHub } = await import("../src/lib/managedHub");
+  const state = vi.fn();
+  let finish!: () => void;
+  const hub = new ManagedHub(
+    "delayed",
+    () => undefined,
+    async () => {
+      await new Promise<void>(resolve => {
+        finish = resolve;
+      });
+    },
+    state
+  );
+  const startup = hub.start();
+  await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+  fixture.generation++;
+  await hub.stop();
+  finish();
+  await startup;
+  expect(state.mock.calls.at(-1)?.[0]).toBe("Disconnected");
+  expect(state).not.toHaveBeenCalledWith("Connected");
+});
