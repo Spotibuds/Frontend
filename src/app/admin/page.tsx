@@ -8,6 +8,7 @@ import { musicApi, adminApi, type Album, type Song, type Artist } from "@/lib/ap
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { useDialog } from "@/hooks/useDialog";
+import { readCataloguePages } from "@/lib/cataloguePages";
 
 const MySwal = withReactContent(Swal);
 
@@ -62,7 +63,7 @@ export default function AdminPageForAlbums() {
     try {
       setLoading(true);
       setError(null);
-      const data = await musicApi.getAlbums();
+      const data = await readCataloguePages(musicApi.getAlbums);
       setAlbums(data);
 
       const songsPromises = data.map(album =>
@@ -87,7 +88,7 @@ export default function AdminPageForAlbums() {
 
   const fetchArtists = async () => {
     try {
-      const data = await musicApi.getArtists();
+      const data = await readCataloguePages(musicApi.getArtists);
       setArtists(data);
     } catch (err) {
       console.error("Failed to load artists", err);
@@ -429,7 +430,7 @@ export default function AdminPageForAlbums() {
                   type="file"
                   name="coverFile"
                   accept="image/*"
-                  className="hidden"
+                  className="mt-2 block w-full rounded-lg border border-gray-600 p-2 text-sm"
                   onChange={handleModalChange}
                 />
               </label>

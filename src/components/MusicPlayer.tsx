@@ -1,5 +1,6 @@
 "use client";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import Link from "next/link";
 import {
   PlayIcon,
   PauseIcon,
@@ -15,10 +16,33 @@ import { Shuffle, Repeat, Repeat1 } from "lucide-react";
 import Dialog from "@/components/ui/Dialog";
 import MusicImage from "@/components/ui/MusicImage";
 import FavoriteButton from "@/components/FavoriteButton";
+import ArtistLinks from "@/components/ArtistLinks";
 import { useAudio } from "@/lib/audio";
 import { processArtists, safeString } from "@/lib/api";
 
 export default function MusicPlayer() {
+  const footer = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const element = footer.current;
+    if (!element) return;
+    const style = document.documentElement.style;
+    const previous = style.getPropertyValue("--music-player-height");
+    const measure = () =>
+      style.setProperty(
+        "--music-player-height",
+        `${Math.ceil(element.getBoundingClientRect().height)}px`
+      );
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      if (previous) style.setProperty("--music-player-height", previous);
+      else style.removeProperty("--music-player-height");
+    };
+  }, []);
   const audio = useAudio();
   const { state, formatTime } = audio;
   const [expanded, setExpanded] = useState(false);
@@ -160,21 +184,46 @@ export default function MusicPlayer() {
   );
   return (
     <>
-      <footer className="player-bar fixed inset-x-0 bottom-0 z-[50]" aria-label="Music player">
+      <footer
+        ref={footer}
+        className="player-bar fixed inset-x-0 bottom-0 z-[50]"
+        aria-label="Music player"
+      >
         <div className="player-grid">
           <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              aria-label="Open music player"
-              className="flex min-w-0 flex-1 items-center gap-3 text-left"
-            >
-              {cover()}
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">{title}</span>
-                <span className="mt-1 block truncate text-xs text-gray-400">{artist}</span>
-              </span>
-            </button>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                aria-label="Open music player"
+                className="shrink-0 rounded-md"
+              >
+                {cover()}
+              </button>
+              <div className="min-w-0">
+                {song?.album?.id ? (
+                  <Link
+                    href={`/album/${song.album.id}`}
+                    title={`Open album: ${song.album.title}`}
+                    className="block truncate text-sm font-semibold hover:underline"
+                  >
+                    {title}
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(true)}
+                    className="block max-w-full truncate text-left text-sm font-semibold"
+                    aria-label="Open track details"
+                  >
+                    {title}
+                  </button>
+                )}
+                <p className="mt-1 truncate text-xs text-gray-400">
+                  <ArtistLinks artists={song?.artists} fallback={artist} />
+                </p>
+              </div>
+            </div>
             {song && (
               <span className="hidden sm:block">
                 <FavoriteButton songId={song.id} title={title} />
@@ -213,7 +262,22 @@ export default function MusicPlayer() {
         <div className="mt-5 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="break-words text-xl font-semibold">{title}</h2>
-            <p className="mt-1 text-sm text-gray-400">{artist}</p>
+            <p className="mt-1 text-sm text-gray-400">
+              <ArtistLinks
+                artists={song?.artists}
+                fallback={artist}
+                onNavigate={() => setExpanded(false)}
+              />
+            </p>
+            {song?.album?.id && (
+              <Link
+                href={`/album/${song.album.id}`}
+                onClick={() => setExpanded(false)}
+                className="mt-2 inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+              >
+                View album: {song.album.title}
+              </Link>
+            )}
           </div>
           {song && <FavoriteButton songId={song.id} title={title} />}
         </div>

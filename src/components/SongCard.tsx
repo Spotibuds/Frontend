@@ -5,7 +5,8 @@ import MusicImage from "@/components/ui/MusicImage";
 import Dialog from "@/components/ui/Dialog";
 import FavoriteButton from "@/components/FavoriteButton";
 import AddToPlaylist from "@/components/AddToPlaylist";
-import { Song, safeString, processArtists, identityApi } from "@/lib/api";
+import ArtistLinks from "@/components/ArtistLinks";
+import { Song, safeString, identityApi } from "@/lib/api";
 import { useAudio } from "@/lib/audio";
 
 interface SongCardProps {
@@ -65,21 +66,23 @@ export default function SongCard({
           type="square"
           className="h-11 w-11 shrink-0 rounded-md"
         />
-        <button
-          type="button"
-          onClick={play}
-          className="min-w-0 flex-1 text-left"
-          aria-label={`Listen to ${title}`}
-        >
-          <span
-            className={`block truncate text-sm font-medium ${current ? "text-purple-400" : "text-white"}`}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={play}
+            className="block max-w-full text-left"
+            aria-label={`Listen to ${title}`}
           >
-            {title}
-          </span>
-          <span className="mt-1 block truncate text-xs text-gray-400">
-            {processArtists(song.artists).join(", ")}
-          </span>
-        </button>
+            <span
+              className={`block truncate text-sm font-medium ${current ? "text-purple-400" : "text-white"}`}
+            >
+              {title}
+            </span>
+          </button>
+          <p className="mt-1 truncate text-xs text-gray-400">
+            <ArtistLinks artists={song.artists} />
+          </p>
+        </div>
         {currentUser && <FavoriteButton songId={song.id} title={title} />}
         {showAddToQueue && (
           <button

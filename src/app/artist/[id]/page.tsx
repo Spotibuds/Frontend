@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import MusicImage from "@/components/ui/MusicImage";
@@ -9,6 +9,8 @@ import AlbumPlayButton from "@/components/ui/AlbumPlayButton";
 import { musicApi, safeString, type Artist, type Album, type Song } from "@/lib/api";
 import MusicalNoteIcon from "@heroicons/react/24/outline/MusicalNoteIcon";
 import Square3Stack3DIcon from "@heroicons/react/24/outline/Square3Stack3DIcon";
+import PageLoading from "@/components/ui/PageLoading";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
 export default function ArtistPage() {
   const params = useParams();
@@ -18,26 +20,36 @@ export default function ArtistPage() {
   const [songs, setSongs] = useState<Song[]>([]);
   const [partialError, setPartialError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [detailsLoading, setDetailsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
 
-  useEffect(() => {
+  useDeferredEffect(() => {
     let active = true;
+    const abort = new AbortController();
     const fetchArtistData = async () => {
       if (!artistId) return;
 
       try {
         setLoading(true);
+        setDetailsLoading(true);
+        setArtist(null);
         setError(null);
         setPartialError("");
         setAlbums([]);
         setSongs([]);
         let artistData: Artist | null = null;
 
+        const details = Promise.allSettled([
+          musicApi.getArtistAlbums(artistId, 100, abort.signal),
+          musicApi.getArtistSongs(artistId, 100, abort.signal),
+        ]);
         try {
-          artistData = await musicApi.getArtist(artistId);
+          artistData = await musicApi.getArtist(artistId, abort.signal);
         } catch {
-          if (active) setError("Artist could not be loaded. Please retry.");
+          if (active && !abort.signal.aborted)
+            setError("Artist could not be loaded. Please retry.");
+          abort.abort();
           return;
         }
         if (!active) return;
@@ -49,12 +61,10 @@ export default function ArtistPage() {
         }
 
         setArtist(artistData);
+        setLoading(false);
 
         // Use the new efficient endpoints for artist-specific data
-        const [albumsResult, songsResult] = await Promise.allSettled([
-          musicApi.getArtistAlbums(artistId, 20),
-          musicApi.getArtistSongs(artistId, 30),
-        ]);
+        const [albumsResult, songsResult] = await details;
         if (!active) return;
 
         if (albumsResult.status === "fulfilled") {
@@ -77,27 +87,22 @@ export default function ArtistPage() {
         console.error("Error fetching artist data:", error);
         if (active) setError("Artist details could not be loaded. Please retry.");
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setDetailsLoading(false);
+        }
       }
     };
 
     void fetchArtistData();
     return () => {
       active = false;
+      abort.abort();
     };
   }, [artistId, retry]);
 
   if (loading) {
-    return (
-      <>
-        <div className="p-6 flex items-center justify-center min-h-96">
-          <div className="text-center">
-            <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading artist...</p>
-          </div>
-        </div>
-      </>
-    );
+    return <PageLoading label="Loading artist…" />;
   }
 
   if (error || !artist) {
@@ -158,13 +163,17 @@ export default function ArtistPage() {
                   <span className="flex items-center space-x-2">
                     <MusicalNoteIcon className="w-5 h-5" />
                     <span>
-                      {songs.length} song{songs.length !== 1 ? "s" : ""}
+                      {detailsLoading
+                        ? "Loading songs…"
+                        : `${songs.length} song${songs.length !== 1 ? "s" : ""}`}
                     </span>
                   </span>
                   <span className="flex items-center space-x-2">
                     <Square3Stack3DIcon className="w-5 h-5" />
                     <span>
-                      {albums.length} album{albums.length !== 1 ? "s" : ""}
+                      {detailsLoading
+                        ? "Loading albums…"
+                        : `${albums.length} album${albums.length !== 1 ? "s" : ""}`}
                     </span>
                   </span>
                 </div>
@@ -193,6 +202,7 @@ export default function ArtistPage() {
         )}
         {/* Content Sections */}
         <div className="max-w-7xl mx-auto px-6 py-8 space-y-12">
+          {detailsLoading && <PageLoading label="Loading albums and songs…" />}
           {/* Songs */}
           {songs.length > 0 && (
             <section>
@@ -250,7 +260,7 @@ export default function ArtistPage() {
           )}
 
           {/* Empty State */}
-          {!partialError && songs.length === 0 && albums.length === 0 && (
+          {!detailsLoading && !partialError && songs.length === 0 && albums.length === 0 && (
             <div className="text-center py-16">
               <p className="text-gray-400 text-lg mb-2">No content available</p>
               <p className="text-gray-400">No songs or albums are available for this artist.</p>

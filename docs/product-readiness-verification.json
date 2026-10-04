@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-04",
+  "scope": "Portfolio readiness audit and remediation; single-instance demo",
+  "reviewedAreas": [
+    "Authentication and recovery",
+    "Responsive navigation",
+    "Profiles and listening history",
+    "Artists and albums",
+    "Search and metadata editing",
+    "Player and queue",
+    "Feed and reactions",
+    "Favorites and playlists",
+    "Friends",
+    "Chat",
+    "Notifications",
+    "Admin catalogue and account editors",
+    "Shared dialogs and inputs"
+  ],
+  "fixes": [
+    "Profile header is a direct prefetched link, avoiding the intermediate /user redirect.",
+    "Profile content renders after its primary request; independent activity, playlists, artists and friends load in parallel.",
+    "Artist header renders before descendant requests complete; obsolete artist requests are aborted.",
+    "Profile and playlist route instances isolate late requests and mutations; obsolete chat-opening responses cannot redirect a new profile.",
+    "Player album and performer links are available in the persistent bar and expanded view; row performer links are separate from playback buttons.",
+    "Feed listening cards have an explicit Play/Pause control and relative timestamps backed by one shared clock.",
+    "Public browsing loads additional catalogue pages; admin editors read the complete bounded metadata index with deduplication and session ownership checks.",
+    "Song editors support singles, distinguish explicit album clearing from omission, and preserve unchanged guest credits.",
+    "Registration retries sign-in after successful or pending account creation without repeating registration.",
+    "Keyboard users can focus the album cover file input.",
+    "Chat reserves the player height measured by ResizeObserver, replacing an overlapping fixed mobile offset."
+  ],
+  "validation": {
+    "frontendTests": { "files": 27, "passed": 234 },
+    "typescript": "pass",
+    "eslint": "pass, zero warnings",
+    "productionBuild": "pass",
+    "localBrowser": {
+      "viewports": ["1440x900 desktop", "393x852 mobile"],
+      "passed": [
+        "Feed Play/Pause",
+        "Relative listening time",
+        "Persistent seek control",
+        "Album link",
+        "Expanded player album link",
+        "Profile weekly artists",
+        "50-to-100 song paging",
+        "Chat composer geometry",
+        "No horizontal overflow",
+        "No browser exceptions"
+      ],
+      "method": "Updated production build, existing synthetic accounts, proxied authenticated reads; in-memory audio fixture; realtime transport is deliberately not connected in this local check."
+    },
+    "livePlaybackBeforeRelease": {
+      "album": "The World We Knew",
+      "progressObserved": true,
+      "assertionElapsedMs": 1989,
+      "rangeResponse": 206,
+      "method": "Actual headless Edge playback with no media interception; elapsed time includes polling and is not a percentile performance benchmark."
+    },
+    "confirmedMobileDefectBeforeRelease": {
+      "inputBottom": 760,
+      "playerTop": 751,
+      "inputBottomHitTarget": "FOOTER"
+    }
+  },
+  "dataPreservation": "Live demo seed is additive and journaled, uses only existing catalogue records, and has private pre-write database backups. Recording and validation use synthetic accounts. Downloader code, credentials and downloaded media are excluded from repository changes.",
+  "limits": [
+    "Source review covers all listed product areas; this is not an exhaustive device, accessibility, concurrency or load certification.",
+    "Production email recovery remains unavailable until an email relay is configured, as requested.",
+    "Three catalogue artists retain honest initial-based fallbacks where verified artwork was unavailable.",
+    "Large-scale caching, multi-replica coordination and backend rewrites were not introduced without a confirmed defect."
+  ]
+}

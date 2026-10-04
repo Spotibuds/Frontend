@@ -1,4 +1,5 @@
 "use client";
+import { readCataloguePages } from "@/lib/cataloguePages";
 import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
 import React, { useState } from "react";
@@ -67,7 +68,7 @@ export default function AdminPageForSongs() {
     try {
       setLoading(true);
       setError(null);
-      const data = await musicApi.getSongs();
+      const data = await readCataloguePages(musicApi.getSongs);
       setSongs(data);
     } catch (err) {
       console.error(err);
@@ -78,10 +79,7 @@ export default function AdminPageForSongs() {
   };
 
   const isModalValid =
-    modalData.title &&
-    modalData.artists[0]?.id &&
-    modalData.album?.id &&
-    (isCreateModalOpen ? modalData.audioFile : true);
+    modalData.title && modalData.artists[0]?.id && (isCreateModalOpen ? modalData.audioFile : true);
 
   useDeferredEffect(() => {
     fetchSongs();
@@ -174,7 +172,7 @@ export default function AdminPageForSongs() {
       audioFile: undefined,
     });
     setCoverPreview(undefined);
-    const fetchedArtists = await musicApi.getArtists();
+    const fetchedArtists = await readCataloguePages(musicApi.getArtists);
     setArtists(fetchedArtists);
     setAlbums([]);
     setArtistSearch("");
@@ -193,7 +191,7 @@ export default function AdminPageForSongs() {
       durationSec: song.durationSec || 0,
     });
     setCoverPreview(song.coverUrl);
-    const fetchedArtists = await musicApi.getArtists();
+    const fetchedArtists = await readCataloguePages(musicApi.getArtists);
     setArtists(fetchedArtists);
 
     if (song.artists?.[0]?.id) {
@@ -247,20 +245,15 @@ export default function AdminPageForSongs() {
   // Submit create modal
   const handleCreateSubmit = async () => {
     if (saving) return;
-    if (
-      !modalData.title ||
-      !modalData.artists[0]?.id ||
-      !modalData.album?.id ||
-      !modalData.audioFile
-    ) {
+    if (!modalData.title || !modalData.artists[0]?.id || !modalData.audioFile) {
       MySwal.fire({
         icon: "warning",
-        title: "Please fill all required fields: Title, Artist, Album, Audio File",
+        title: "Add a title, artist and audio file",
       });
       return;
     }
-    if (!modalData.artists[0]?.id || !modalData.album?.id) {
-      MySwal.fire({ icon: "warning", title: "Please select an artist and album" });
+    if (!modalData.artists[0]?.id) {
+      MySwal.fire({ icon: "warning", title: "Select an artist" });
       return;
     }
 
@@ -269,7 +262,7 @@ export default function AdminPageForSongs() {
       const formData = new FormData();
       formData.append("Title", modalData.title);
       formData.append("ArtistId", modalData.artists[0].id);
-      formData.append("AlbumId", modalData.album.id);
+      if (modalData.album?.id) formData.append("AlbumId", modalData.album.id);
       formData.append("Genre", modalData.genre || "");
       formData.append("Duration", modalData.durationSec.toString());
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);
@@ -298,10 +291,10 @@ export default function AdminPageForSongs() {
   // Submit update modal
   const handleUpdateSubmit = async () => {
     if (saving) return;
-    if (!modalData.title || !modalData.artists[0]?.id || !modalData.album?.id) {
+    if (!modalData.title || !modalData.artists[0]?.id) {
       MySwal.fire({
         icon: "warning",
-        title: "Please fill all required fields: Title, Artist, Album",
+        title: "Add a title and artist",
       });
       return;
     }
@@ -310,8 +303,10 @@ export default function AdminPageForSongs() {
     try {
       const formData = new FormData();
       formData.append("Title", modalData.title);
-      formData.append("ArtistId", modalData.artists[0].id);
-      formData.append("AlbumId", modalData.album.id);
+      const original = songs.find(song => song.id === modalData.id);
+      if (modalData.artists[0].id !== original?.artists[0]?.id)
+        formData.append("ArtistId", modalData.artists[0].id);
+      formData.append("AlbumId", modalData.album?.id || "");
       formData.append("Genre", modalData.genre || "");
       formData.append("Duration", modalData.durationSec.toString());
       if (modalData.coverFile) formData.append("CoverFile", modalData.coverFile);

@@ -11,6 +11,8 @@ import type { FeedReaction, FeedReactionSummary } from "@/lib/feedTypes";
 import { useAudio } from "@/lib/audio";
 import type { FeedSlide as Slide } from "@/lib/feedTypes";
 import { feedSlideKey as keyOf } from "@/lib/feedState";
+import RelativeTime from "@/components/ui/RelativeTime";
+import FeedSongPlayButton from "@/components/feed/FeedSongPlayButton";
 interface FeedCardState {
   me: User | null;
   artists: Artist[];
@@ -380,7 +382,6 @@ export const RecentSongCard = memo(
     song: Song | null | undefined;
     userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
   }) => {
-    const { playSong } = useAudio();
     const canPlay = Boolean(song?.fileUrl?.trim());
 
     return (
@@ -394,20 +395,14 @@ export const RecentSongCard = memo(
             <div className="flex-1 min-w-0">
               <UserHeader slide={slide} userMeta={userMeta} />
               <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <button
-                  className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0"
-                  onClick={() => song && canPlay && playSong(song)}
-                  title="Play"
-                  aria-label={`Play ${song?.title?.trim() || slide.songTitle?.trim() || "song"}`}
-                  disabled={!canPlay}
-                >
+                <div className="w-28 h-28 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
                   <MusicImage
                     src={song?.coverUrl || slide.coverUrl}
                     alt={slide.songTitle || "Song"}
                     size="large"
                     className="w-full h-full"
                   />
-                </button>
+                </div>
                 <div className="min-w-0 flex-1">
                   <div
                     className={`text-white break-words font-semibold ${
@@ -450,10 +445,18 @@ export const RecentSongCard = memo(
                     </p>
                   )}
                   {slide.playedAt && (
-                    <div className="text-gray-400 text-xs mt-1">
-                      {new Date(slide.playedAt).toLocaleDateString()}
-                    </div>
+                    <RelativeTime
+                      value={slide.playedAt}
+                      prefix="Listened "
+                      className="mt-2 block text-sm text-gray-400"
+                    />
                   )}
+                  <div className="mt-3">
+                    <FeedSongPlayButton
+                      song={song}
+                      title={song?.title?.trim() || slide.songTitle?.trim() || "song"}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -645,7 +648,6 @@ export const NowPlayingCard = memo(
     song: Song | null | undefined;
     userMeta?: { displayName?: string; username?: string; avatarUrl?: string } | null;
   }) => {
-    const { playSong } = useAudio();
     const canPlay = Boolean(song?.fileUrl?.trim());
 
     return (
@@ -659,20 +661,14 @@ export const NowPlayingCard = memo(
               </span>
             </div>
             <div className="mt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <button
-                className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0"
-                onClick={() => song && canPlay && playSong(song)}
-                title="Play"
-                aria-label={`Play ${song?.title?.trim() || slide.songTitle?.trim() || "song"}`}
-                disabled={!canPlay}
-              >
+              <div className="w-28 h-28 rounded-xl overflow-hidden bg-emerald-900/30 ring-1 ring-emerald-600/30 flex-shrink-0">
                 <MusicImage
                   src={song?.coverUrl || slide.coverUrl}
                   alt={slide.songTitle || "Song"}
                   size="large"
                   className="w-full h-full"
                 />
-              </button>
+              </div>
               <div className="min-w-0">
                 <div className="break-words text-white text-xl font-semibold">
                   {slide.songTitle || "Listening now"}
@@ -706,6 +702,12 @@ export const NowPlayingCard = memo(
                       : "Playback unavailable. The post remains available."}
                   </p>
                 )}
+                <div className="mt-3">
+                  <FeedSongPlayButton
+                    song={song}
+                    title={song?.title?.trim() || slide.songTitle?.trim() || "song"}
+                  />
+                </div>
               </div>
             </div>
             <div className="mt-3 flex justify-end">

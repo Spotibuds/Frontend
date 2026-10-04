@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 import Link from "next/link";
 import { PlayIcon, MusicalNoteIcon } from "@heroicons/react/24/outline";
 import { musicApi, identityApi, type Album, type Artist, type Song } from "@/lib/api";
@@ -7,6 +8,14 @@ import MusicImage from "@/components/ui/MusicImage";
 import SongCard from "@/components/SongCard";
 import AlbumPlayButton from "@/components/ui/AlbumPlayButton";
 import { useFavorites } from "@/contexts/FavoritesContext";
+import { Button } from "@/components/ui/Button";
+
+type Category = "songs" | "albums" | "artists";
+const emptyPages = () => ({ songs: false, albums: false, artists: false });
+const appendUnique = <T extends { id: string }>(existing: T[], next: T[]) => {
+  const ids = new Set(existing.map(item => item.id));
+  return [...existing, ...next.filter(item => !ids.has(item.id) && Boolean(ids.add(item.id)))];
+};
 
 export default function MusicDiscovery({ home = false }: { home?: boolean }) {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -16,10 +25,20 @@ export default function MusicDiscovery({ home = false }: { home?: boolean }) {
   const [errors, setErrors] = useState<string[]>([]);
   const [retry, setRetry] = useState(0);
   const [tab, setTab] = useState("All");
+  const [hasMore, setHasMore] = useState(emptyPages);
+  const [loadingMore, setLoadingMore] = useState<Category | null>(null);
+  const [pageError, setPageError] = useState<{ category: Category; message: string } | null>(null);
+  const paging = useRef({ version: 0, busy: false, offsets: { songs: 0, albums: 0, artists: 0 } });
   const favorites = useFavorites();
   const user = identityApi.getCurrentUser();
-  useEffect(() => {
+  useDeferredEffect(() => {
     let active = true;
+    const lifecycle = paging.current;
+    const version = ++lifecycle.version;
+    lifecycle.busy = false;
+    setLoadingMore(null);
+    setPageError(null);
+    setHasMore(emptyPages());
     void (async () => {
       setLoading(true);
       const results = await Promise.allSettled([
@@ -35,13 +54,79 @@ export default function MusicDiscovery({ home = false }: { home?: boolean }) {
       else unavailable.push("Albums");
       if (results[2].status === "fulfilled") setArtists(results[2].value);
       else unavailable.push("Artists");
+      const lengths = results.map(result =>
+        result.status === "fulfilled" ? result.value.length : 0
+      );
+      paging.current.offsets = { songs: lengths[0], albums: lengths[1], artists: lengths[2] };
+      setHasMore({
+        songs: !home && lengths[0] === 50,
+        albums: !home && lengths[1] === 50,
+        artists: !home && lengths[2] === 50,
+      });
       setErrors(unavailable);
       setLoading(false);
     })();
     return () => {
       active = false;
+      if (lifecycle.version === version) lifecycle.version++;
     };
   }, [home, retry]);
+  const loadMore = async (category: Category) => {
+    if (paging.current.busy || loading || home || !hasMore[category]) return;
+    const version = paging.current.version;
+    paging.current.busy = true;
+    setLoadingMore(category);
+    setPageError(null);
+    try {
+      const offset = paging.current.offsets[category];
+      let count = 0;
+      if (category === "songs") {
+        const page = await musicApi.getSongs(50, offset);
+        if (version !== paging.current.version) return;
+        count = page.length;
+        setSongs(previous => appendUnique(previous, page));
+      } else if (category === "albums") {
+        const page = await musicApi.getAlbums(50, offset);
+        if (version !== paging.current.version) return;
+        count = page.length;
+        setAlbums(previous => appendUnique(previous, page));
+      } else {
+        const page = await musicApi.getArtists(50, offset);
+        if (version !== paging.current.version) return;
+        count = page.length;
+        setArtists(previous => appendUnique(previous, page));
+      }
+      paging.current.offsets[category] += count;
+      setHasMore(previous => ({ ...previous, [category]: count === 50 }));
+    } catch {
+      if (version === paging.current.version)
+        setPageError({ category, message: `More ${category} could not be loaded. Retry.` });
+    } finally {
+      if (version === paging.current.version) {
+        paging.current.busy = false;
+        setLoadingMore(null);
+      }
+    }
+  };
+  const more = (category: Category) =>
+    !home &&
+    hasMore[category] && (
+      <div className="mt-4">
+        {pageError?.category === category && (
+          <p role="alert" className="mb-3 text-sm text-red-300">
+            {pageError.message}
+          </p>
+        )}
+        <Button
+          variant="secondary"
+          loading={loadingMore === category}
+          disabled={loadingMore !== null}
+          onClick={() => void loadMore(category)}
+        >
+          Load more {category}
+        </Button>
+      </div>
+    );
   const hour = new Date().getHours();
   return (
     <div className="page-shell">
@@ -158,6 +243,7 @@ export default function MusicDiscovery({ home = false }: { home?: boolean }) {
                 </article>
               ))}
             </div>
+            {more("albums")}
           </section>
         )}
         {(tab === "All" || tab === "Songs") && songs.length > 0 && (
@@ -170,6 +256,7 @@ export default function MusicDiscovery({ home = false }: { home?: boolean }) {
                 <SongCard key={song.id} song={song} index={index} />
               ))}
             </div>
+            {more("songs")}
           </section>
         )}
         {(tab === "All" || tab === "Artists") && artists.length > 0 && (
@@ -195,6 +282,7 @@ export default function MusicDiscovery({ home = false }: { home?: boolean }) {
                 </Link>
               ))}
             </div>
+            {more("artists")}
           </section>
         )}
       </div>

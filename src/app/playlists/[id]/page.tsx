@@ -26,6 +26,10 @@ import { Input } from "@/components/ui/Input";
 
 export default function PlaylistDetailPage() {
   const { id } = useParams<{ id: string }>();
+  return <PlaylistDetail key={id} id={id} />;
+}
+
+function PlaylistDetail({ id }: { id: string }) {
   const audio = useAudio();
   const user = identityApi.getCurrentUser();
   const [data, setData] = useState<Playlist | null>(null);
@@ -44,6 +48,7 @@ export default function PlaylistDetailPage() {
     let version = 0;
     const load = async () => {
       const request = ++version;
+      setLoading(previous => previous || !data);
       try {
         const full = await PlaylistService.getPlaylist(id);
         if (active && request === version) {
@@ -66,6 +71,8 @@ export default function PlaylistDetailPage() {
       active = false;
       window.removeEventListener(PLAYLIST_EVENT, change);
     };
+    // Each route owns a separate instance. Playlist events refresh that instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, retry]);
   const canEdit = Boolean(
     user && data && (user.id === data.createdBy || user.roles?.includes("Admin"))

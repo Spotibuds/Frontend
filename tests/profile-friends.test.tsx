@@ -1,6 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fixture = vi.hoisted(() => ({
+  route: "bob",
+  history: vi.fn(),
+  chat: vi.fn(),
   status: "none",
   requesterId: "alice",
   failRead: false,
@@ -8,7 +11,7 @@ const fixture = vi.hoisted(() => ({
   mutation: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ id: "bob" }),
+  useParams: () => ({ id: fixture.route }),
   useRouter: () => fixture.router,
 }));
 vi.mock("../src/hooks/useFriendHub", () => ({ useFriendHub: () => ({ isConnected: false }) }));
@@ -18,8 +21,9 @@ vi.mock("../src/lib/api", () => ({
   safeString: (value: unknown) => String(value || ""),
   identityApi: { getCurrentUser: () => ({ id: "alice", username: "Alice" }) },
   userApi: {
-    getUserProfile: async () => ({ id: "bob", username: "Bob" }),
-    getListeningHistory: async () => [],
+    getUserProfile: async (id: string) => ({ id, username: id === "bob" ? "Bob" : "Carol" }),
+    getListeningHistory: (...args: unknown[]) => fixture.history(...args),
+    createOrGetChat: (...args: unknown[]) => fixture.chat(...args),
     getWeeklyTopArtists: async () => [],
     getLatestReactions: async () => [],
     getFriends: async () => [],
@@ -42,6 +46,10 @@ vi.mock("../src/lib/api", () => ({
 import UserProfilePage from "../src/app/user/[id]/page";
 afterEach(cleanup);
 beforeEach(() => {
+  fixture.route = "bob";
+  fixture.history.mockReset().mockResolvedValue([]);
+  fixture.chat.mockReset();
+  fixture.router.push.mockReset();
   fixture.status = "none";
   fixture.requesterId = "alice";
   fixture.failRead = false;
@@ -53,6 +61,30 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 describe("profile friend controls", () => {
+  it("shows the profile and actions while activity is still loading", async () => {
+    fixture.history.mockImplementation(() => new Promise(() => {}));
+    render(<UserProfilePage />);
+    await screen.findByRole("heading", { name: "Bob" });
+    await screen.findByRole("button", { name: "Add Friend" });
+    expect(screen.getByText("Loading recent listening…")).toBeTruthy();
+  });
+  it("does not open an old chat after navigation to another profile", async () => {
+    fixture.status = "accepted";
+    let finish!: (chat: { chatId: string }) => void;
+    fixture.chat.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          finish = resolve;
+        })
+    );
+    const view = render(<UserProfilePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Message" }));
+    fixture.route = "carol";
+    view.rerender(<UserProfilePage />);
+    await screen.findByRole("heading", { name: "Carol" });
+    await act(async () => finish({ chatId: "old-chat" }));
+    expect(fixture.router.push).not.toHaveBeenCalled();
+  });
   it("blocks Add on a failed initial snapshot and supports a visible retry", async () => {
     fixture.failRead = true;
     render(<UserProfilePage />);

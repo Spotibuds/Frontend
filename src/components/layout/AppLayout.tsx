@@ -486,9 +486,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
                 {/* Profile Menu */}
                 <div className="relative">
-                  <button
-                    onClick={() => router.push(`/user`)}
-                    className="flex items-center space-x-2 sm:space-x-3 text-gray-300 hover:text-white transition-colors"
+                  <Link
+                    href={user?.id ? `/user/${user.id}` : "/user"}
+                    aria-label="Open your profile"
+                    className="flex min-h-11 items-center space-x-2 sm:space-x-3 text-gray-300 hover:text-white transition-colors"
                   >
                     {user?.avatarUrl ? (
                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex-shrink-0">
@@ -509,7 +510,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     <span className="hidden md:block font-medium">
                       {safeString(user?.username)}
                     </span>
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>

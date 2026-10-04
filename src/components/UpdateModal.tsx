@@ -1,4 +1,5 @@
 "use client";
+import { readCataloguePages } from "@/lib/cataloguePages";
 import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 import { useDialog } from "@/hooks/useDialog";
 
@@ -63,10 +64,10 @@ export default function UpdateModal({
   // Load artists and albums
   useEffect(() => {
     if (type === "album" || type === "song") {
-      musicApi.getArtists().then(setAllArtists).catch(console.error);
+      readCataloguePages(musicApi.getArtists).then(setAllArtists).catch(console.error);
     }
     if (type === "song") {
-      musicApi.getAlbums().then(setAllAlbums).catch(console.error);
+      readCataloguePages(musicApi.getAlbums).then(setAllAlbums).catch(console.error);
     }
   }, [type]);
 
@@ -153,12 +154,12 @@ export default function UpdateModal({
     if (!type || !data?.id || saving) return;
 
     // Validation
-    if ((type === "album" || type === "song") && !formDataState.artist?.id) {
-      setSaveError("Choose an artist from the suggestions.");
+    if (type === "song" && albumQuery.trim() && !formDataState.album?.id) {
+      setSaveError("Choose an album from the suggestions, or clear the album field for a single.");
       return;
     }
-    if (type === "song" && !formDataState.album?.id) {
-      setSaveError("Choose an album from the suggestions.");
+    if ((type === "album" || type === "song") && !formDataState.artist?.id) {
+      setSaveError("Choose an artist from the suggestions.");
       return;
     }
 
@@ -179,8 +180,15 @@ export default function UpdateModal({
       if (formDataState.audioFile) form.append("AudioFile", formDataState.audioFile);
 
       if (formDataState.coverFile) form.append("CoverFile", formDataState.coverFile);
-      if (formDataState.artists?.[0]?.id) form.append("ArtistId", formDataState.artists[0].id);
-      if (formDataState.album?.id) form.append("AlbumId", formDataState.album.id);
+      // Omitted artist keeps all existing performer credits on a metadata edit.
+      if (
+        formDataState.artist?.id &&
+        "artists" in data &&
+        formDataState.artist.id !== data.artists?.[0]?.id
+      )
+        form.append("ArtistId", formDataState.artist.id);
+      // Empty and omitted differ in the API: explicitly clearing removes the album.
+      form.append("AlbumId", formDataState.album?.id || "");
     }
 
     setSaving(true);
@@ -293,7 +301,12 @@ export default function UpdateModal({
                     key={a.id}
                     className="px-2 py-1 cursor-pointer hover:bg-gray-600"
                     onClick={() => {
-                      setFormDataState(prev => ({ ...prev, artist: a, artists: [a] }));
+                      setFormDataState(prev => ({
+                        ...prev,
+                        artist: a,
+                        artists: [a],
+                        album: type === "song" ? undefined : prev.album,
+                      }));
                       setArtistQuery(a.name);
                       setArtistSuggestions([]);
                       setAlbumQuery("");
@@ -355,8 +368,9 @@ export default function UpdateModal({
                   onChange={e => {
                     setAlbumQuery(e.target.value);
                     setHasTypedAlbum(true);
+                    setFormDataState(previous => ({ ...previous, album: null }));
                   }}
-                  placeholder="Type album name"
+                  placeholder="Album (optional)"
                   className="w-full px-3 py-2 rounded bg-gray-800 text-white mb-1"
                   disabled={!artistQuery && !formDataState.artist?.id}
                 />
@@ -440,14 +454,10 @@ export default function UpdateModal({
           </Button>
           <Button
             className={`bg-primary hover:bg-purple-300 text-primary-foreground ${
-              type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)
-                ? "opacity-50 cursor-not-allowed"
-                : ""
+              type === "song" && !formDataState.artist?.id ? "opacity-50 cursor-not-allowed" : ""
             }`}
             onClick={handleSave}
-            disabled={
-              saving || (type === "song" && (!formDataState.artist?.id || !formDataState.album?.id))
-            }
+            disabled={saving || (type === "song" && !formDataState.artist?.id)}
           >
             Save
           </Button>

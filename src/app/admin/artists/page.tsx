@@ -8,6 +8,7 @@ import { musicApi, adminApi, type Artist, type Album } from "@/lib/api";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { useDialog } from "@/hooks/useDialog";
+import { readCataloguePages } from "@/lib/cataloguePages";
 
 const MySwal = withReactContent(Swal);
 
@@ -47,7 +48,7 @@ export default function AdminPageForArtists() {
       setLoading(true);
       setError(null);
 
-      const data = await musicApi.getArtists();
+      const data = await readCataloguePages(musicApi.getArtists);
       setArtists(data);
 
       const albumsPromises = data.map(artist =>

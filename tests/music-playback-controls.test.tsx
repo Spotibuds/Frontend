@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Album, Song } from "@/lib/api";
 import type { Playlist, PlaylistSong } from "@/lib/playlist";
 
 const fixture = vi.hoisted(() => ({
+  route: "selected",
   playlist: [] as Song[],
   currentSong: null as Song | null,
   isPlaying: false,
@@ -16,7 +17,7 @@ const fixture = vi.hoisted(() => ({
   remove: vi.fn(),
   reorder: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useParams: () => ({ id: "selected" }) }));
+vi.mock("next/navigation", () => ({ useParams: () => ({ id: fixture.route }) }));
 vi.mock("@/lib/audio", () => ({
   useAudio: () => ({
     playlist: fixture.playlist,
@@ -76,6 +77,7 @@ const list = (songs: PlaylistSong[] = tracks): Playlist => ({
   updatedAt: "2026-10-04",
 });
 beforeEach(() => {
+  fixture.route = "selected";
   fixture.playlist = [];
   fixture.currentSong = null;
   fixture.isPlaying = false;
@@ -91,6 +93,50 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("playlist listening controls", () => {
+  it("hides the previous playlist while the next route loads and fails", async () => {
+    let reject!: (error: Error) => void;
+    fixture.detail.mockImplementation((id: string) =>
+      id === "next"
+        ? new Promise((_, fail) => {
+            reject = fail;
+          })
+        : Promise.resolve(list())
+    );
+    const view = render(<PlaylistDetailPage />);
+    await screen.findByRole("heading", { name: "Selected playlist" });
+    fixture.route = "next";
+    view.rerender(<PlaylistDetailPage />);
+    expect(screen.queryByRole("heading", { name: "Selected playlist" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove Shared from playlist" })).toBeNull();
+    await act(async () => reject(new Error("This playlist is private.")));
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("button", { name: "Play" })).toBeNull();
+    expect(fixture.remove).not.toHaveBeenCalled();
+  });
+
+  it("does not let a late removal response replace the newly opened playlist", async () => {
+    let finish!: () => void;
+    fixture.remove.mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finish = resolve;
+        })
+    );
+    fixture.detail.mockImplementation(async (id: string) =>
+      id === "next"
+        ? { ...list(), id: "next", name: "Next playlist", songs: [song("Next track")] }
+        : list()
+    );
+    const view = render(<PlaylistDetailPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Shared from playlist" }));
+    fixture.route = "next";
+    view.rerender(<PlaylistDetailPage />);
+    await screen.findByRole("heading", { name: "Next playlist" });
+    await act(async () => finish());
+    expect(screen.queryByRole("heading", { name: "Selected playlist" })).toBeNull();
+    expect(screen.queryByText("Song removed from this playlist.")).toBeNull();
+    expect(fixture.remove).toHaveBeenCalledWith("selected", "Shared");
+  });
   it("plays the selected full playlist when another context only shares one song", async () => {
     fixture.playlist = [tracks[0], song("Other second")];
     fixture.currentSong = tracks[0];

@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import { useParams, useRouter } from "next/navigation";
 import MusicImage from "@/components/ui/MusicImage";
+import RelativeTime from "@/components/ui/RelativeTime";
 
 import { Button } from "@/components/ui/Button";
 import {
@@ -16,7 +17,8 @@ import {
   PencilIcon,
   MusicalNoteIcon,
 } from "@heroicons/react/24/outline";
-import { userApi, identityApi, type Artist, type User } from "@/lib/api";
+import { userApi, identityApi, musicApi, type Artist, type User } from "@/lib/api";
+import { readCataloguePages } from "@/lib/cataloguePages";
 import { Playlist } from "@/lib/playlist";
 import { useFriendHub } from "@/hooks/useFriendHub";
 import { useFriendshipStatus } from "@/hooks/useFriendshipStatus";
@@ -49,14 +51,19 @@ interface UserProfile {
     artist?: string;
     coverUrl?: string;
     time: string;
+    playedAt?: string;
   }[];
   publicPlaylists?: Playlist[];
 }
 
 export default function UserProfilePage() {
-  const router = useRouter();
   const params = useParams();
   const userId = params?.id as string;
+  return <UserProfile key={userId} userId={userId} />;
+}
+
+function UserProfile({ userId }: { userId: string }) {
+  const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
   const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
@@ -64,6 +71,7 @@ export default function UserProfilePage() {
     Array<{ id: string; name: string; imageUrl?: string; count: number }>
   >([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [detailsLoading, setDetailsLoading] = useState(true);
   const [isLoadingAction, setIsLoadingAction] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
@@ -161,8 +169,7 @@ export default function UserProfilePage() {
         setHydratedTopArtists([]);
         return;
       }
-      const musicApi = (await import("@/lib/api")).musicApi;
-      const allArtists: Artist[] = await musicApi.getArtists().catch(() => []);
+      const allArtists: Artist[] = await readCataloguePages(musicApi.getArtists).catch(() => []);
       if (!active) return;
       const hydrated = profileUser.topArtists.map((a: { name: string; count: number }) => {
         const found = allArtists.find(
@@ -183,198 +190,127 @@ export default function UserProfilePage() {
     };
   }, [profileUser?.topArtists]);
   const loadReactions = useCallback(async (identityUserId: string) => {
+    const request = profileRequest.current.version;
     try {
       setIsLoadingReactions(true);
       setReactionsError("");
       const data = await userApi.getLatestReactions(identityUserId, 10, 0);
-      setReactions(data);
+      if (request === profileRequest.current.version) setReactions(data);
     } catch (error) {
-      setReactionsError(error instanceof Error ? error.message : "Reactions could not be loaded.");
+      if (request === profileRequest.current.version)
+        setReactionsError(
+          error instanceof Error ? error.message : "Reactions could not be loaded."
+        );
     } finally {
-      setIsLoadingReactions(false);
+      if (request === profileRequest.current.version) setIsLoadingReactions(false);
     }
   }, []);
 
   const loadUserProfile = useCallback(
     async (identifier: string, authenticatedUser?: { id: string; username: string } | null) => {
       const request = ++profileRequest.current.version;
+      const current = () => request === profileRequest.current.version;
       const unavailable: string[] = [];
+      setIsLoading(true);
+      setDetailsLoading(true);
+      setError(null);
+      setDetailsError("");
+      setProfileUser(null);
+      setReactions([]);
+      setShowFriendsPopup(false);
+      setShowPlaylistsPopup(false);
       try {
-        setIsLoading(true);
-        setError(null);
-        setDetailsError("");
-
-        let userData: UserProfile | null = null;
-
+        let user: User;
         try {
-          const userResult = await userApi.getUserProfile(identifier);
-          userData = {
-            id: userResult.id,
-            identityUserId: identifier, // Use the identifier as identityUserId since that's what was passed
-            username: userResult.username,
-            displayName: userResult.displayName,
-            bio: userResult.bio,
-            email: userResult.email,
-            avatarUrl: userResult.avatarUrl,
-            isPrivate: userResult.isPrivate,
-            playlists: undefined, // We don't have playlist details from getUserProfile anymore
-          };
-        } catch {
-          try {
-            const searchResults = await userApi.searchUsers(identifier);
-            const userByUsername = searchResults.find(
-              user => user.username.toLowerCase() === identifier.toLowerCase()
-            );
-            if (userByUsername) {
-              const userResult = await userApi.getUserProfile(userByUsername.id);
-              userData = {
-                id: userResult.id,
-                identityUserId: userByUsername.id, // Use the found user's id as identityUserId
-                username: userResult.username,
-                displayName: userResult.displayName,
-                bio: userResult.bio,
-                email: userResult.email,
-                avatarUrl: userResult.avatarUrl,
-                isPrivate: userResult.isPrivate,
-                playlists: undefined, // We don't have playlist details from getUserProfile anymore
-              };
-            }
-          } catch {
-            // Username search failed, continue with null userData
-          }
-        }
-
-        if (request !== profileRequest.current.version) return;
-        if (!userData) {
-          setError("User not found");
-          setProfileUser(null);
-          return;
-        }
-
-        // Use the passed user parameter - don't reference currentUser to avoid dependency issues
-        const activeUser = authenticatedUser;
-
-        // Fetch listening history for recent activity
-        let recentActivity: {
-          action: string;
-          item: string;
-          artist: string;
-          coverUrl?: string;
-          time: string;
-        }[] = [];
-
-        // Load recent activity for own profile or non-private users
-        const shouldLoadActivity =
-          activeUser &&
-          (userData.identityUserId === activeUser.id || // Own profile
-            !userData.isPrivate); // Public profile
-
-        if (shouldLoadActivity) {
-          try {
-            const listeningHistory = await userApi.getListeningHistory(userData.identityUserId);
-            // Transform listening history into recent activity format
-            recentActivity = listeningHistory
-              .slice(0, 10)
-              .map(
-                (item: {
-                  songTitle?: string;
-                  title?: string;
-                  artist?: string | { name: string };
-                  coverUrl?: string;
-                  playedAt: string;
-                }) => ({
-                  action: "Listened to",
-                  item: item.songTitle || item.title || "Unknown Song",
-                  artist:
-                    typeof item.artist === "string"
-                      ? item.artist
-                      : item.artist?.name || "Unknown Artist",
-                  coverUrl: item.coverUrl,
-                  time: new Date(item.playedAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                })
-              );
-          } catch (error) {
-            console.error("Failed to load listening history:", error);
-            unavailable.push("Recent activity could not be loaded.");
-          }
-        }
-
-        // Fetch user's playlists
-        let userPlaylists: Playlist[] = [];
-        try {
-          const { PlaylistService } = await import("@/lib/playlist");
-          userPlaylists = await PlaylistService.getUserPlaylists(userData.identityUserId);
-          // Filter to only public playlists (playlists that can be viewed by others)
-          userPlaylists = userPlaylists.filter(
-            playlist => playlist.isPublic === true && playlist.name?.trim()
+          user = await userApi.getUserProfile(identifier);
+        } catch (error) {
+          // Username routes are supported, but failures for an account ID are
+          // not a reason to issue an unrelated search or mask a private profile.
+          if (
+            /^(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(
+              identifier
+            )
+          )
+            throw error;
+          const matches = await userApi.searchUsers(identifier);
+          const match = matches.find(
+            person => person.username.toLowerCase() === identifier.toLowerCase()
           );
-        } catch (error) {
-          console.error("Failed to load user playlists:", error);
-          userPlaylists = [];
-          unavailable.push("Public playlists could not be loaded.");
+          if (!match) throw new Error("User not found");
+          user = await userApi.getUserProfile(match.id);
         }
-
-        // Fetch weekly top artists (only for own profile as marked private)
-        let topArtists: Array<{ name: string; count: number }> = [];
-        try {
-          if (userData.identityUserId) {
-            topArtists = await userApi.getWeeklyTopArtists(userData.identityUserId);
-          }
-        } catch {
-          topArtists = [];
-          if (!userData.isPrivate || userData.identityUserId === activeUser?.id)
-            unavailable.push("Top artists could not be loaded.");
-        }
-
-        if (request !== profileRequest.current.version) return;
+        if (!current()) return;
+        const account = user.id;
+        const visible = !user.isPrivate || account === authenticatedUser?.id;
         setProfileUser({
-          id: userData.id,
-          identityUserId: userData.identityUserId,
-          username: userData.username,
-          displayName: userData.displayName,
-          bio: userData.bio,
-          avatarUrl: userData.avatarUrl,
-          isPrivate: userData.isPrivate,
-          friendCount: 0, // Will be set after fetching friends data
-          playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
-          topArtists,
-          recentActivity: recentActivity,
-          publicPlaylists: userPlaylists,
+          id: account,
+          identityUserId: account,
+          username: user.username,
+          displayName: user.displayName,
+          bio: user.bio,
+          avatarUrl: user.avatarUrl,
+          isPrivate: user.isPrivate,
         });
-
-        // Load reactions for this user
-        if (userData.identityUserId === activeUser?.id) {
-          loadReactions(userData.identityUserId);
+        setIsLoading(false);
+        // The profile is usable immediately. Independent sections populate as
+        // their requests finish; one slow service does not hide the whole page.
+        const update = (patch: Partial<UserProfile>) => {
+          if (current())
+            setProfileUser(previous => (previous ? { ...previous, ...patch } : previous));
+        };
+        const section = async (label: string, work: () => Promise<void>) => {
+          try {
+            await work();
+          } catch {
+            if (current()) unavailable.push(label + " could not be loaded.");
+          }
+        };
+        if (account === authenticatedUser?.id) void loadReactions(account);
+        await Promise.all([
+          visible
+            ? section("Recent activity", async () => {
+                const history = await userApi.getListeningHistory(account, 5, 0);
+                update({
+                  recentActivity: history.map(item => ({
+                    action: "Listened to",
+                    item: item.songTitle || "Unknown song",
+                    artist: item.artist,
+                    playedAt: item.playedAt,
+                    time: item.playedAt,
+                  })),
+                });
+              })
+            : Promise.resolve(),
+          section("Public playlists", async () => {
+            const { PlaylistService } = await import("@/lib/playlist");
+            const lists = await PlaylistService.getUserPlaylists(account);
+            update({ publicPlaylists: lists.filter(list => list.isPublic && list.name?.trim()) });
+          }),
+          visible
+            ? section("Top artists", async () => {
+                update({ topArtists: await userApi.getWeeklyTopArtists(account) });
+              })
+            : Promise.resolve(),
+          section("Friends", async () => {
+            update({ friendCount: (await userApi.getFriends(account)).length });
+          }),
+        ]);
+        if (current()) {
+          setDetailsError(unavailable.join(" "));
+          setDetailsLoading(false);
         }
-
-        // Fetch friends count
-        try {
-          const friends = await userApi.getFriends(userData.identityUserId);
-          const friendsCount = Array.isArray(friends) ? friends.length : 0;
-          if (request !== profileRequest.current.version) return;
-          setProfileUser(prev => (prev ? { ...prev, friendCount: friendsCount } : prev));
-        } catch (error) {
-          console.error("Failed to load friends count:", error);
-          unavailable.push("Friends could not be loaded.");
-        }
-        if (request === profileRequest.current.version) setDetailsError(unavailable.join(" "));
       } catch (error) {
-        console.error("Failed to load user profile:", error);
-        if (request === profileRequest.current.version) {
-          setError("Failed to load user profile");
+        if (current()) {
+          setError(error instanceof Error ? error.message : "Profile could not be loaded. Retry.");
           setProfileUser(null);
+          setDetailsLoading(false);
         }
       } finally {
-        if (request === profileRequest.current.version) setIsLoading(false);
+        if (current()) setIsLoading(false);
       }
     },
     [loadReactions]
-  ); // Remove currentUser from dependencies since we pass the user as parameter
+  );
 
   useDeferredEffect(() => {
     const user = identityApi.getCurrentUser();
@@ -514,10 +450,10 @@ export default function UserProfilePage() {
 
   const handleMessage = async () => {
     if (!currentUser || !profileUser) return;
-
+    const request = profileRequest.current.version;
     try {
       const chat = await userApi.createOrGetChat([currentUser.id, profileUser.identityUserId]);
-      router.push(`/chat/${chat.chatId}`);
+      if (request === profileRequest.current.version) router.push(`/chat/${chat.chatId}`);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Chat could not be opened. Please retry."
@@ -746,7 +682,9 @@ export default function UserProfilePage() {
               Friends{" "}
               {detailsError.includes("Friends")
                 ? "unavailable"
-                : "(" + (profileUser.friendCount ?? 0) + ")"}
+                : profileUser.friendCount === undefined
+                  ? "…"
+                  : "(" + profileUser.friendCount + ")"}
             </button>
             <button
               onClick={handleShowPlaylists}
@@ -755,7 +693,9 @@ export default function UserProfilePage() {
               Public playlists{" "}
               {detailsError.includes("playlists")
                 ? "unavailable"
-                : "(" + (profileUser.publicPlaylists?.length ?? 0) + ")"}
+                : !profileUser.publicPlaylists
+                  ? "…"
+                  : "(" + profileUser.publicPlaylists.length + ")"}
             </button>
             {canViewActivity && (
               <Link
@@ -830,7 +770,9 @@ export default function UserProfilePage() {
               ) : (
                 !detailsError.includes("Top artists") && (
                   <p className="text-sm text-gray-400">
-                    No top artists yet. Your listening will appear here.
+                    {detailsLoading
+                      ? "Loading top artists…"
+                      : "No top artists yet. Your listening will appear here."}
                   </p>
                 )
               )}
@@ -850,13 +792,18 @@ export default function UserProfilePage() {
                         <p className="break-words font-medium">{activity.item}</p>
                         <p className="text-sm text-gray-400">{activity.artist}</p>
                       </div>
-                      <span className="text-xs text-gray-400">{activity.time}</span>
+                      <RelativeTime
+                        value={activity.playedAt || activity.time}
+                        className="text-xs text-gray-400"
+                      />
                     </li>
                   ))}
                 </ol>
               ) : (
                 !detailsError.includes("Recent activity") && (
-                  <p className="text-sm text-gray-400">No recent listening yet.</p>
+                  <p className="text-sm text-gray-400">
+                    {detailsLoading ? "Loading recent listening…" : "No recent listening yet."}
+                  </p>
                 )
               )}
             </section>
@@ -945,7 +892,11 @@ export default function UserProfilePage() {
           {profileUser.publicPlaylists?.length
             ? playlistCards(profileUser.publicPlaylists)
             : !detailsError.includes("playlists") && (
-                <p className="text-sm text-gray-400">No public playlists yet.</p>
+                <p className="text-sm text-gray-400">
+                  {!profileUser.publicPlaylists && detailsLoading
+                    ? "Loading public playlists…"
+                    : "No public playlists yet."}
+                </p>
               )}
         </section>
       </main>

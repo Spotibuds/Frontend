@@ -146,7 +146,8 @@ export default function ChatPage() {
   return (
     <>
       <div
-        className={`fixed top-16 bottom-20 md:bottom-28 transition-all duration-300 z-35 ${sidebarOpen ? "left-0 lg:left-72" : "left-0"} right-0`}
+        style={{ bottom: "var(--music-player-height, 112px)" }}
+        className={`fixed top-16 transition-all duration-300 z-35 ${sidebarOpen ? "left-0 lg:left-72" : "left-0"} right-0`}
       >
         <div className="flex flex-col h-full max-w-full">
           <div className="bg-gray-900 px-4 py-2">

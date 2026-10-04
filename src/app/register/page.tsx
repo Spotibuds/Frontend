@@ -1,7 +1,7 @@
 "use client";
 import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -27,6 +27,9 @@ export default function RegisterPage() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [registrationPending, setRegistrationPending] = useState(false);
+  const registered = useRef<{ username: string; password: string; confirmed: boolean } | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -101,17 +104,36 @@ export default function RegisterPage() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { confirmPassword, recaptchaToken, ...registerData } = formData;
-      if (!registrationPending) await identityApi.register(registerData);
+      if (!registrationPending) {
+        await identityApi.register(registerData);
+        registered.current = {
+          username: formData.username,
+          password: formData.password,
+          confirmed: true,
+        };
+        setRegistrationPending(true);
+      }
 
       // Auto-login after successful registration
       await identityApi.login({
-        username: formData.username,
-        password: formData.password,
+        username: registered.current?.username || formData.username,
+        password: registered.current?.password || formData.password,
       });
 
       router.push("/dashboard");
     } catch (error) {
+      if (registered.current?.confirmed) {
+        setErrors({
+          general: `Your account was created, but sign-in could not finish. ${error instanceof Error ? error.message : "Please retry."} Use Retry sign-in.`,
+        });
+        return;
+      }
       if (error instanceof ApiError && error.status === 503) {
+        registered.current = {
+          username: formData.username,
+          password: formData.password,
+          confirmed: false,
+        };
         setRegistrationPending(true);
         setErrors({
           general:
@@ -217,6 +239,7 @@ export default function RegisterPage() {
               placeholder="Choose a username"
               value={formData.username}
               onChange={handleInputChange("username")}
+              disabled={registrationPending || loading}
               error={errors.username}
               required
             />
@@ -228,6 +251,7 @@ export default function RegisterPage() {
               placeholder="Enter your email"
               value={formData.email}
               onChange={handleInputChange("email")}
+              disabled={registrationPending || loading}
               error={errors.email}
               required
             />
@@ -241,6 +265,7 @@ export default function RegisterPage() {
                 placeholder="Create a password"
                 value={formData.password}
                 onChange={handleInputChange("password")}
+                disabled={registrationPending || loading}
                 error={errors.password}
                 required
               />
@@ -273,6 +298,7 @@ export default function RegisterPage() {
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
                 onChange={handleInputChange("confirmPassword")}
+                disabled={registrationPending || loading}
                 error={errors.confirmPassword}
                 required
               />

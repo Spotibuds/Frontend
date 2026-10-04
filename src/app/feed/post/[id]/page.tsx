@@ -10,6 +10,7 @@ import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, musicApi, type Song, type Artist } from "@/lib/api";
 import { PostReactions } from "@/components/feed/FeedCards";
 import { useAudio } from "@/lib/audio";
+import RelativeTime from "@/components/ui/RelativeTime";
 
 // Enhanced user display component
 const UserHeader = ({ post, userProfile }: { post: FeedPost; userProfile?: User | null }) => {
@@ -389,7 +390,7 @@ export default function SinglePostPage() {
                             d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                           />
                         </svg>
-                        Played on {new Date(post.playedAt).toLocaleDateString()}
+                        <RelativeTime value={post.playedAt} prefix="Listened " />
                       </div>
                     )}
                   </div>

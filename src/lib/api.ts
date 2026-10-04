@@ -271,12 +271,14 @@ export const musicApi = {
     return true;
   },
 
-  async getSongs(limit?: number): Promise<Song[]> {
+  async getSongs(limit?: number, skip = 0): Promise<Song[]> {
     try {
       const url = limit
         ? `${API_CONFIG.MUSIC_API}/api/songs?limit=${limit}`
         : `${API_CONFIG.MUSIC_API}/api/songs`;
-      const response = await apiRequest<Song[]>(url);
+      const response = await apiRequest<Song[]>(
+        skip ? `${url}${limit ? "&" : "?"}skip=${skip}` : url
+      );
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch songs:", error);
@@ -294,12 +296,14 @@ export const musicApi = {
     }
   },
 
-  async getAlbums(limit?: number): Promise<Album[]> {
+  async getAlbums(limit?: number, skip = 0): Promise<Album[]> {
     try {
       const url = limit
         ? `${API_CONFIG.MUSIC_API}/api/albums?limit=${limit}`
         : `${API_CONFIG.MUSIC_API}/api/albums`;
-      const response = await apiRequest<Album[]>(url);
+      const response = await apiRequest<Album[]>(
+        skip ? `${url}${limit ? "&" : "?"}skip=${skip}` : url
+      );
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch albums:", error);
@@ -307,12 +311,14 @@ export const musicApi = {
     }
   },
 
-  async getArtists(limit?: number): Promise<Artist[]> {
+  async getArtists(limit?: number, skip = 0): Promise<Artist[]> {
     try {
       const url = limit
         ? `${API_CONFIG.MUSIC_API}/api/artists?limit=${limit}`
         : `${API_CONFIG.MUSIC_API}/api/artists`;
-      const response = await apiRequest<Artist[]>(url);
+      const response = await apiRequest<Artist[]>(
+        skip ? `${url}${limit ? "&" : "?"}skip=${skip}` : url
+      );
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch artists:", error);
@@ -330,9 +336,11 @@ export const musicApi = {
     }
   },
 
-  async getArtist(id: string): Promise<Artist> {
+  async getArtist(id: string, signal?: AbortSignal): Promise<Artist> {
     try {
-      const response = await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/artists/${id}`);
+      const response = await apiRequest<Artist>(`${API_CONFIG.MUSIC_API}/api/artists/${id}`, {
+        signal,
+      });
       return response;
     } catch (error) {
       console.error("Failed to fetch artist:", error);
@@ -340,12 +348,12 @@ export const musicApi = {
     }
   },
 
-  async getArtistAlbums(artistId: string, limit?: number): Promise<Album[]> {
+  async getArtistAlbums(artistId: string, limit?: number, signal?: AbortSignal): Promise<Album[]> {
     try {
       const url = limit
         ? `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums?limit=${limit}`
         : `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/albums`;
-      const response = await apiRequest<Album[]>(url);
+      const response = await apiRequest<Album[]>(url, { signal });
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch artist albums:", error);
@@ -353,12 +361,12 @@ export const musicApi = {
     }
   },
 
-  async getArtistSongs(artistId: string, limit?: number): Promise<Song[]> {
+  async getArtistSongs(artistId: string, limit?: number, signal?: AbortSignal): Promise<Song[]> {
     try {
       const url = limit
         ? `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs?limit=${limit}`
         : `${API_CONFIG.MUSIC_API}/api/artists/${artistId}/songs`;
-      const response = await apiRequest<Song[]>(url);
+      const response = await apiRequest<Song[]>(url, { signal });
       return Array.isArray(response) ? response : [];
     } catch (error) {
       console.warn("Failed to fetch artist songs:", error);
