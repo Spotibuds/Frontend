@@ -18,17 +18,27 @@ export default function TopNavigation() {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <nav className="w-full bg-black border-b border-purple-700 px-4 py-3">
+    <nav
+      aria-label="Administration"
+      className="w-full bg-gray-900 border-b border-gray-700 px-4 py-3"
+    >
       {/* Mobile Hamburger Button */}
       <div className="flex items-center justify-between md:hidden">
         <span className="text-purple-200 font-bold text-lg">Admin</span>
-        <button onClick={() => setIsOpen(!isOpen)} className="text-purple-200 focus:outline-none">
+        <button
+          aria-label={isOpen ? "Close administration menu" : "Open administration menu"}
+          aria-expanded={isOpen}
+          aria-controls="admin-navigation"
+          onClick={() => setIsOpen(!isOpen)}
+          className="icon-button"
+        >
           {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
       </div>
 
       {/* Menu */}
       <ul
+        id="admin-navigation"
         className={`
           mt-2 md:mt-0 md:flex md:justify-center md:items-center md:flex-wrap gap-2
           ${isOpen ? "flex flex-col items-center" : "hidden md:flex"}
@@ -41,12 +51,13 @@ export default function TopNavigation() {
             <li key={name} className="flex-shrink-0">
               <Link
                 href={href}
+                aria-current={isActive ? "page" : undefined}
                 className={`
                   flex items-center gap-2 px-3 py-2 rounded-lg transition
                   ${
                     isActive
-                      ? "bg-purple-600 text-white shadow"
-                      : "text-purple-200 hover:bg-purple-800 hover:text-white"
+                      ? "bg-gray-800 text-white"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
                   }
                 `}
                 onClick={() => setIsOpen(false)} // close menu on click

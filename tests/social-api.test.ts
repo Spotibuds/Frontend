@@ -5,6 +5,20 @@ import { userApi } from "../src/lib/api";
 beforeEach(() => {
   fixture.request.mockReset().mockResolvedValue(undefined);
 });
+it("sends the server's canonical profile username field and preserves avatar removal", async () => {
+  await userApi.updateUserProfileByIdentityId("account-guid", {
+    username: "new_name",
+    avatarUrl: "",
+    isPrivate: true,
+  });
+  expect(fixture.request).toHaveBeenCalledWith(
+    expect.stringMatching(/\/api\/users\/identity\/account-guid$/),
+    {
+      method: "PUT",
+      body: JSON.stringify({ avatarUrl: "", isPrivate: true, userName: "new_name" }),
+    }
+  );
+});
 it("uses the pending-only cancellation contract and sends only the canonical recipient property", async () => {
   await userApi.cancelFriendRequest("opaque-current-request");
   expect(fixture.request).toHaveBeenCalledWith(

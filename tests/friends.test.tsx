@@ -124,6 +124,8 @@ describe("friend request UI transitions without an own realtime echo", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Friends (1)" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Accept friend request from Bob" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(fixture.remove).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Remove friend" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Friends (0)" })).toBeTruthy());
     expect(fixture.accept).toHaveBeenCalledWith("incoming-1", "alice");
     expect(fixture.remove).toHaveBeenCalledTimes(1);

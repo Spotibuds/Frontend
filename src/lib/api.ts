@@ -474,13 +474,16 @@ export const userApi = {
       username?: string;
       displayName?: string;
       bio?: string;
+      avatarUrl?: string;
       isPrivate?: boolean;
     }
-  ) =>
-    apiRequest<void>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`, {
+  ) => {
+    const { username, ...profile } = data;
+    return apiRequest<void>(`${API_CONFIG.USER_API}/api/users/identity/${identityUserId}`, {
       method: "PUT",
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify({ ...profile, userName: username }),
+    });
+  },
 
   // Friend management
   sendFriendRequest: (requesterId: string, addresseeId: string) => {

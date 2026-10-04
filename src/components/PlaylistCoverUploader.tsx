@@ -57,9 +57,9 @@ export default function PlaylistCoverUploader({
   };
 
   const handleDeleteCover = async () => {
-    if (!currentCoverUrl) return;
+    if (!currentCoverUrl || uploading || deleting) return;
 
-    if (!confirm("Are you sure you want to delete the cover image?")) return;
+    setError("");
 
     setDeleting(true);
     try {
@@ -97,7 +97,7 @@ export default function PlaylistCoverUploader({
           )}
 
           {/* Overlay with upload/delete buttons */}
-          <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
+          <div className="absolute inset-0 bg-black bg-opacity-50 opacity-100 group-focus-within:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-3">
             <button
               type="button"
               onClick={e => {
@@ -106,8 +106,8 @@ export default function PlaylistCoverUploader({
                 fileInputRef.current?.click();
               }}
               disabled={uploading || deleting}
-              className="bg-purple-600 hover:bg-purple-700 text-white p-2 rounded-full transition-colors disabled:opacity-50"
-              title={currentCoverUrl ? "Change cover" : "Upload cover"}
+              className="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-full transition-colors disabled:opacity-50"
+              aria-label={currentCoverUrl ? "Change cover" : "Upload cover"}
             >
               {uploading ? (
                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -126,7 +126,7 @@ export default function PlaylistCoverUploader({
                 }}
                 disabled={uploading || deleting}
                 className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full transition-colors disabled:opacity-50"
-                title="Delete cover"
+                aria-label="Delete cover"
               >
                 {deleting ? (
                   <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -151,7 +151,9 @@ export default function PlaylistCoverUploader({
 
       {/* Upload hint */}
       <p className="text-sm text-gray-400 mt-2 text-center">
-        {currentCoverUrl ? "Hover to change or delete cover" : "Click to upload cover image"}
+        {currentCoverUrl
+          ? "Change or remove the cover using the buttons"
+          : "Choose an image to add a cover"}
       </p>
       <p className="text-xs text-gray-500 text-center">Max 5MB • JPEG, PNG, WebP</p>
     </div>

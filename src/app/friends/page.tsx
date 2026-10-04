@@ -4,6 +4,7 @@ import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import Dialog from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import MusicImage from "@/components/ui/MusicImage";
 import { Toast } from "@/components/ui/Toast";
@@ -28,10 +29,13 @@ export default function FriendsPage() {
   const [friends, setFriends] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
   const [processingFriends, setProcessingFriends] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState<User | null>(null);
+  const [removeError, setRemoveError] = useState("");
   const [toasts, setToasts] = useState<
     Array<{ id: string; message: string; type: "success" | "error" | "info" }>
   >([]);
@@ -166,6 +170,7 @@ export default function FriendsPage() {
         user => user.id !== currentUser?.id && !friends.some(friend => friend.id === user.id)
       );
       setSearchResults(filtered);
+      setHasSearched(true);
       await checkSentRequests(filtered, version);
     } catch {
       if (version === lifetime.current.searchVersion)
@@ -263,16 +268,21 @@ export default function FriendsPage() {
   };
   const handleRemoveFriend = async (friendId: string) => {
     if (!currentUser?.id || processingFriends.has(friendId)) return;
+    setRemoveError("");
     setProcessingFriends(previous => new Set([...previous, friendId]));
     try {
       const friendship = await userApi.getFriendshipStatus(currentUser.id, friendId);
       if (!friendship.friendshipId)
         throw new Error("Friendship could not be found. Refresh and retry.");
       await userApi.removeFriend(friendship.friendshipId, currentUser.id);
+      setRemoving(null);
       setFriends(previous => previous.filter(friend => friend.id !== friendId));
       addToast("Friend removed.", "success");
       await loadAll();
     } catch (error) {
+      setRemoveError(
+        error instanceof Error ? error.message : "Friend could not be removed. Retry."
+      );
       addToast(
         error instanceof Error ? error.message : "Friend could not be removed. Please retry.",
         "error"
@@ -299,11 +309,11 @@ export default function FriendsPage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gray-900 p-6">
+      <div className="page-shell">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-2">Friends</h1>
                 <p className="text-gray-400">
@@ -317,7 +327,6 @@ export default function FriendsPage() {
                 <span className="text-sm text-gray-400">
                   {isConnected ? "Connected" : connectionState}
                 </span>
-                {hubError && <span className="text-sm text-red-400">({hubError})</span>}
               </div>
             </div>
           </div>
@@ -344,7 +353,7 @@ export default function FriendsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Friend Requests - Compact */}
             <div className="lg:col-span-1">
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+              <Card className="bg-gray-800">
                 <div className="p-4">
                   <h2 className="text-lg font-semibold text-white mb-3">
                     Requests ({friendRequests.length})
@@ -389,7 +398,7 @@ export default function FriendsPage() {
                               onClick={() => handleDeclineRequest(request.requestId)}
                               aria-label={`Decline friend request from ${request.requesterUsername || "user"}`}
                               disabled={processingRequests.has(request.requestId)}
-                              className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              className="px-3 py-1 text-xs bg-gray-700 text-red-300 hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
                               ✕
                             </Button>
@@ -433,9 +442,9 @@ export default function FriendsPage() {
 
             {/* Friends & Search Combined */}
             <div className="lg:col-span-3">
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20">
+              <Card className="bg-gray-800">
                 <div className="p-6">
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                     <h2 className="text-xl font-semibold text-white">Friends ({friends.length})</h2>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <Input
@@ -446,6 +455,7 @@ export default function FriendsPage() {
                         onChange={e => {
                           lifetime.current.searchVersion++;
                           setSearchQuery(e.target.value);
+                          setHasSearched(false);
                           setIsSearching(false);
                           if (!e.target.value.trim()) setSearchResults([]);
                         }}
@@ -455,13 +465,18 @@ export default function FriendsPage() {
                       <Button
                         onClick={handleSearch}
                         disabled={isSearching || !searchQuery.trim()}
-                        className="px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-sm w-full sm:w-auto"
+                        className="px-4 bg-primary text-primary-foreground hover:bg-purple-300 disabled:opacity-50 text-sm w-full sm:w-auto"
                       >
-                        {isSearching ? "..." : "Search"}
+                        {isSearching ? "Searching…" : "Search"}
                       </Button>
                     </div>
                   </div>
 
+                  {hasSearched && !isSearching && !searchResults.length && (
+                    <p role="status" className="mb-4 text-sm text-gray-400">
+                      No people found. Try another username.
+                    </p>
+                  )}
                   {/* Search Results */}
                   {searchResults.length > 0 && (
                     <div className="mb-6">
@@ -470,7 +485,7 @@ export default function FriendsPage() {
                         {searchResults.map(user => (
                           <div
                             key={`search-${user.id}`}
-                            className="flex items-center gap-3 p-3 bg-blue-900/20 rounded-lg border border-blue-500/20"
+                            className="flex items-center gap-3 p-3 bg-gray-700 rounded-lg"
                           >
                             <MusicImage
                               src={user.avatarUrl}
@@ -497,7 +512,7 @@ export default function FriendsPage() {
                                 incomingTargets.has(user.id) ||
                                 processingRequests.has(user.id)
                                   ? "bg-gray-600 cursor-not-allowed"
-                                  : "bg-blue-600 hover:bg-blue-700"
+                                  : "bg-primary text-primary-foreground hover:bg-purple-300"
                               }`}
                             >
                               {friends.some(friend => friend.id === user.id)
@@ -556,9 +571,12 @@ export default function FriendsPage() {
                             <p className="text-gray-400 text-sm">Friend</p>
                           </div>
                           <Button
-                            onClick={() => handleRemoveFriend(friend.id)}
+                            onClick={() => {
+                              setRemoving(friend);
+                              setRemoveError("");
+                            }}
                             disabled={processingFriends.has(friend.id)}
-                            className="px-3 py-1 text-xs bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-3 py-1 text-xs bg-gray-700 text-red-300 hover:bg-red-950 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {processingFriends.has(friend.id) ? "..." : "Remove"}
                           </Button>
@@ -572,6 +590,40 @@ export default function FriendsPage() {
           </div>
         </div>
 
+        <Dialog
+          open={Boolean(removing)}
+          onClose={() => {
+            if (!processingFriends.size) setRemoving(null);
+          }}
+          title="Remove friend?"
+        >
+          <p className="text-sm text-gray-300">
+            Remove {removing?.username} from your friends? You can send a new friend request later.
+          </p>
+          {removeError && (
+            <p role="alert" className="mt-3 text-sm text-red-300">
+              {removeError}
+            </p>
+          )}
+          <div className="mt-6 flex gap-3">
+            <Button
+              variant="secondary"
+              disabled={Boolean(processingFriends.size)}
+              onClick={() => setRemoving(null)}
+            >
+              Keep friend
+            </Button>
+            <Button
+              variant="destructive"
+              loading={Boolean(processingFriends.size)}
+              onClick={() => {
+                if (removing) void handleRemoveFriend(removing.id);
+              }}
+            >
+              Remove friend
+            </Button>
+          </div>
+        </Dialog>
         {/* Toast Notifications */}
         <div className="fixed top-4 right-4 z-50 space-y-2">
           {toasts.map(toast => (

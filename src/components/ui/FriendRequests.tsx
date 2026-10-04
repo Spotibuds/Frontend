@@ -155,7 +155,7 @@ export default function FriendRequests({ className = "" }: FriendRequestsProps) 
               className="flex items-center justify-between p-4 bg-gray-700/30 rounded-lg"
             >
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
                   <span className="text-white font-bold">
                     {request.requesterUsername.charAt(0).toUpperCase()}
                   </span>

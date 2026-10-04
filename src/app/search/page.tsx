@@ -5,13 +5,9 @@ import { useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { MagnifyingGlassIcon, PlayIcon } from "@heroicons/react/24/outline";
 import {
-  MagnifyingGlassIcon,
-  UserIcon,
-  MusicalNoteIcon,
-  PlayIcon,
-} from "@heroicons/react/24/outline";
-import {
+  identityApi,
   musicApi,
   userApi,
   processArtists,
@@ -61,20 +57,8 @@ function SearchContent() {
   const [modalData, setModalData] = useState<Song | Album | Artist | null>(null);
 
   useDeferredEffect(() => {
-    try {
-      const storedUser = localStorage.getItem("currentUser");
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        if (parsedUser?.roles?.includes("Admin")) {
-          setIsAdmin(true);
-        }
-      }
-    } catch (error) {
-      console.warn("Failed to parse currentUser from localStorage", error);
-      setIsAdmin(false);
-    }
+    setIsAdmin(identityApi.getCurrentUser()?.roles?.includes("Admin") || false);
   }, []);
-
   // Load query from URL params on mount
   useDeferredEffect(() => {
     const urlQuery = searchParams.get("q");
@@ -207,7 +191,7 @@ function SearchContent() {
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      throw err;
     }
   }
 
@@ -289,20 +273,6 @@ function SearchContent() {
     }
   };
 
-  const getResultIcon = (type: string) => {
-    switch (type) {
-      case "user":
-        return <UserIcon className="w-4 h-4" />;
-      case "song":
-      case "album":
-      case "artist":
-      case "playlist":
-        return <MusicalNoteIcon className="w-4 h-4" />;
-      default:
-        return <MagnifyingGlassIcon className="w-4 h-4" />;
-    }
-  };
-
   const filters: { key: SearchFilter; label: string; count?: number }[] = [
     { key: "all", label: "All", count: results.length },
     { key: "songs", label: "Songs", count: results.filter(r => r.type === "song").length },
@@ -349,10 +319,11 @@ function SearchContent() {
               {filters.map(filterOption => (
                 <button
                   key={filterOption.key}
+                  aria-pressed={filter === filterOption.key}
                   onClick={() => setFilter(filterOption.key)}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                     filter === filterOption.key
-                      ? "bg-purple-600 text-white"
+                      ? "bg-gray-700 text-white"
                       : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white"
                   }`}
                 >
@@ -379,16 +350,18 @@ function SearchContent() {
         {/* Results */}
         {!isLoading && hasSearched && (
           <div className="space-y-4">
+            <p role="status" className="text-sm text-gray-400">
+              {filteredResults.length} results
+            </p>
             {filteredResults.length > 0 ? (
               <div className="grid gap-4">
                 {filteredResults.map(result => (
                   <Card
                     key={`${result.type}-${result.id}`}
-                    className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 hover:bg-gray-700/80 hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-500/20 transition-all duration-300 cursor-pointer group transform hover:scale-[1.02]"
-                    onClick={() => handleResultClick(result)}
+                    className="bg-gray-800 hover:bg-gray-700/50 transition-colors group"
                   >
                     <CardContent className="p-4">
-                      <div className="flex items-center space-x-4">
+                      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 sm:flex">
                         <div className="flex-shrink-0">
                           {result.type === "user" ? (
                             // User avatar
@@ -399,7 +372,7 @@ function SearchContent() {
                                 className="w-16 h-16 rounded-full object-cover"
                               />
                             ) : (
-                              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                              <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center">
                                 <span className="text-white font-bold text-xl">
                                   {safeString(result.title).charAt(0).toUpperCase()}
                                 </span>
@@ -411,37 +384,33 @@ function SearchContent() {
                               src={result.image}
                               alt={safeString(result.title)}
                               fallbackText={safeString(result.title).charAt(0).toUpperCase()}
-                              size="large"
+                              size="small"
                               type="square"
                             />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-2 mb-1">
-                            {getResultIcon(result.type)}
-                            <span className="text-xs text-gray-400 uppercase font-medium">
-                              {result.type}
-                            </span>
-                          </div>
                           <h3 className="text-white font-semibold truncate group-hover:text-purple-400 transition-colors">
-                            {safeString(result.title)}
+                            <button
+                              type="button"
+                              onClick={() => handleResultClick(result)}
+                              className="block w-full truncate text-left hover:underline"
+                            >
+                              {safeString(result.title)}
+                            </button>
                           </h3>
                           {result.subtitle && (
                             <p className="text-gray-400 text-sm truncate">{result.subtitle}</p>
                           )}
-                          <p className="text-xs text-gray-500 mt-1">
-                            {result.type === "song" && "Click to play song"}
-                            {result.type === "album" && "Click to view album"}
-                            {result.type === "artist" && "Click to view artist profile"}
-                            {result.type === "user" && "Click to view profile"}
-                          </p>
+                          <p className="mt-1 text-xs capitalize text-gray-400">{result.type}</p>
                         </div>
-                        <div className="flex-shrink-0 flex items-center space-x-2">
+                        <div className="col-span-2 flex flex-wrap items-center gap-2 sm:shrink-0">
                           {/* Play button for songs */}
                           {result.type === "song" && (
                             <Button
                               size="sm"
-                              className="bg-purple-600 hover:bg-purple-700 text-white rounded-full p-2"
+                              aria-label={`Play ${safeString(result.title)}`}
+                              className="bg-primary hover:bg-purple-300 text-primary-foreground rounded-full p-2"
                               onClick={e => {
                                 e.stopPropagation();
                                 playSong(result.data);
@@ -460,7 +429,7 @@ function SearchContent() {
                                 <>
                                   <Button
                                     size="sm"
-                                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-2 py-1 text-xs"
+                                    className="bg-primary hover:bg-purple-300 text-primary-foreground rounded-full px-2 py-1 text-xs"
                                     onClick={e => {
                                       e.stopPropagation();
                                       setModalType(result.type as "song" | "album" | "artist");
@@ -473,7 +442,7 @@ function SearchContent() {
 
                                   <Button
                                     size="sm"
-                                    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-2"
+                                    className="bg-gray-800 hover:bg-red-950 text-red-300 rounded-full p-2"
                                     onClick={e => {
                                       e.stopPropagation();
                                       handleDelete(result);
@@ -487,7 +456,7 @@ function SearchContent() {
                               {result.type === "user" && (
                                 <Button
                                   size="sm"
-                                  className="bg-red-600 hover:bg-red-700 text-white rounded-full p-2"
+                                  className="bg-gray-800 hover:bg-red-950 text-red-300 rounded-full p-2"
                                   onClick={e => {
                                     e.stopPropagation();
                                     handleDelete(result);
@@ -553,7 +522,7 @@ function SearchContent() {
 
             {/* Search Suggestions */}
             <div className="max-w-2xl mx-auto">
-              <h4 className="text-lg font-medium text-white mb-4">Popular Searches</h4>
+              <h4 className="text-lg font-medium text-white mb-4">Try a genre</h4>
               <div className="flex flex-wrap justify-center gap-3">
                 {["Rock", "Pop", "Jazz", "Hip Hop", "Classical", "Electronic"].map(genre => (
                   <button

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { getProxiedImageUrl, getImageFallback, API_CONFIG, apiRequest } from "@/lib/api";
+import { cn } from "@/lib/utils";
 interface MusicImageProps {
   src?: string;
   alt: string;
@@ -50,7 +51,12 @@ const MusicImage = React.memo(function MusicImage({
   const sizes = { small: "w-12 h-12", medium: "w-16 h-16", large: "w-32 h-32", xl: "w-48 h-48" };
   return (
     <div
-      className={`${sizes[size]} ${type === "circle" ? "rounded-full" : "rounded-lg"} ${className} bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0`}
+      className={cn(
+        sizes[size],
+        type === "circle" ? "rounded-full" : "rounded-lg",
+        "bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0",
+        className
+      )}
     >
       {/* Protected avatars use authenticated object URLs; the optimizer cannot send a bearer. */}
       {imageSrc && !failed ? (

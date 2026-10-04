@@ -1,9 +1,17 @@
 import type { Song } from "./api";
+export function samePlaylist(left: Song[], right: Song[]) {
+  return (
+    left.length > 0 &&
+    left.length === right.length &&
+    left.every((song, index) => song.id === right[index].id)
+  );
+}
 export interface AudioState {
   currentSong: Song | null;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
+  bufferedTime: number;
   volume: number;
   isMuted: boolean;
   previousVolume: number;
@@ -23,6 +31,7 @@ export const initialState: AudioState = {
   isPlaying: false,
   currentTime: 0,
   duration: 0,
+  bufferedTime: 0,
   volume: 0.7,
   isMuted: false,
   previousVolume: 0.7,
@@ -59,6 +68,7 @@ export function audioReducer(state: AudioState, action: AudioAction): AudioState
       currentSong: action.songs[action.index] || null,
       currentTime: 0,
       duration: 0,
+      bufferedTime: 0,
       isPlaying: Boolean(action.songs[action.index]),
       queue: [],
       playHistory: [],
@@ -79,6 +89,7 @@ export function audioReducer(state: AudioState, action: AudioAction): AudioState
         ),
         currentTime: 0,
         duration: 0,
+        bufferedTime: 0,
         error: null,
       };
     const index = Math.max(0, state.currentIndex - 1);
@@ -89,6 +100,7 @@ export function audioReducer(state: AudioState, action: AudioAction): AudioState
       currentSong: state.playlist[index] || state.currentSong,
       currentTime: 0,
       duration: 0,
+      bufferedTime: 0,
     };
   }
   const history = state.currentSong
@@ -103,6 +115,7 @@ export function audioReducer(state: AudioState, action: AudioAction): AudioState
       playHistory: history,
       currentTime: 0,
       duration: 0,
+      bufferedTime: 0,
       error: null,
     };
   let index = state.currentIndex + 1;
@@ -129,6 +142,7 @@ export function audioReducer(state: AudioState, action: AudioAction): AudioState
     playHistory: history,
     currentTime: 0,
     duration: 0,
+    bufferedTime: 0,
     error: null,
   };
 }

@@ -31,6 +31,7 @@ export default function EditProfilePage() {
     avatarUrl: "",
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -46,6 +47,8 @@ export default function EditProfilePage() {
       };
       setProfileData(nextData);
       setInitialData(nextData);
+      setLoaded(true);
+      setErrors({});
     } catch (error) {
       setErrors({
         general: error instanceof Error ? error.message : "Profile could not be loaded.",
@@ -100,7 +103,7 @@ export default function EditProfilePage() {
   };
 
   const handleSave = async () => {
-    if (isSaving || !currentUser || !validateForm()) return;
+    if (!loaded || isSaving || !currentUser || !validateForm()) return;
     if (!hasChanges()) return;
 
     setIsSaving(true);
@@ -112,14 +115,7 @@ export default function EditProfilePage() {
         isPrivate: profileData.isPrivate,
       });
 
-      // Update the current user in localStorage if display name changed
-      const updatedUser = {
-        ...currentUser,
-        username: profileData.username,
-        displayName: profileData.displayName,
-      };
-      localStorage.setItem("currentUser", JSON.stringify(updatedUser));
-
+      // Refreshing profile data is handled by the authenticated API.
       router.push(`/user/${currentUser.id}`);
     } catch (error) {
       console.error("Failed to update profile:", error);
@@ -151,7 +147,13 @@ export default function EditProfilePage() {
 
   return (
     <>
-      <div className="p-6 max-w-2xl mx-auto space-y-6">
+      <form
+        className="page-shell max-w-2xl space-y-6"
+        onSubmit={event => {
+          event.preventDefault();
+          void handleSave();
+        }}
+      >
         <div className="text-center">
           <h1 className="text-3xl font-bold text-white mb-2">Edit Profile</h1>
           <p className="text-gray-400">Update your profile information</p>
@@ -174,13 +176,13 @@ export default function EditProfilePage() {
               currentAvatarUrl={profileData.avatarUrl}
               onUploadSuccess={newAvatarUrl => {
                 setProfileData(prev => ({ ...prev, avatarUrl: newAvatarUrl }));
+                setInitialData(prev => ({ ...prev, avatarUrl: newAvatarUrl }));
                 setErrors(prev => ({ ...prev, profilePicture: "" }));
               }}
             />
 
             {/* Username */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-white">Username *</label>
               <Input
                 label="Username"
                 error={errors.username}
@@ -191,12 +193,10 @@ export default function EditProfilePage() {
                 className={`bg-gray-700 border-gray-600 text-white ${errors.username ? "border-red-500" : ""}`}
                 placeholder="Enter your username"
               />
-              {errors.username && <p className="text-red-400 text-sm">{errors.username}</p>}
             </div>
 
             {/* Display Name */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-white">Display Name</label>
               <Input
                 label="Display name"
                 error={errors.displayName}
@@ -209,17 +209,19 @@ export default function EditProfilePage() {
               <p className="text-gray-400 text-xs">
                 This is how your name appears to other users. If empty, your username will be used.
               </p>
-              {errors.displayName && <p className="text-red-400 text-sm">{errors.displayName}</p>}
             </div>
 
             {/* Bio */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-white">Bio</label>
+              <label htmlFor="profile-bio" className="block text-sm font-medium text-white">
+                Bio
+              </label>
               <textarea
+                id="profile-bio"
                 aria-label="Tell others about yourself..."
                 value={profileData.bio}
                 onChange={e => setProfileData(prev => ({ ...prev, bio: e.target.value }))}
-                className={`w-full bg-gray-700 border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none ${errors.bio ? "border-red-500" : "border-gray-600"}`}
+                className={`w-full bg-gray-700 border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none ${errors.bio ? "border-red-500" : "border-gray-600"}`}
                 placeholder="Tell others about yourself..."
                 rows={4}
                 maxLength={500}
@@ -241,7 +243,8 @@ export default function EditProfilePage() {
                 <div>
                   <p className="text-white font-medium">Private Profile</p>
                   <p className="text-gray-400 text-sm">
-                    When enabled, accepted friends can see your profile and listening activity
+                    Only you and administrators can see your profile and listening activity. Friends
+                    can still message you.
                   </p>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -254,16 +257,26 @@ export default function EditProfilePage() {
                     }
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-400 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-400"></div>
                 </label>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        {!loaded && (
+          <Button
+            onClick={() => {
+              if (currentUser) void loadUserProfile(currentUser.id);
+            }}
+          >
+            Retry loading profile
+          </Button>
+        )}
         {/* Action Buttons */}
         <div className="flex items-center justify-end space-x-4">
           <Button
+            type="button"
             onClick={handleCancel}
             variant="outline"
             className="border-gray-600 text-gray-300 hover:bg-gray-800"
@@ -271,11 +284,7 @@ export default function EditProfilePage() {
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleSave}
-            className="bg-green-500 hover:bg-green-600 text-black font-semibold px-8"
-            disabled={isSaving || !hasChanges()}
-          >
+          <Button type="submit" className="px-8" disabled={!loaded || isSaving || !hasChanges()}>
             {isSaving ? (
               <div className="flex items-center space-x-2">
                 <div className="w-4 h-4 animate-spin rounded-full border-2 border-black border-t-transparent"></div>
@@ -286,7 +295,7 @@ export default function EditProfilePage() {
             )}
           </Button>
         </div>
-      </div>
+      </form>
     </>
   );
 }

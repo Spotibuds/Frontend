@@ -8,7 +8,7 @@ import Image from "next/image";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { ApiError } from "@/lib/request";
 import { identityApi, type RegisterRequest } from "@/lib/api";
 
@@ -179,30 +179,33 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-10">
       {/* Logo */}
-      <div className="absolute top-6 left-6">
+      <div className="flex items-center gap-3">
         <Image
           src="/logo.svg"
           alt="Spotibuds Logo"
           width={200}
           height={60}
           priority
-          className="h-12 w-auto"
+          className="h-10 w-10"
         />
       </div>
 
       {/* Register Form */}
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl gradient-text">Join Spotibuds</CardTitle>
+          <h1 className="text-3xl text-white">Make yourself at home</h1>
           <p className="text-gray-400 mt-2">Create your account to get started</p>
         </CardHeader>
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.general && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <div
+                role="alert"
+                className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              >
                 {errors.general}
               </div>
             )}
@@ -233,6 +236,7 @@ export default function RegisterPage() {
               <Input
                 label="Password"
                 autoComplete="new-password"
+                className="pr-12"
                 type={showPassword ? "text" : "password"}
                 placeholder="Create a password"
                 value={formData.password}
@@ -242,7 +246,7 @@ export default function RegisterPage() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-8 text-gray-400 hover:text-gray-300 transition-colors"
+                className="icon-button absolute right-1 top-6"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
@@ -264,6 +268,7 @@ export default function RegisterPage() {
               <Input
                 label="Confirm Password"
                 autoComplete="new-password"
+                className="pr-12"
                 type={showConfirmPassword ? "text" : "password"}
                 placeholder="Confirm your password"
                 value={formData.confirmPassword}
@@ -273,7 +278,7 @@ export default function RegisterPage() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-8 text-gray-400 hover:text-gray-300 transition-colors"
+                className="icon-button absolute right-1 top-6"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? "Hide password" : "Show password"}
               >
@@ -289,7 +294,7 @@ export default function RegisterPage() {
 
             <div className="flex justify-center">
               <p className="text-xs text-gray-400">
-                Local demo registration uses server rate limits. No third-party CAPTCHA is loaded.
+                Choose a username you’ll use to connect with friends.
               </p>
             </div>
             {errors.recaptcha && (

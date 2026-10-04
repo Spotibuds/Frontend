@@ -57,13 +57,13 @@ export function Toast({ message, type, duration = 5000, onClose, action }: Toast
   const getTypeStyles = () => {
     switch (type) {
       case "success":
-        return "bg-gradient-to-r from-green-700 to-emerald-700 border-green-400/30 text-white shadow-lg shadow-green-500/25";
+        return "bg-gray-800 border-green-400/30 text-white shadow-lg ";
       case "error":
-        return "bg-gradient-to-r from-red-700 to-red-800 border-red-400/30 text-white shadow-lg shadow-red-500/25";
+        return "bg-gray-800 border-red-400/30 text-white shadow-lg ";
       case "info":
-        return "bg-gradient-to-r from-blue-700 to-purple-700 border-blue-400/30 text-white shadow-lg shadow-blue-500/25";
+        return "bg-gray-800 border-blue-400/30 text-white shadow-lg ";
       default:
-        return "bg-gradient-to-r from-gray-700 to-gray-800 border-gray-600/30 text-white shadow-lg shadow-gray-500/25";
+        return "bg-gray-800 border-gray-600/30 text-white shadow-lg ";
     }
   };
 

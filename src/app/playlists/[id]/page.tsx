@@ -1,543 +1,387 @@
 "use client";
-import { useDeferredEffect } from "@/hooks/useDeferredEffect";
-
-import { useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
-import MusicImage from "@/components/ui/MusicImage";
-import PlaylistCoverUploader from "@/components/PlaylistCoverUploader";
-import { PlaylistService, Playlist, PlaylistSong } from "@/lib/playlist";
-import { useDialog } from "@/hooks/useDialog";
-import { identityApi } from "@/lib/api";
-import { useAudio } from "@/lib/audio";
+import { useEffect, useState, useRef } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import {
   PlayIcon,
   PauseIcon,
-  MusicalNoteIcon,
-  ClockIcon,
-  ArrowLeftIcon,
-  TrashIcon,
-  QueueListIcon,
   PencilIcon,
+  TrashIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
+  LockClosedIcon,
+  GlobeAltIcon,
+  MusicalNoteIcon,
 } from "@heroicons/react/24/outline";
+import { PlaylistService, PLAYLIST_EVENT, type Playlist } from "@/lib/playlist";
+import { identityApi } from "@/lib/api";
+import { useAudio } from "@/lib/audio";
+import { samePlaylist } from "@/lib/audioState";
+import SongCard from "@/components/SongCard";
+import MusicImage from "@/components/ui/MusicImage";
+import PlaylistCoverUploader from "@/components/PlaylistCoverUploader";
+import Dialog from "@/components/ui/Dialog";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 export default function PlaylistDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const playlistId = params?.id as string;
-
-  const [playlistData, setPlaylistData] = useState<Playlist | null>(null);
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editFormData, setEditFormData] = useState({ name: "", description: "" });
-
-  const dialogRef = useDialog(showEditModal, () => setShowEditModal(false));
-  const [ordering, setOrdering] = useState(false);
-  const moveSong = async (index: number, delta: number) => {
-    if (
-      !playlistData ||
-      ordering ||
-      index + delta < 0 ||
-      index + delta >= playlistData.songs.length
-    )
-      return;
-    setOrdering(true);
-    setError(null);
-    const songs = [...playlistData.songs];
-    [songs[index], songs[index + delta]] = [songs[index + delta], songs[index]];
-    try {
-      await PlaylistService.reorderSongs(
-        playlistData.id,
-        songs.map(song => song.id)
-      );
-      setPlaylistData(await PlaylistService.getPlaylist(playlistData.id));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Song order could not be saved.");
-    } finally {
-      setOrdering(false);
-    }
-  };
-  const {
-    togglePlayPause,
-    addToQueue,
-    playPlaylist,
-    currentSong,
-    isPlaying,
-    playlist: currentPlaylist,
-  } = useAudio();
-
-  const loadPlaylist = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await PlaylistService.getPlaylist(playlistId);
-      setPlaylistData(data);
-    } catch (error) {
-      console.error("Failed to load playlist:", error);
-      setError("Failed to load playlist");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [playlistId]);
-
-  useDeferredEffect(() => {
-    const user = identityApi.getCurrentUser();
-    setCurrentUser(user);
-
-    if (playlistId) {
-      loadPlaylist();
-    }
-  }, [playlistId, loadPlaylist]);
-
-  const handlePlayPlaylist = () => {
-    if (!playlistData || playlistData.songs.length === 0) return;
-
-    // If already playing this playlist, toggle pause
-    if (isCurrentPlaylistPlaying && isPlaying) {
-      togglePlayPause();
-      return;
-    }
-
-    playPlaylist(playlistData.songs);
-  };
-
-  const handlePlaySong = (songIndex: number) => {
-    if (!playlistData) return;
-
-    const song = playlistData.songs[songIndex];
-    const isCurrentSong = currentSong?.id === song.id;
-    const isPlayingThisSong = isCurrentSong && isPlaying;
-
-    // If this song is already playing, pause it
-    if (isPlayingThisSong) {
-      togglePlayPause();
-      return;
-    }
-
-    playPlaylist(playlistData.songs, songIndex);
-  };
-
-  const handleRemoveSong = async (songId: string) => {
-    if (!playlistData || !confirm("Remove this song from the playlist?")) return;
-
-    try {
-      await PlaylistService.removeSongFromPlaylist(playlistData.id, songId);
-      const updatedPlaylist = await PlaylistService.getPlaylist(playlistData.id);
-      setPlaylistData(updatedPlaylist);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to remove song");
-    }
-  };
-
-  const handleAddToQueue = (song: PlaylistSong) => {
-    addToQueue([song]);
-  };
-
-  const handleUpdatePlaylist = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!playlistData || !editFormData.name.trim()) return;
-
-    try {
-      await PlaylistService.updatePlaylist(playlistData.id, {
-        name: editFormData.name.trim(),
-        description: editFormData.description?.trim() || "",
-      });
-
-      // Update local state
-      setPlaylistData(prev =>
-        prev
-          ? {
-              ...prev,
-              name: editFormData.name.trim(),
-              description: editFormData.description?.trim() || "",
-            }
-          : null
-      );
-
-      setShowEditModal(false);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to update playlist");
-    }
-  };
-
-  const handleCoverUpdated = async (newCoverUrl: string | null) => {
-    setPlaylistData(prev => (prev ? { ...prev, coverUrl: newCoverUrl || undefined } : null));
-    try {
-      setPlaylistData(await PlaylistService.getPlaylist(playlistId));
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Cover was updated, but reloading failed. Retry."
-      );
-    }
-  };
-
-  const formatDuration = (seconds?: number) => {
-    if (!seconds) return "0:00";
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
-  };
-
-  const getTotalDuration = () => {
-    if (!playlistData) return 0;
-    return playlistData.songs.reduce((total, song) => total + (song.durationSec || 0), 0);
-  };
-
-  const getArtistName = (song: PlaylistSong) => {
-    if (song.artists && song.artists.length > 0) {
-      return song.artists[0].name;
-    }
-    return "Unknown Artist";
-  };
-
-  const isCurrentPlaylistPlaying = currentPlaylist.some(song =>
-    playlistData?.songs.some(pSong => pSong.id === song.id)
+  const { id } = useParams<{ id: string }>();
+  const audio = useAudio();
+  const user = identityApi.getCurrentUser();
+  const [data, setData] = useState<Playlist | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [form, setForm] = useState({ name: "", description: "", isPublic: false });
+  const [removed, setRemoved] = useState<{ songId: string; order: string[] } | null>(null);
+  const mutating = useRef(false);
+  useEffect(() => {
+    let active = true;
+    let version = 0;
+    const load = async () => {
+      const request = ++version;
+      try {
+        const full = await PlaylistService.getPlaylist(id);
+        if (active && request === version) {
+          setData(full);
+          setError("");
+        }
+      } catch (cause) {
+        if (active && request === version)
+          setError(cause instanceof Error ? cause.message : "Playlist could not be loaded. Retry.");
+      } finally {
+        if (active && request === version) setLoading(false);
+      }
+    };
+    void load();
+    const change = (event: Event) => {
+      if (!mutating.current && (event as CustomEvent).detail?.id === id) void load();
+    };
+    window.addEventListener(PLAYLIST_EVENT, change);
+    return () => {
+      active = false;
+      window.removeEventListener(PLAYLIST_EVENT, change);
+    };
+  }, [id, retry]);
+  const canEdit = Boolean(
+    user && data && (user.id === data.createdBy || user.roles?.includes("Admin"))
   );
-
-  const canEdit = currentUser && playlistData && currentUser.id === playlistData.createdBy;
-
-  if (isLoading) {
+  const current = Boolean(
+    data &&
+    samePlaylist(audio.playlist, data.songs) &&
+    data.songs.some(song => song.id === audio.currentSong?.id)
+  );
+  const play = (index?: number) => {
+    if (!data?.songs.length) return;
+    if (current && (index === undefined || data.songs[index]?.id === audio.currentSong?.id))
+      audio.togglePlayPause();
+    else audio.playPlaylist(data.songs, index || 0);
+  };
+  const move = async (index: number, delta: number) => {
+    if (!data || busy) return;
+    mutating.current = true;
+    setBusy(true);
+    setError("");
+    const order = data.songs.map(song => song.id);
+    [order[index], order[index + delta]] = [order[index + delta], order[index]];
+    try {
+      await PlaylistService.reorderSongs(id, order);
+      setData(await PlaylistService.getPlaylist(id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Song order could not be saved. Retry.");
+    } finally {
+      mutating.current = false;
+      setBusy(false);
+    }
+  };
+  const remove = async (songId: string) => {
+    if (!data || busy) return;
+    mutating.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const order = data.songs.map(song => song.id);
+      await PlaylistService.removeSongFromPlaylist(id, songId);
+      setRemoved({ songId, order });
+      setNotice("Song removed from this playlist.");
+      setData(await PlaylistService.getPlaylist(id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Song could not be removed. Retry.");
+    } finally {
+      mutating.current = false;
+      setBusy(false);
+    }
+  };
+  const undo = async () => {
+    if (!removed || busy) return;
+    mutating.current = true;
+    setBusy(true);
+    try {
+      const before = await PlaylistService.getPlaylist(id);
+      if (!before.songs.some(song => song.id === removed.songId))
+        await PlaylistService.addSongToPlaylist(id, removed.songId);
+      const full = await PlaylistService.getPlaylist(id);
+      const available = new Set(full.songs.map(song => song.id));
+      const order = [
+        ...removed.order.filter(songId => available.has(songId)),
+        ...full.songs.map(song => song.id).filter(songId => !removed.order.includes(songId)),
+      ];
+      await PlaylistService.reorderSongs(id, order);
+      setData(await PlaylistService.getPlaylist(id));
+      setRemoved(null);
+      setNotice("Song restored.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Song could not be restored. Retry.");
+    } finally {
+      mutating.current = false;
+      setBusy(false);
+    }
+  };
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (saving || !form.name.trim()) return;
+    mutating.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      await PlaylistService.updatePlaylist(id, {
+        ...form,
+        name: form.name.trim(),
+        description: form.description.trim(),
+      });
+      setData(await PlaylistService.getPlaylist(id));
+      setEditing(false);
+      setNotice("Playlist updated.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Playlist could not be saved. Retry.");
+    } finally {
+      mutating.current = false;
+      setSaving(false);
+    }
+  };
+  if (loading)
     return (
-      <>
-        <div className="flex justify-center items-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
-        </div>
-      </>
+      <div className="page-shell" role="status">
+        Loading playlist…
+      </div>
     );
-  }
-
-  if (error || !playlistData) {
+  if (!data)
     return (
-      <>
-        <div className="text-center py-12">
-          <h1 className="text-2xl font-bold text-white mb-4">{error || "Playlist not found"}</h1>
-          <button
-            onClick={() => router.push("/playlists")}
-            className="text-purple-400 hover:text-purple-300 transition-colors"
-          >
-            Back to Playlists
-          </button>
-        </div>
-      </>
+      <div className="page-shell">
+        <p role="alert" className="mb-4 text-red-300">
+          {error || "Playlist not found."}
+        </p>
+        <Button onClick={() => setRetry(v => v + 1)}>Retry</Button>
+        <Link href="/playlists" className="ml-4 underline">
+          Your library
+        </Link>
+      </div>
     );
-  }
-
   return (
-    <>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.push("/playlists")}
-            className="flex items-center text-gray-400 hover:text-white transition-colors mb-6"
-          >
-            <ArrowLeftIcon className="w-5 h-5 mr-2" />
-            Back to Playlists
-          </button>
-
-          <div className="flex flex-col sm:flex-row items-start gap-6">
-            <div className="w-48 h-48 rounded-lg overflow-hidden bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center flex-shrink-0">
-              {playlistData.coverUrl ? (
-                <MusicImage
-                  key={playlistData.coverUrl}
-                  src={playlistData.coverUrl}
-                  alt={playlistData.name}
-                  size="large"
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <MusicalNoteIcon className="w-24 h-24 text-white" />
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0 w-full">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-400 uppercase tracking-wide">Playlist</p>
-                  <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2 break-words">
-                    {playlistData.name}
-                  </h1>
-                  {playlistData.description && (
-                    <p className="text-gray-300 mb-4 break-words">{playlistData.description}</p>
-                  )}
-                  <div className="flex items-center text-sm text-gray-400 space-x-4">
-                    <span>{playlistData.songs.length} songs</span>
-                    <span>{formatDuration(getTotalDuration())}</span>
-                  </div>
-                </div>
-                {canEdit && (
-                  <button
-                    onClick={() => {
-                      setEditFormData({
-                        name: playlistData.name,
-                        description: playlistData.description || "",
-                      });
-                      setShowEditModal(true);
-                    }}
-                    className="p-3 shrink-0 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-                    title="Edit playlist"
-                  >
-                    <PencilIcon className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-            </div>
+    <div className="page-shell">
+      <Link href="/playlists" className="mb-6 inline-block text-sm text-gray-400 hover:text-white">
+        ← Your library
+      </Link>
+      <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-end">
+        {data.coverUrl ? (
+          <MusicImage
+            src={data.coverUrl}
+            alt={data.name}
+            size="xl"
+            className="h-40 w-40 rounded-xl sm:h-52 sm:w-52"
+          />
+        ) : (
+          <div className="flex h-40 w-40 shrink-0 items-center justify-center rounded-xl bg-gray-800 sm:h-52 sm:w-52">
+            <MusicalNoteIcon className="h-16 w-16 text-purple-400" />
           </div>
-
-          {/* Play Button */}
-          <div className="mt-6">
-            <button
-              onClick={handlePlayPlaylist}
-              disabled={playlistData.songs.length === 0}
-              className={`flex items-center space-x-3 px-8 py-3 rounded-full text-white font-semibold transition-colors ${
-                playlistData.songs.length === 0
-                  ? "bg-gray-600 cursor-not-allowed"
-                  : isCurrentPlaylistPlaying && isPlaying
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-purple-600 hover:bg-purple-700"
-              }`}
-            >
-              {isCurrentPlaylistPlaying && isPlaying ? (
-                <PauseIcon className="w-6 h-6" />
-              ) : (
-                <PlayIcon className="w-6 h-6" />
-              )}
-              <span>{isCurrentPlaylistPlaying && isPlaying ? "Pause" : "Play"}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Songs List */}
-        <div className="bg-gray-800 rounded-xl">
-          {playlistData.songs.length === 0 ? (
-            <div className="text-center py-12">
-              <MusicalNoteIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-400 mb-2">
-                No songs in this playlist
-              </h3>
-              <p className="text-gray-500">Add some songs to get started!</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-700">
-              {/* Header */}
-              <div className="hidden sm:block px-6 py-4">
-                <div
-                  className={`grid gap-4 text-sm text-gray-400 uppercase tracking-wide ${canEdit ? "grid-cols-13" : "grid-cols-12"}`}
-                >
-                  <div className="sm:col-span-1">#</div>
-                  <div className="col-span-6">Title</div>
-                  <div className="col-start-2 sm:col-start-auto sm:col-span-3 min-w-0">Artist</div>
-                  <div className="sm:col-span-1">
-                    <ClockIcon className="w-4 h-4" />
-                  </div>
-                  <div className="sm:col-span-1"></div> {/* Add to Queue column */}
-                  {canEdit && <div className="sm:col-span-1"></div>}
-                </div>
-              </div>
-
-              {/* Songs */}
-              {playlistData.songs.map((song, index) => {
-                const isCurrentSong = currentSong?.id === song.id;
-                const isPlayingThisSong = isCurrentSong && isPlaying;
-
-                return (
-                  <div
-                    key={song.id}
-                    className={`px-6 py-4 hover:bg-gray-750 transition-colors group ${
-                      isCurrentSong ? "bg-gray-750" : ""
-                    }`}
-                  >
-                    <div
-                      className={`grid grid-cols-[2rem_minmax(0,1fr)] sm:gap-4 gap-2 items-center ${canEdit ? "sm:grid-cols-13" : "sm:grid-cols-12"}`}
-                    >
-                      <div className="sm:col-span-1">
-                        <button
-                          aria-label={`${isPlayingThisSong ? "Pause" : "Play"} ${song.title}`}
-                          onClick={() => handlePlaySong(index)}
-                          className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white transition-colors group-hover:opacity-100"
-                        >
-                          {isPlayingThisSong ? (
-                            <PauseIcon className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <div className="group-hover:hidden">
-                              <span className={`text-sm ${isCurrentSong ? "text-green-500" : ""}`}>
-                                {index + 1}
-                              </span>
-                            </div>
-                          )}
-                          {!isPlayingThisSong && (
-                            <PlayIcon className="w-4 h-4 hidden group-hover:block" />
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="sm:col-span-6 min-w-0 flex items-center space-x-3">
-                        <MusicImage src={song.coverUrl} alt={song.title} size="small" />
-                        <div className="min-w-0">
-                          <p
-                            className={`break-words font-medium ${isCurrentSong ? "text-green-500" : "text-white"}`}
-                          >
-                            {song.title}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="col-start-2 sm:col-start-auto sm:col-span-3 min-w-0">
-                        <p className="text-gray-400 text-sm break-words">{getArtistName(song)}</p>
-                      </div>
-
-                      <div className="sm:col-span-1">
-                        <span className="text-gray-400 text-sm">
-                          {formatDuration(song.durationSec)}
-                        </span>
-                      </div>
-
-                      <div className="sm:col-span-1">
-                        <button
-                          onClick={() => handleAddToQueue(song)}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 p-1 text-gray-400 hover:text-purple-400 transition-all"
-                          title="Add to queue"
-                        >
-                          <QueueListIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {canEdit && (
-                        <div className="sm:col-span-1">
-                          <button
-                            aria-label={`Move ${song.title} up`}
-                            disabled={ordering || index === 0}
-                            onClick={() => void moveSong(index, -1)}
-                            className="p-1 disabled:opacity-30"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            aria-label={`Move ${song.title} down`}
-                            disabled={ordering || index === playlistData.songs.length - 1}
-                            onClick={() => void moveSong(index, 1)}
-                            className="p-1 disabled:opacity-30"
-                          >
-                            ↓
-                          </button>
-                          <button
-                            onClick={() => handleRemoveSong(song.id)}
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 p-1 text-gray-400 hover:text-red-400 transition-all"
-                            title="Remove from playlist"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-3xl font-semibold sm:text-4xl">{data.name}</h1>
+          {data.description && (
+            <p className="mt-3 max-w-[65ch] break-words text-sm text-gray-300">
+              {data.description}
+            </p>
           )}
+          <p className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-400">
+            {data.isPublic ? (
+              <GlobeAltIcon className="h-4 w-4" />
+            ) : (
+              <LockClosedIcon className="h-4 w-4" />
+            )}
+            {data.isPublic ? "Public" : "Private"}
+            <span>
+              · {data.songs.length} songs ·{" "}
+              {audio.formatTime(data.songs.reduce((sum, song) => sum + song.durationSec, 0))}
+            </span>
+          </p>
         </div>
       </div>
-
-      {/* Edit Modal */}
-      {showEditModal && playlistData && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={e => {
-            // Only close if clicking directly on the backdrop, not if event bubbled from children
-            if (e.target === e.currentTarget) {
-              setShowEditModal(false);
-            }
-          }}
-        >
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit playlist"
-            tabIndex={-1}
-            className="bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-600 rounded-2xl p-8 shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
+      <div className="my-7 flex items-center gap-3">
+        <Button disabled={!data.songs.length} onClick={() => play()}>
+          {current && audio.isPlaying ? (
+            <PauseIcon className="h-5 w-5" />
+          ) : (
+            <PlayIcon className="h-5 w-5" />
+          )}
+          {current && audio.isPlaying ? "Pause" : "Play"}
+        </Button>
+        {canEdit && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setForm({
+                name: data.name,
+                description: data.description || "",
+                isPublic: data.isPublic || false,
+              });
+              setEditing(true);
+              setError("");
+            }}
           >
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                <MusicalNoteIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white">Edit Playlist</h3>
-                <p className="text-gray-400">Update your playlist details and cover image</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleUpdatePlaylist} className="space-y-6">
-              {error && (
-                <p role="alert" className="text-red-300">
-                  {error}
-                </p>
+            <PencilIcon className="h-4 w-4" />
+            Edit playlist
+          </Button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-950 p-3 text-sm text-red-200">
+          {error}{" "}
+          <button onClick={() => setRetry(v => v + 1)} className="underline">
+            Reload playlist
+          </button>
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mb-4 text-sm text-purple-300">
+          {notice}{" "}
+          {removed && (
+            <button
+              className="ml-2 underline"
+              disabled={busy}
+              onClick={() => {
+                void undo();
+              }}
+            >
+              Undo removal
+            </button>
+          )}
+        </p>
+      )}
+      {data.songs.length ? (
+        <div>
+          {data.songs.map((song, index) => (
+            <div key={song.id} className="border-b border-gray-800">
+              <SongCard
+                song={song}
+                index={index}
+                onClick={() => play(index)}
+                showAddToPlaylist={false}
+              />
+              {canEdit && (
+                <div className="mb-1 flex justify-end gap-1">
+                  <button
+                    className="icon-button"
+                    disabled={busy || index === 0}
+                    aria-label={`Move ${song.title} up`}
+                    onClick={() => {
+                      void move(index, -1);
+                    }}
+                  >
+                    <ChevronUpIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="icon-button"
+                    disabled={busy || index === data.songs.length - 1}
+                    aria-label={`Move ${song.title} down`}
+                    onClick={() => {
+                      void move(index, 1);
+                    }}
+                  >
+                    <ChevronDownIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="icon-button"
+                    disabled={busy}
+                    aria-label={`Remove ${song.title} from playlist`}
+                    onClick={() => {
+                      void remove(song.id);
+                    }}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
               )}
-              {/* Cover Image Section */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">Cover Image</label>
-                <PlaylistCoverUploader
-                  key={`${playlistData.id}-${playlistData.coverUrl || "no-cover"}`}
-                  playlistId={playlistData.id}
-                  currentCoverUrl={playlistData.coverUrl}
-                  onCoverUpdated={handleCoverUpdated}
-                />
-              </div>
-
-              {/* Name Field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Playlist Name *
-                </label>
-                <input
-                  type="text"
-                  aria-label="Playlist name"
-                  maxLength={100}
-                  placeholder="My Awesome Playlist"
-                  value={editFormData.name}
-                  onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors placeholder-gray-400"
-                  required
-                />
-              </div>
-
-              {/* Description Field */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description (Optional)
-                </label>
-                <textarea
-                  aria-label="Playlist description"
-                  maxLength={1000}
-                  placeholder="Describe your playlist..."
-                  value={editFormData.description}
-                  onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors h-24 resize-none placeholder-gray-400"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                >
-                  Update Playlist
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="flex-1 sm:flex-none bg-gray-600 hover:bg-gray-700 text-white font-semibold px-8 py-3 rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="py-12">
+          <h2 className="text-xl font-semibold">Your next favorite belongs here</h2>
+          <p className="mt-2 text-sm text-gray-400">
+            Find a song, then use “Add to playlist” to save it here.
+          </p>
+          <Link href="/music" className="mt-4 inline-block text-sm text-purple-300 underline">
+            Browse music
+          </Link>
         </div>
       )}
-    </>
+      <Dialog
+        open={editing}
+        onClose={() => {
+          if (!saving) setEditing(false);
+        }}
+        title="Edit playlist"
+      >
+        {error && (
+          <p role="alert" className="mb-3 text-red-300">
+            {error}
+          </p>
+        )}
+        <form onSubmit={save} className="space-y-4">
+          <Input
+            label="Playlist name"
+            value={form.name}
+            maxLength={200}
+            disabled={data.name === "Liked Songs"}
+            onChange={e => setForm({ ...form, name: e.target.value })}
+            required
+          />
+          <div>
+            <label htmlFor="edit-description" className="mb-2 block text-sm text-gray-300">
+              Description (optional)
+            </label>
+            <textarea
+              id="edit-description"
+              value={form.description}
+              maxLength={2000}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              rows={3}
+              className="w-full rounded-lg border border-gray-600 bg-gray-900 p-3 text-sm"
+            />
+          </div>
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.isPublic}
+              onChange={e => setForm({ ...form, isPublic: e.target.checked })}
+            />
+            Make this playlist public
+          </label>
+          <PlaylistCoverUploader
+            playlistId={id}
+            currentCoverUrl={data.coverUrl}
+            onCoverUpdated={url => setData({ ...data, coverUrl: url || undefined })}
+          />
+          <Button loading={saving} disabled={!form.name.trim()} type="submit">
+            Save playlist
+          </Button>
+          <p className="text-xs text-gray-400">Cover changes are saved immediately.</p>
+        </form>
+      </Dialog>
+    </div>
   );
 }

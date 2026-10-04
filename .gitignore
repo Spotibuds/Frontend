@@ -170,3 +170,4 @@ lint-results.txt
 format-results.txt
 build-results.txt
 frontend_*.cjs
+/.impeccable/review/

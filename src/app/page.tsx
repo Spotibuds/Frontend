@@ -8,7 +8,7 @@ import Image from "next/image";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { identityApi, type LoginRequest } from "@/lib/api";
 import { getSignOutState, SESSION_EVENT, type SignOutState } from "@/lib/session";
 
@@ -116,24 +116,24 @@ export default function LoginPage() {
     };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-10">
       {/* Logo */}
-      <div className="absolute top-6 left-6">
+      <div className="flex items-center gap-3">
         <Image
           src="/logo.svg"
           alt="Spotibuds Logo"
           width={200}
           height={60}
           priority
-          className="h-12 w-auto"
+          className="h-10 w-10"
         />
       </div>
 
       {/* Login Form */}
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl gradient-text">Welcome Back</CardTitle>
-          <p className="text-gray-400 mt-2">Sign in to your account to continue</p>
+          <h1 className="text-3xl text-white">Welcome back</h1>
+          <p className="text-gray-400 mt-2">Your music and your people, in one place.</p>
         </CardHeader>
 
         <CardContent>
@@ -157,7 +157,10 @@ export default function LoginPage() {
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             {errors.general && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <div
+                role="alert"
+                className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              >
                 {errors.general}
               </div>
             )}
@@ -177,6 +180,7 @@ export default function LoginPage() {
               <Input
                 label="Password"
                 autoComplete="current-password"
+                className="pr-12"
                 type={showPassword ? "text" : "password"}
                 placeholder="Enter your password"
                 value={formData.password}
@@ -186,7 +190,7 @@ export default function LoginPage() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-8 text-gray-400 hover:text-gray-300 transition-colors"
+                className="icon-button absolute right-1 top-6"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >

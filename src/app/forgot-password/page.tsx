@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { identityApi } from "@/lib/api";
 
 export default function ForgotPasswordPage() {
@@ -43,22 +43,22 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-10">
         {/* Logo */}
-        <div className="absolute top-6 left-6">
+        <div className="flex items-center gap-3">
           <Image
             src="/logo.svg"
             alt="Spotibuds Logo"
             width={200}
             height={60}
             priority
-            className="h-12 w-auto"
+            className="h-10 w-10"
           />
         </div>
 
         <Card className="w-full max-w-md animate-fade-in">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl gradient-text">Check Your Email</CardTitle>
+            <h1 className="text-2xl text-white">Check your email</h1>
           </CardHeader>
           <CardContent className="text-center space-y-4">
             <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
@@ -67,14 +67,14 @@ export default function ForgotPasswordPage() {
               </p>
             </div>
             <p className="text-gray-400 text-sm">
-              For this local demo, open the Mailpit inbox at 127.0.0.1:8025. If delivery failed,
-              check Identity readiness and retry.
+              Check your inbox and spam folder. If the email does not arrive, request another link.
             </p>
             <div className="space-y-2">
-              <Link href="/">
-                <Button variant="outline" className="w-full">
-                  Back to Sign In
-                </Button>
+              <Link
+                href="/"
+                className="flex min-h-11 w-full items-center justify-center rounded-lg border border-gray-600 text-sm font-semibold hover:bg-gray-700"
+              >
+                Back to sign in
               </Link>
               <Button
                 variant="ghost"
@@ -94,23 +94,23 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 py-10">
       {/* Logo */}
-      <div className="absolute top-6 left-6">
+      <div className="flex items-center gap-3">
         <Image
           src="/logo.svg"
           alt="Spotibuds Logo"
           width={200}
           height={60}
           priority
-          className="h-12 w-auto"
+          className="h-10 w-10"
         />
       </div>
 
       {/* Forgot Password Form */}
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl gradient-text">Reset Password</CardTitle>
+          <h1 className="text-2xl text-white">Reset Password</h1>
           <p className="text-gray-400 mt-2">
             Enter your email address and we&apos;ll send you a link to reset your password.
           </p>
@@ -119,7 +119,10 @@ export default function ForgotPasswordPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <div
+                role="alert"
+                className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm"
+              >
                 {error}
               </div>
             )}

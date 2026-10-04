@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useChatConversation } from "@/hooks/useChatConversation";
 import { Button } from "@/components/ui/Button";
@@ -34,6 +35,8 @@ export default function ChatPage() {
     refreshMessages,
   } = useChatConversation(chatId);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const nearBottom = useRef(true);
+  const [newMessages, setNewMessages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previousTail = useRef<string | undefined>(undefined);
@@ -57,10 +60,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     const tail = chatMessages.at(-1)?.messageId;
-    if (tail && tail !== previousTail.current)
-      messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
+    if (tail && tail !== previousTail.current) {
+      if (nearBottom.current || chatMessages.at(-1)?.senderId === currentUser?.id)
+        messagesEndRef.current?.scrollIntoView?.({ behavior: "auto" });
+      else setNewMessages(true);
+    }
     previousTail.current = tail;
-  }, [chatMessages]);
+  }, [chatMessages, currentUser?.id]);
   const handleKeyPress = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -140,9 +146,14 @@ export default function ChatPage() {
   return (
     <>
       <div
-        className={`fixed top-16 bottom-16 sm:bottom-20 transition-all duration-300 z-35 ${sidebarOpen ? "left-64 sm:left-72" : "left-0"} right-0`}
+        className={`fixed top-16 bottom-20 md:bottom-28 transition-all duration-300 z-35 ${sidebarOpen ? "left-0 lg:left-72" : "left-0"} right-0`}
       >
         <div className="flex flex-col h-full max-w-full">
+          <div className="bg-gray-900 px-4 py-2">
+            <Link href="/chat" className="text-sm text-gray-400 hover:text-white">
+              ← Messages
+            </Link>
+          </div>
           {/* Chat Header */}
           <div className="p-3 sm:p-4 border-b border-gray-700 bg-gray-800/50">
             <div className="flex items-center justify-between">
@@ -179,8 +190,26 @@ export default function ChatPage() {
             </div>
           </div>
 
+          {newMessages && (
+            <button
+              type="button"
+              className="bg-gray-700 p-2 text-sm"
+              onClick={() => {
+                nearBottom.current = true;
+                setNewMessages(false);
+                messagesEndRef.current?.scrollIntoView?.({ behavior: "auto" });
+              }}
+            >
+              New messages ↓
+            </button>
+          )}
           {/* Messages Area */}
           <div
+            onScroll={event => {
+              const node = event.currentTarget;
+              nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 100;
+              if (nearBottom.current) setNewMessages(false);
+            }}
             role="log"
             aria-label="Conversation messages"
             className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 lg:p-4 space-y-2 sm:space-y-3 lg:space-y-4"
@@ -293,7 +322,7 @@ export default function ChatPage() {
                   void handleSendMessage().then(() => inputRef.current?.focus());
                 }}
                 disabled={!message.trim() || !isConnected || sending}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
+                className="bg-primary hover:bg-purple-300 text-primary-foreground rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                 size="sm"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

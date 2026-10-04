@@ -340,12 +340,12 @@ export default function AdminPageForSongs() {
   return (
     <>
       <SidebarNavigation />
-      <main className="p-6">
+      <main className="page-shell">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
-          <h1 className="text-2xl font-bold text-purple-400">Songs Dashboard</h1>
+          <h1 className="text-3xl font-semibold text-white">Songs Dashboard</h1>
           <button
             onClick={openCreateModal}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full sm:w-auto"
+            className="bg-primary hover:bg-purple-300 text-primary-foreground px-4 py-2 rounded w-full sm:w-auto"
           >
             Create New Song
           </button>
@@ -384,13 +384,13 @@ export default function AdminPageForSongs() {
                     <div className="mt-2 flex flex-wrap justify-center sm:justify-start gap-2">
                       <button
                         onClick={() => openUpdateModal(song)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                        className="min-h-10 rounded-lg bg-gray-700 px-3 py-2 text-sm text-gray-100 hover:bg-gray-600"
                       >
                         Update
                       </button>
                       <button
                         onClick={() => handleDelete(song.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                        className="min-h-10 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-950"
                       >
                         Delete
                       </button>
@@ -425,14 +425,14 @@ export default function AdminPageForSongs() {
 
         {/* Modal (same as your original, unchanged) */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50">
+          <div className="fixed inset-0 bg-black/70 p-4 flex justify-center items-center z-[80]">
             <div
               ref={dialogRef}
               role="dialog"
               aria-modal="true"
               aria-label="Song editor"
               tabIndex={-1}
-              className="bg-gray-900 p-6 rounded shadow-lg w-96 max-h-[90vh] overflow-y-auto"
+              className="dialog-surface p-5 sm:p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto"
             >
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Song" : "Update Song"}
@@ -577,7 +577,7 @@ export default function AdminPageForSongs() {
               </div>
 
               <label className="text-gray-400 text-sm mb-1">Cover Image:</label>
-              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+              <label className="block w-full rounded-lg bg-gray-900 p-3 text-sm text-gray-300">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="w-6 mr-2 fill-white inline"
@@ -598,7 +598,7 @@ export default function AdminPageForSongs() {
                   type="file"
                   name="coverFile"
                   accept="image/*"
-                  className="hidden"
+                  className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
                   onChange={handleModalChange}
                 />
               </label>
@@ -613,7 +613,7 @@ export default function AdminPageForSongs() {
               )}
 
               <label className="text-gray-400 text-sm mb-1">Audio File:</label>
-              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+              <label className="block w-full rounded-lg bg-gray-900 p-3 text-sm text-gray-300">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="w-6 mr-2 fill-white inline"
@@ -634,7 +634,7 @@ export default function AdminPageForSongs() {
                   type="file"
                   name="audioFile"
                   accept=".mp3,.wav,.flac,.m4a,.ogg"
-                  className="hidden"
+                  className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
                   onChange={handleModalChange}
                 />
               </label>
@@ -658,9 +658,9 @@ export default function AdminPageForSongs() {
                 <button
                   className={`${
                     isCreateModalOpen
-                      ? "bg-purple-600 hover:bg-purple-700"
-                      : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded
+                      ? "bg-primary hover:bg-purple-300 text-primary-foreground"
+                      : "bg-primary hover:bg-purple-300"
+                  } text-primary-foreground px-4 py-2 rounded
        disabled:bg-gray-500 disabled:cursor-not-allowed`}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                   disabled={saving || !isModalValid} // disables the button when modal is not valid

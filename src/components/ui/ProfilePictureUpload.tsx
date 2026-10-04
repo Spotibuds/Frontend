@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import MusicImage from "./MusicImage";
 import { userApi } from "@/lib/api";
+import { UserIcon } from "@heroicons/react/24/outline";
 
 interface ProfilePictureUploadProps {
   currentUserId: string;
@@ -19,6 +20,7 @@ export default function ProfilePictureUpload({
 }: ProfilePictureUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string>("");
+  const [notice, setNotice] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,6 +46,7 @@ export default function ProfilePictureUpload({
     try {
       const result = await userApi.uploadProfilePictureByIdentityId(currentUserId, file);
       onUploadSuccess?.(result.avatarUrl);
+      setNotice("Photo saved.");
     } catch (error) {
       console.error("Failed to upload profile picture:", error);
       setError(error instanceof Error ? error.message : "Failed to upload profile picture");
@@ -59,11 +62,25 @@ export default function ProfilePictureUpload({
   const triggerFileSelect = () => {
     fileInputRef.current?.click();
   };
+  const remove = async () => {
+    if (isUploading) return;
+    setIsUploading(true);
+    setError("");
+    try {
+      await userApi.updateUserProfileByIdentityId(currentUserId, { avatarUrl: "" });
+      onUploadSuccess?.("");
+      setNotice("Photo removed.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Photo could not be removed. Retry.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   return (
     <div className={`flex items-center space-x-4 ${className}`}>
       {/* Avatar Display */}
-      <div className="w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+      <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-800 flex items-center justify-center">
         {currentAvatarUrl ? (
           <MusicImage
             src={currentAvatarUrl}
@@ -73,9 +90,8 @@ export default function ProfilePictureUpload({
             className="w-full h-full"
           />
         ) : (
-          <span className="text-white font-bold text-2xl">👤</span>
+          <UserIcon className="h-8 w-8 text-gray-400" />
         )}
-        {currentAvatarUrl && <span className="hidden text-white font-bold text-2xl">👤</span>}
       </div>
 
       {/* Upload Controls */}
@@ -91,6 +107,7 @@ export default function ProfilePictureUpload({
             disabled={isUploading}
           />
           <button
+            type="button"
             onClick={triggerFileSelect}
             disabled={isUploading}
             className={`inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-gray-700 border border-gray-600 rounded-lg hover:bg-gray-600 transition-colors ${isUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
@@ -107,7 +124,9 @@ export default function ProfilePictureUpload({
           {currentAvatarUrl && !isUploading && (
             <button
               type="button"
-              onClick={() => onUploadSuccess?.("")}
+              onClick={() => {
+                void remove();
+              }}
               className="text-red-400 hover:text-red-300 text-sm font-medium"
             >
               Remove
@@ -115,7 +134,17 @@ export default function ProfilePictureUpload({
           )}
         </div>
         <p className="text-gray-400 text-xs mt-1">JPEG, PNG, or WebP. Max 5MB.</p>
-        {error && <p className="text-red-400 text-sm mt-1">{error}</p>}
+        <p className="mt-1 text-xs text-gray-400">Photo changes are saved immediately.</p>
+        {notice && (
+          <p role="status" className="mt-1 text-sm text-purple-300">
+            {notice}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="text-red-300 text-sm mt-1">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

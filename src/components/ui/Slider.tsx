@@ -53,7 +53,7 @@ export default function Slider({
       {showArrows && canScrollLeft && (
         <button
           onClick={() => scroll("left")}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-100 sm:opacity-100 transition-opacity duration-200 "
           aria-label="Scroll left"
         >
           <svg
@@ -72,7 +72,7 @@ export default function Slider({
       {showArrows && canScrollRight && (
         <button
           onClick={() => scroll("right")}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity duration-200 hover:scale-105"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-10 h-10 sm:w-12 sm:h-12 bg-black/80 hover:bg-black rounded-full flex items-center justify-center text-white opacity-100 sm:opacity-100 transition-opacity duration-200 "
           aria-label="Scroll right"
         >
           <svg

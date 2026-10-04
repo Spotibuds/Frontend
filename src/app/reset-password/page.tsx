@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/Input";
 
 import { Button } from "@/components/ui/Button";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 
 import { identityApi } from "@/lib/api";
 
@@ -79,7 +79,7 @@ function ResetPasswordForm() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Choose a new password</CardTitle>
+          <h1 className="text-2xl font-semibold">Choose a new password</h1>
         </CardHeader>
         <CardContent>
           {success ? (
@@ -88,6 +88,14 @@ function ResetPasswordForm() {
               <Link className="text-purple-300" href="/">
                 Sign in
               </Link>
+            </p>
+          ) : !email || !token ? (
+            <p role="alert">
+              This reset link is incomplete.{" "}
+              <Link className="text-purple-300 underline" href="/forgot-password">
+                Request a new link
+              </Link>
+              .
             </p>
           ) : (
             <form onSubmit={submit} className="space-y-4">
@@ -107,6 +115,10 @@ function ResetPasswordForm() {
                 maxLength={100}
               />
 
+              <p className="text-xs text-gray-400">
+                Use 8–100 characters with uppercase, lowercase, a number, a symbol and six unique
+                characters.
+              </p>
               <Input
                 label="Confirm new password"
                 type="password"

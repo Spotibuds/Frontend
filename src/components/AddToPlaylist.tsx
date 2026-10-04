@@ -1,126 +1,185 @@
 "use client";
+import { useState, useCallback, useRef } from "react";
 import { useDeferredEffect } from "@/hooks/useDeferredEffect";
-
-import React, { useState, useCallback } from "react";
 import { PlusIcon, CheckIcon } from "@heroicons/react/24/outline";
-import { PlaylistService, Playlist } from "@/lib/playlist";
-import { Song } from "@/lib/api";
+import { PlaylistService, type Playlist } from "@/lib/playlist";
+import { getSessionGeneration } from "@/lib/session";
+import { type Song } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
-interface AddToPlaylistProps {
+export default function AddToPlaylist({
+  song,
+  songs,
+  userId,
+  onAdded,
+}: {
   song: Song;
+  songs?: Song[];
   userId: string;
   onAdded?: (playlist: Playlist) => void;
-}
-
-export default function AddToPlaylist({ song, userId, onAdded }: AddToPlaylistProps) {
+}) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [addingTo, setAddingTo] = useState<string | null>(null);
-
-  const loadUserPlaylists = useCallback(async () => {
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [filter, setFilter] = useState("");
+  const run = useRef(0);
+  const load = useCallback(async () => {
+    const request = ++run.current;
+    const generation = getSessionGeneration();
+    setLoading(true);
+    setError("");
     try {
-      const userPlaylists = await PlaylistService.getUserPlaylists(userId);
-      setPlaylists(
-        await Promise.all(userPlaylists.map(item => PlaylistService.getPlaylist(item.id)))
+      const lists = await PlaylistService.getUserPlaylists(userId);
+      const full = await Promise.all(
+        lists.map(item =>
+          (item.songCount ?? item.songs.length) > item.songs.length
+            ? PlaylistService.getPlaylist(item.id)
+            : item
+        )
       );
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Playlists could not be loaded.");
+      if (request === run.current && generation === getSessionGeneration()) setPlaylists(full);
+    } catch (cause) {
+      if (request === run.current)
+        setError(cause instanceof Error ? cause.message : "Playlists could not be loaded. Retry.");
     } finally {
-      setLoading(false);
+      if (request === run.current) setLoading(false);
     }
   }, [userId]);
-
   useDeferredEffect(() => {
-    loadUserPlaylists();
-  }, [loadUserPlaylists]);
-
-  const handleAddToPlaylist = async (playlist: Playlist) => {
+    void load();
+    const invalidate = () => {
+      run.current++;
+    };
+    return invalidate;
+  }, [load]);
+  const add = async (playlist: Playlist) => {
+    if (addingTo) return;
+    setAddingTo(playlist.id);
+    setError("");
     try {
-      setAddingTo(playlist.id);
-      await PlaylistService.addSongToPlaylist(playlist.id, song.id);
-
-      // Reload playlists to get the updated data from backend
-      await loadUserPlaylists();
+      await PlaylistService.addSongsToPlaylist(playlist.id, songs || [song]);
       onAdded?.(playlist);
-
-      // Show success feedback
-      setTimeout(() => setAddingTo(null), 1000);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Song could not be added. Retry when Music is available."
-      );
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Song could not be added. Retry.");
+    } finally {
       setAddingTo(null);
     }
   };
-
-  const isSongInPlaylist = (playlist: Playlist) => {
-    if (!playlist.songs || playlist.songs.length === 0) {
-      return false;
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim() || creating || addingTo) return;
+    setCreating(true);
+    setError("");
+    try {
+      const playlist = await PlaylistService.createPlaylist(userId, {
+        name: name.trim(),
+        isPublic: false,
+      });
+      setName("");
+      await add(playlist);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Playlist could not be created. Retry.");
+    } finally {
+      setCreating(false);
     }
-
-    // Simple string comparison to avoid any potential type issues
-    const songIds = playlist.songs.map(s => String(s.id));
-    const targetId = String(song.id);
-    const isInPlaylist = songIds.includes(targetId);
-
-    return isInPlaylist;
   };
-
-  if (loading) {
-    return (
-      <div className="flex justify-center py-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-h-60 overflow-y-auto">
+    <div className="space-y-4">
       {error && (
-        <p role="alert" className="text-red-300">
-          {error} <button onClick={loadUserPlaylists}>Retry</button>
+        <p role="alert" className="rounded-lg bg-red-950 p-3 text-sm text-red-200">
+          {error}{" "}
+          <button
+            type="button"
+            onClick={() => {
+              void load();
+            }}
+            className="underline"
+          >
+            Reload playlists
+          </button>
         </p>
       )}
-      {playlists.length === 0 ? (
-        <div className="p-4 text-gray-400 text-center">
-          <p>No playlists found</p>
-          <p className="text-sm">Create a playlist first</p>
-        </div>
+      <Input
+        label="Find a playlist"
+        value={filter}
+        onChange={e => setFilter(e.target.value)}
+        placeholder="Playlist name"
+      />
+      {loading ? (
+        <p role="status" className="py-5 text-sm text-gray-400">
+          Loading playlists…
+        </p>
       ) : (
-        playlists.map(playlist => {
-          const isInPlaylist = isSongInPlaylist(playlist);
-          const isAdding = addingTo === playlist.id;
-
-          return (
-            <button
-              key={playlist.id}
-              onClick={() => !isInPlaylist && !isAdding && handleAddToPlaylist(playlist)}
-              disabled={isInPlaylist || isAdding}
-              className={`w-full p-3 text-left hover:bg-gray-700 transition-colors flex items-center justify-between rounded-lg ${
-                isInPlaylist ? "opacity-50" : ""
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-white font-medium truncate">{playlist.name}</div>
-                <div className="text-gray-400 text-sm">{playlist.songs.length} songs</div>
-              </div>
-
-              <div className="flex-shrink-0 ml-3">
-                {isAdding ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
-                ) : isInPlaylist ? (
-                  <CheckIcon className="w-4 h-4 text-green-500" />
-                ) : (
-                  <PlusIcon className="w-4 h-4 text-gray-400" />
-                )}
-              </div>
-            </button>
-          );
-        })
+        <div className="max-h-64 overflow-y-auto">
+          {playlists
+            .filter(item => item.name.toLowerCase().includes(filter.toLowerCase()))
+            .map(item => {
+              const existing = new Set(item.songs.map(track => track.id));
+              const included = (songs || [song]).every(track => existing.has(track.id));
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  disabled={included || Boolean(addingTo) || creating}
+                  onClick={() => {
+                    void add(item);
+                  }}
+                  className="flex min-h-16 w-full items-center justify-between gap-3 rounded-lg p-3 text-left hover:bg-gray-700 disabled:opacity-60"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{item.name}</span>
+                    <span className="text-xs text-gray-400">
+                      {included ? "Already added" : `${item.songCount ?? item.songs.length} songs`}
+                    </span>
+                  </span>
+                  {addingTo === item.id ? (
+                    <span role="status" className="text-xs text-gray-400">
+                      Adding…
+                    </span>
+                  ) : included ? (
+                    <CheckIcon className="h-5 w-5 text-purple-400" />
+                  ) : (
+                    <PlusIcon className="h-5 w-5 text-gray-400" />
+                  )}
+                </button>
+              );
+            })}
+          {!playlists.length && (
+            <p className="py-5 text-sm text-gray-400">
+              Create a playlist below to save this music.
+            </p>
+          )}
+          {playlists.length > 0 &&
+            !playlists.some(item => item.name.toLowerCase().includes(filter.toLowerCase())) && (
+              <p className="py-5 text-sm text-gray-400">No playlists match “{filter}”.</p>
+            )}
+        </div>
       )}
+      <form onSubmit={create} className="border-t border-gray-700 pt-4">
+        <Input
+          label="Create a new playlist"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          maxLength={200}
+          placeholder="Give it a name"
+        />
+        <Button
+          type="submit"
+          className="mt-3"
+          loading={creating}
+          disabled={!name.trim() || Boolean(addingTo)}
+        >
+          Create and add
+        </Button>
+        <p className="mt-2 text-xs text-gray-400">
+          New playlists are private. You can share them from your library.
+        </p>
+      </form>
     </div>
   );
 }

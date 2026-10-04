@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import Link from "next/link";
+import { MessageCircle } from "lucide-react";
 import MusicImage from "@/components/ui/MusicImage";
 import { userApi, identityApi, Chat, User } from "@/lib/api";
 import { useNotificationStore } from "@/contexts/NotificationContext";
@@ -21,6 +22,8 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [loadErrors, setLoadErrors] = useState<Record<string, string>>({});
+  const [retry, setRetry] = useState(0);
+  const [startingChat, setStartingChat] = useState<string | null>(null);
   // Canonical in-app notifications are owned by NotificationProvider.
 
   const loadUnreadCounts = useCallback(async () => {
@@ -126,7 +129,7 @@ export default function ChatPage() {
     };
 
     loadData();
-  }, [loadUnreadCounts, loadUserChats, loadUserFriends]);
+  }, [loadUnreadCounts, loadUserChats, loadUserFriends, retry]);
 
   // Message delivery and peer receipts refresh chat-specific unread counts.
   useEffect(() => {
@@ -157,12 +160,10 @@ export default function ChatPage() {
     };
   }, [currentUser?.id, loadUnreadCounts, loadUserChats]);
 
-  const handleChatClick = (chatId: string) => {
-    router.push(`/chat/${chatId}`);
-  };
-
   const handleStartChat = async (friendId: string) => {
-    if (!currentUser) return;
+    if (!currentUser || startingChat) return;
+    setStartingChat(friendId);
+    setLoadErrors(previous => ({ ...previous, create: "" }));
 
     try {
       const chat = await userApi.createOrGetChat([currentUser.id, friendId]);
@@ -175,6 +176,8 @@ export default function ChatPage() {
             ? error.message
             : "Conversation could not be started. Please retry.",
       }));
+    } finally {
+      setStartingChat(null);
     }
   };
 
@@ -185,7 +188,8 @@ export default function ChatPage() {
     const hours = diff / (1000 * 60 * 60);
 
     if (hours < 1) {
-      return `${Math.floor(diff / (1000 * 60))}m ago`;
+      const minutes = Math.max(0, Math.floor(diff / (1000 * 60)));
+      return minutes === 0 ? "Just now" : `${minutes}m ago`;
     } else if (hours < 24) {
       return `${Math.floor(hours)}h ago`;
     } else {
@@ -200,198 +204,171 @@ export default function ChatPage() {
     return chat.participantProfiles.find(p => p.id === otherParticipantId);
   };
 
-  if (isLoading) {
+  if (isLoading)
     return (
-      <>
-        <div className="p-6 flex items-center justify-center">
-          <div className="text-white">Loading chats...</div>
-        </div>
-      </>
+      <p role="status" className="p-6 text-gray-300">
+        Loading conversations…
+      </p>
     );
-  }
-
+  if (!currentUser)
+    return (
+      <main className="mx-auto max-w-5xl space-y-4 p-4 sm:p-8">
+        <h1 className="text-3xl font-semibold">Messages</h1>
+        <p className="text-gray-300">Sign in to chat with your friends.</p>
+        <Link
+          href="/"
+          className="inline-flex min-h-11 items-center text-purple-300 hover:underline"
+        >
+          Sign in
+        </Link>
+      </main>
+    );
   return (
-    <>
-      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Messages</h1>
-        </div>
-
-        {Object.values(loadErrors).some(Boolean) && (
-          <p role="alert" className="text-red-300">
-            {Object.values(loadErrors).filter(Boolean).join(" ")}{" "}
-            <button
-              onClick={() => {
-                setLoadErrors({});
-                if (currentUser)
-                  void Promise.all([
-                    loadUserChats(currentUser.id),
-                    loadUserFriends(currentUser.id),
-                    loadUnreadCounts(),
-                  ]);
-              }}
-            >
-              Retry conversations
-            </button>
-          </p>
-        )}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-          {/* Active Chats */}
-          <div className="lg:col-span-2">
-            <Card className="bg-gray-800/50 border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-white">Recent Conversations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {chats.length > 0 ? (
-                  <div className="space-y-3">
-                    {chats.map(chat => {
-                      const otherParticipant = getOtherParticipant(chat);
-                      const unreadCount = unreadCounts[chat.chatId] || 0;
-                      return (
-                        <div
-                          key={chat.chatId}
-                          onClick={() => handleChatClick(chat.chatId)}
-                          className={`flex items-center space-x-4 p-4 rounded-lg cursor-pointer transition-colors ${
-                            unreadCount > 0
-                              ? "bg-blue-900/30 hover:bg-blue-900/50 border-l-4 border-blue-500"
-                              : "bg-gray-700/50 hover:bg-gray-700/80"
-                          }`}
-                        >
-                          <div className="relative">
-                            <MusicImage
-                              src={otherParticipant?.avatarUrl}
-                              alt={
-                                otherParticipant
-                                  ? otherParticipant.displayName || otherParticipant.username
-                                  : "User"
-                              }
-                              fallbackText={
-                                otherParticipant
-                                  ? (otherParticipant.displayName || otherParticipant.username)
-                                      .charAt(0)
-                                      .toUpperCase()
-                                  : "?"
-                              }
-                              type="circle"
-                              size="medium"
-                              className="w-12 h-12"
-                            />
-                            {unreadCount > 0 && (
-                              <div className="absolute -top-1 -right-1 bg-blue-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                                {unreadCount > 9 ? "9+" : unreadCount}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <h3
-                                className={`font-medium truncate ${unreadCount > 0 ? "text-white" : "text-white"}`}
-                              >
-                                {otherParticipant
-                                  ? otherParticipant.displayName || otherParticipant.username
-                                  : "Unknown"}
-                              </h3>
-                              <div className="flex items-center space-x-2">
-                                <span className="text-gray-400 text-sm">
-                                  {formatTime(chat.lastActivity)}
-                                </span>
-                                {unreadCount > 0 && (
-                                  <div className="bg-blue-500 text-white text-xs rounded-full px-2 py-1 font-bold min-w-[20px] text-center">
-                                    {unreadCount > 99 ? "99+" : unreadCount}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <p
-                              className={`text-sm truncate ${unreadCount > 0 ? "text-gray-300" : "text-gray-400"}`}
-                            >
-                              {chat.lastMessageContent
-                                ? chat.lastMessageSenderId === currentUser?.id
-                                  ? `You: ${chat.lastMessageContent}`
-                                  : chat.lastMessageContent
-                                : "No messages yet"}
-                              {unreadCount > 0 && (
-                                <span className="ml-2 text-blue-400 font-medium">
-                                  • {unreadCount} unread
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : !Object.values(loadErrors).some(Boolean) ? (
-                  <div className="text-center py-12">
-                    <div className="text-gray-400 text-lg mb-2">No conversations yet</div>
-                    <p className="text-gray-500">Start a conversation with your friends!</p>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Friends List */}
-          <div>
-            <Card className="bg-gray-800/50 border-gray-700">
-              <CardHeader>
-                <CardTitle className="text-white">Friends</CardTitle>
-                <p className="text-gray-400 text-sm">Start a conversation</p>
-              </CardHeader>
-              <CardContent>
-                {friends.length > 0 ? (
-                  <div className="space-y-3">
-                    {friends.map(friend => (
-                      <div
-                        key={friend.id}
-                        onClick={() => handleStartChat(friend.id)}
-                        className="flex items-center space-x-3 p-3 rounded-lg bg-gray-700/30 hover:bg-gray-700/60 cursor-pointer transition-colors"
-                      >
-                        <MusicImage
-                          src={friend.avatarUrl}
-                          alt={friend.displayName || friend.username}
-                          fallbackText={(friend.displayName || friend.username)
-                            .charAt(0)
-                            .toUpperCase()}
-                          type="circle"
-                          size="small"
-                          className="w-10 h-10"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-white font-medium truncate">
-                            {friend.displayName || friend.username}
-                          </h4>
-                        </div>
-                        <div className="flex items-center">
-                          <svg
-                            className="w-5 h-5 text-gray-400"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
+    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-8">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold">Messages</h1>
+        <Link
+          href="/friends"
+          className="inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+        >
+          Manage friends
+        </Link>
+      </header>
+      {Object.values(loadErrors).some(Boolean) && (
+        <p role="alert" className="text-sm text-red-300">
+          {Object.values(loadErrors).filter(Boolean).join(" ")}{" "}
+          <button
+            onClick={() => {
+              setLoadErrors({});
+              setRetry(value => value + 1);
+            }}
+            className="min-h-11 px-2 underline"
+          >
+            Retry conversations
+          </button>
+        </p>
+      )}
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(15rem,1fr)]">
+        <section aria-labelledby="conversations-title">
+          <h2 id="conversations-title" className="mb-4 text-lg font-semibold">
+            Recent conversations
+          </h2>
+          {chats.length ? (
+            <ul className="divide-y divide-gray-700">
+              {chats.map(chat => {
+                const person = getOtherParticipant(chat);
+                const unread = unreadCounts[chat.chatId] || 0;
+                const name = person?.displayName || person?.username || "User";
+                return (
+                  <li key={chat.chatId}>
+                    <Link
+                      href={`/chat/${chat.chatId}`}
+                      className="flex min-h-20 items-center gap-3 rounded-lg py-4 pr-2 hover:bg-gray-800 focus-visible:outline-2 focus-visible:outline-purple-300"
+                    >
+                      <MusicImage
+                        src={person?.avatarUrl}
+                        alt=""
+                        fallbackText={name.charAt(0)}
+                        type="circle"
+                        size="medium"
+                        className="h-11 w-11 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                          <h3
+                            className={`min-w-0 break-words ${unread ? "font-semibold" : "font-medium"}`}
                           >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                            />
-                          </svg>
+                            {name}
+                          </h3>
+                          <time
+                            dateTime={chat.lastActivity}
+                            className="shrink-0 text-xs text-gray-400"
+                          >
+                            {formatTime(chat.lastActivity)}
+                          </time>
                         </div>
+                        <p className="mt-1 truncate text-sm text-gray-400">
+                          {chat.lastMessageContent
+                            ? (chat.lastMessageSenderId === currentUser.id ? "You: " : "") +
+                              chat.lastMessageContent
+                            : "No messages yet"}
+                        </p>
+                        {unread > 0 && (
+                          <p className="mt-1 text-xs text-purple-300">
+                            {unread} unread {unread === 1 ? "message" : "messages"}
+                          </p>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                ) : !Object.values(loadErrors).some(Boolean) ? (
-                  <div className="text-center py-8">
-                    <div className="text-gray-400 mb-2">No friends yet</div>
-                    <p className="text-gray-500 text-sm">Add friends to start chatting!</p>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            !loadErrors.chats &&
+            !loadErrors.profile && (
+              <div className="space-y-2 py-6">
+                <p className="text-gray-300">No conversations yet.</p>
+                <p className="text-sm text-gray-400">Choose a friend to start a conversation.</p>
+              </div>
+            )
+          )}
+        </section>
+        <section aria-labelledby="chat-friends-title">
+          <h2 id="chat-friends-title" className="mb-4 text-lg font-semibold">
+            Start a conversation
+          </h2>
+          {friends.length ? (
+            <ul className="divide-y divide-gray-700">
+              {friends.map(friend => (
+                <li key={friend.id}>
+                  <button
+                    type="button"
+                    onClick={() => void handleStartChat(friend.id)}
+                    disabled={startingChat !== null}
+                    className="flex min-h-16 w-full items-center gap-3 rounded-lg py-3 text-left hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    <MusicImage
+                      src={friend.avatarUrl}
+                      alt=""
+                      type="circle"
+                      size="small"
+                      className="h-10 w-10 shrink-0"
+                    />
+                    <span className="min-w-0 flex-1 break-words">
+                      {friend.displayName || friend.username}
+                    </span>
+                    {startingChat === friend.id ? (
+                      <span role="status" className="text-xs text-gray-400">
+                        Opening…
+                      </span>
+                    ) : (
+                      <MessageCircle
+                        size={18}
+                        className="shrink-0 text-gray-400"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            !loadErrors.friends &&
+            !loadErrors.profile && (
+              <div className="space-y-2 py-6">
+                <p className="text-gray-300">Add a friend to start chatting.</p>
+                <Link
+                  href="/friends"
+                  className="inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+                >
+                  Find friends
+                </Link>
+              </div>
+            )
+          )}
+        </section>
       </div>
-    </>
+    </main>
   );
 }

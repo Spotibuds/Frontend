@@ -5,11 +5,7 @@ import { useDialog } from "@/hooks/useDialog";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Album, Artist, Song, musicApi } from "@/lib/api";
-import Swal from "sweetalert2";
-import withReactContent from "sweetalert2-react-content";
 import MusicImage from "@/components/ui/MusicImage";
-
-const MySwal = withReactContent(Swal);
 
 type UpdateType = "artist" | "album" | "song";
 
@@ -158,11 +154,11 @@ export default function UpdateModal({
 
     // Validation
     if ((type === "album" || type === "song") && !formDataState.artist?.id) {
-      await MySwal.fire({ icon: "error", title: "Please select a valid artist" });
+      setSaveError("Choose an artist from the suggestions.");
       return;
     }
     if (type === "song" && !formDataState.album?.id) {
-      await MySwal.fire({ icon: "error", title: "Please select a valid album" });
+      setSaveError("Choose an album from the suggestions.");
       return;
     }
 
@@ -193,14 +189,10 @@ export default function UpdateModal({
       const updated = await onUpdate(type, data.id, form);
 
       if (updated) {
-        await MySwal.fire({
-          icon: "success",
-          title: `${type.charAt(0).toUpperCase() + type.slice(1)} updated successfully`,
-        });
         onSuccess?.(updated);
         onClose();
       } else {
-        await MySwal.fire({ icon: "error", title: `Failed to update ${type}` });
+        setSaveError(`The ${type} could not be updated. Your input was kept. Retry.`);
       }
     } catch (err) {
       console.error(err);
@@ -214,14 +206,14 @@ export default function UpdateModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/70 p-4 flex items-center justify-center z-[80]">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={`Update ${type}`}
         tabIndex={-1}
-        className="bg-gray-900 p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto space-y-4"
+        className="bg-gray-900 p-6 rounded-lg w-full max-w-lg max-h-[90dvh] overflow-y-auto space-y-4"
       >
         <h3 className="text-white text-lg font-semibold">Update {type}</h3>
         {saveError && (
@@ -257,7 +249,7 @@ export default function UpdateModal({
                 type="file"
                 name="imageFile"
                 onChange={handleChange}
-                className="hidden"
+                className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
               />
               <Button
                 type="button"
@@ -331,7 +323,7 @@ export default function UpdateModal({
                     type="file"
                     name="coverFile"
                     onChange={handleChange}
-                    className="hidden"
+                    className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
                   />
                   <Button
                     type="button"
@@ -406,7 +398,7 @@ export default function UpdateModal({
                     type="file"
                     name="audioFile"
                     onChange={handleChange}
-                    className="hidden"
+                    className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
                   />
                   <Button
                     className="ml-3"
@@ -425,7 +417,7 @@ export default function UpdateModal({
                     type="file"
                     name="coverFile"
                     onChange={handleChange}
-                    className="hidden"
+                    className="block min-w-0 w-full max-w-full text-sm text-gray-300 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-700 file:px-3 file:py-2 file:text-gray-100"
                   />
                   <Button
                     className="ml-3"
@@ -443,11 +435,11 @@ export default function UpdateModal({
         )}
 
         <div className="flex justify-end space-x-2">
-          <Button className="bg-gray-700 hover:bg-gray-600" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button
-            className={`bg-blue-600 hover:bg-blue-700 ${
+            className={`bg-primary hover:bg-purple-300 text-primary-foreground ${
               type === "song" && (!formDataState.artist?.id || !formDataState.album?.id)
                 ? "opacity-50 cursor-not-allowed"
                 : ""

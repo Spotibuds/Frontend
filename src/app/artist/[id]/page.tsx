@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import MusicImage from "@/components/ui/MusicImage";
 import SongCard from "@/components/SongCard";
 import AlbumPlayButton from "@/components/ui/AlbumPlayButton";
@@ -11,30 +12,35 @@ import Square3Stack3DIcon from "@heroicons/react/24/outline/Square3Stack3DIcon";
 
 export default function ArtistPage() {
   const params = useParams();
-  const router = useRouter();
   const artistId = params.id as string;
   const [artist, setArtist] = useState<Artist | null>(null);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
+  const [partialError, setPartialError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
+    let active = true;
     const fetchArtistData = async () => {
       if (!artistId) return;
 
       try {
         setLoading(true);
         setError(null);
+        setPartialError("");
+        setAlbums([]);
+        setSongs([]);
         let artistData: Artist | null = null;
 
         try {
           artistData = await musicApi.getArtist(artistId);
         } catch {
-          console.error("Failed to load artist - artist not found");
-          setError("Artist not found");
+          if (active) setError("Artist could not be loaded. Please retry.");
           return;
         }
+        if (!active) return;
 
         if (!artistData) {
           console.warn("Artist not found:", artistId);
@@ -49,6 +55,7 @@ export default function ArtistPage() {
           musicApi.getArtistAlbums(artistId, 20),
           musicApi.getArtistSongs(artistId, 30),
         ]);
+        if (!active) return;
 
         if (albumsResult.status === "fulfilled") {
           setAlbums(albumsResult.value);
@@ -56,6 +63,11 @@ export default function ArtistPage() {
           console.warn("Failed to load artist albums:", albumsResult.reason);
         }
 
+        setPartialError(
+          [albumsResult, songsResult].some(result => result.status === "rejected")
+            ? "Some albums or songs could not be loaded. Retry."
+            : ""
+        );
         if (songsResult.status === "fulfilled") {
           setSongs(songsResult.value);
         } else {
@@ -63,18 +75,17 @@ export default function ArtistPage() {
         }
       } catch (error) {
         console.error("Error fetching artist data:", error);
-        setError("Failed to load artist data. Please check if the music service is running.");
+        if (active) setError("Artist details could not be loaded. Please retry.");
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
-    fetchArtistData();
-  }, [artistId]);
-
-  const handleAlbumClick = (albumId: string) => {
-    router.push(`/album/${albumId}`);
-  };
+    void fetchArtistData();
+    return () => {
+      active = false;
+    };
+  }, [artistId, retry]);
 
   if (loading) {
     return (
@@ -94,13 +105,21 @@ export default function ArtistPage() {
       <>
         <div className="p-6 flex items-center justify-center min-h-96">
           <div className="text-center">
-            <p className="text-red-400 mb-4">{error || "Artist not found"}</p>
+            <p role="alert" className="text-red-400 mb-4">
+              {error || "Artist not found"}
+            </p>
             <button
-              onClick={() => router.back()}
+              onClick={() => setRetry(value => value + 1)}
               className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
             >
-              Go Back
+              Retry artist
             </button>
+            <Link
+              href="/music"
+              className="ml-4 inline-flex min-h-11 items-center text-gray-300 hover:underline"
+            >
+              Browse music
+            </Link>
           </div>
         </div>
       </>
@@ -111,7 +130,7 @@ export default function ArtistPage() {
     <>
       <div className="min-h-screen">
         {/* Artist Hero Section */}
-        <div className="relative bg-gradient-to-b from-purple-900/20 via-gray-900/50 to-gray-900">
+        <div className="relative bg-gray-800">
           <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
             <div className="flex flex-col lg:flex-row items-start lg:items-end gap-8">
               {/* Artist Image */}
@@ -122,23 +141,20 @@ export default function ArtistPage() {
                   fallbackText={safeString(artist.name)}
                   size="xl"
                   type="circle"
-                  className="shadow-2xl w-64 h-64 mx-auto lg:mx-0"
+                  className="shadow-2xl w-40 h-40 sm:w-52 sm:h-52 mx-auto lg:mx-0"
                   priority={true}
                   lazy={false}
                 />
               </div>
 
               {/* Artist Info */}
-              <div className="flex-1 text-center lg:text-left">
-                <p className="text-sm font-medium text-purple-400 uppercase tracking-wide mb-2">
-                  Artist
-                </p>
-                <h1 className="text-5xl lg:text-7xl font-bold text-white mb-4 break-words">
+              <div className="min-w-0 flex-1 text-left">
+                <h1 className="text-3xl lg:text-4xl font-bold text-white mb-4 break-words">
                   {safeString(artist.name)}
                 </h1>
 
                 {/* Stats */}
-                <div className="flex items-center justify-center lg:justify-start space-x-6 mb-6 text-gray-300">
+                <div className="mb-6 flex flex-wrap items-center gap-4 text-gray-300">
                   <span className="flex items-center space-x-2">
                     <MusicalNoteIcon className="w-5 h-5" />
                     <span>
@@ -164,14 +180,25 @@ export default function ArtistPage() {
           </div>
         </div>
 
+        {partialError && (
+          <p role="alert" className="px-6 text-red-300">
+            {partialError}{" "}
+            <button
+              className="min-h-11 px-2 underline"
+              onClick={() => setRetry(value => value + 1)}
+            >
+              Retry details
+            </button>
+          </p>
+        )}
         {/* Content Sections */}
         <div className="max-w-7xl mx-auto px-6 py-8 space-y-12">
-          {/* Popular Songs */}
+          {/* Songs */}
           {songs.length > 0 && (
             <section>
-              <h2 className="text-2xl font-bold text-white mb-6">Popular Songs</h2>
+              <h2 className="text-2xl font-bold text-white mb-6">Songs</h2>
               <div className="space-y-2">
-                {songs.slice(0, 10).map((song, index) => (
+                {songs.map((song, index) => (
                   <SongCard
                     key={song.id}
                     song={song}
@@ -191,28 +218,30 @@ export default function ArtistPage() {
               <h2 className="text-2xl font-bold text-white mb-6">Albums</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
                 {albums.map(album => (
-                  <div key={album.id} className="group cursor-pointer relative">
-                    <div className="mb-4 group-hover:shadow-2xl transition-shadow duration-200 relative">
+                  <div key={album.id} className="group min-w-0">
+                    <Link
+                      href={`/album/${album.id}`}
+                      className="mb-3 block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-300"
+                    >
                       <MusicImage
                         src={album.coverUrl}
                         alt={safeString(album.title)}
                         fallbackText={safeString(album.title)}
                         size="large"
                         type="square"
-                        className="shadow-lg w-full"
+                        className="w-full"
                       />
-                      {/* Play button overlay */}
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100">
-                        <AlbumPlayButton album={album} size="large" showAddToQueue={true} />
-                      </div>
-                    </div>
-                    <div onClick={() => handleAlbumClick(album.id)}>
+                    </Link>
+                    <Link href={`/album/${album.id}`} className="block hover:underline">
                       <h3 className="text-white font-semibold text-sm mb-1 truncate group-hover:underline">
                         {safeString(album.title)}
                       </h3>
                       <p className="text-gray-400 text-xs truncate">
                         {album.releaseDate ? new Date(album.releaseDate).getFullYear() : "Album"}
                       </p>
+                    </Link>
+                    <div className="mt-3">
+                      <AlbumPlayButton album={album} size="small" showAddToQueue={true} />
                     </div>
                   </div>
                 ))}
@@ -221,11 +250,10 @@ export default function ArtistPage() {
           )}
 
           {/* Empty State */}
-          {songs.length === 0 && albums.length === 0 && (
+          {!partialError && songs.length === 0 && albums.length === 0 && (
             <div className="text-center py-16">
-              <div className="text-gray-600 text-6xl mb-4">♪</div>
               <p className="text-gray-400 text-lg mb-2">No content available</p>
-              <p className="text-gray-500">This artist hasn&apos;t released any music yet.</p>
+              <p className="text-gray-400">No songs or albums are available for this artist.</p>
             </div>
           )}
         </div>

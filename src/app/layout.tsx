@@ -4,6 +4,7 @@ import { AudioProvider } from "@/lib/audio";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import ConditionalAppLayout from "@/components/layout/ConditionalAppLayout";
+import { FavoritesProvider } from "@/contexts/FavoritesContext";
 
 export const metadata: Metadata = {
   title: {
@@ -41,12 +42,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body className="antialiased">
         <ErrorBoundary>
           <AudioProvider>
             <NotificationProvider>
-              <ConditionalAppLayout>{children}</ConditionalAppLayout>
+              <FavoritesProvider>
+                <ConditionalAppLayout>{children}</ConditionalAppLayout>
+              </FavoritesProvider>
             </NotificationProvider>
           </AudioProvider>
         </ErrorBoundary>

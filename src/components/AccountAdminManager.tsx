@@ -91,7 +91,7 @@ export default function AccountAdminManager({
     <>
       <AdminNavigation />
       <main className="p-4 sm:p-8 space-y-6 text-white">
-        <h1 className="text-3xl text-purple-300 font-bold">
+        <h1 className="text-3xl font-semibold text-white">
           {administrators ? "Administrators" : "Users"}
         </h1>
         {error && (
@@ -139,7 +139,10 @@ export default function AccountAdminManager({
             maxLength={100}
             required
           />
-          <button disabled={pending} className="rounded bg-purple-700 p-2 disabled:opacity-50">
+          <button
+            disabled={pending}
+            className="rounded min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-purple-300 disabled:opacity-50"
+          >
             {pending ? "Saving…" : `Create ${administrators ? "administrator" : "user"}`}
           </button>
         </form>
@@ -175,7 +178,7 @@ export default function AccountAdminManager({
                   </button>
                   <button
                     disabled={pending}
-                    className="bg-purple-700 rounded p-2"
+                    className="min-h-11 rounded-lg bg-primary p-2 text-primary-foreground hover:bg-purple-300"
                     onClick={() => {
                       if (confirm(`Change the role of ${user.userName}?`))
                         void mutate(

@@ -252,12 +252,12 @@ export default function AdminPageForAlbums() {
   return (
     <>
       <SidebarNavigation />
-      <main className="p-6">
+      <main className="page-shell">
         <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-3">
-          <h1 className="text-2xl font-bold text-purple-400">Albums Dashboard</h1>
+          <h1 className="text-3xl font-semibold text-white">Albums Dashboard</h1>
           <button
             onClick={openCreateModal}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded w-full sm:w-auto"
+            className="bg-primary hover:bg-purple-300 text-primary-foreground px-4 py-2 rounded w-full sm:w-auto"
           >
             Create New Album
           </button>
@@ -277,7 +277,7 @@ export default function AdminPageForAlbums() {
               {currentAlbums.map(album => (
                 <div
                   key={album.id}
-                  className="flex items-center bg-gray-900 p-4 rounded shadow-md space-x-4"
+                  className="flex items-center bg-gray-800 p-4 rounded-lg space-x-4"
                 >
                   <MusicImage
                     src={album.coverUrl}
@@ -296,13 +296,13 @@ export default function AdminPageForAlbums() {
                     <div className="mt-2 space-x-2">
                       <button
                         onClick={() => openUpdateModal(album)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-sm"
+                        className="min-h-10 rounded-lg bg-gray-700 px-3 py-2 text-sm text-gray-100 hover:bg-gray-600"
                       >
                         Update
                       </button>
                       <button
                         onClick={() => handleDelete(album.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+                        className="min-h-10 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-950"
                       >
                         Delete
                       </button>
@@ -337,14 +337,14 @@ export default function AdminPageForAlbums() {
 
         {/* Create & Update Modals */}
         {(isCreateModalOpen || isUpdateModalOpen) && (
-          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex justify-center items-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-[80] p-4">
             <div
               ref={dialogRef}
               role="dialog"
               aria-modal="true"
               aria-label="Album editor"
               tabIndex={-1}
-              className="bg-gray-900 p-6 rounded shadow-lg w-full max-w-sm max-h-[90vh] overflow-y-auto"
+              className="dialog-surface p-5 sm:p-6 w-full max-w-lg max-h-[90dvh] overflow-y-auto"
             >
               <h2 className="text-xl font-bold mb-4 text-white">
                 {isCreateModalOpen ? "Create New Album" : "Update Album"}
@@ -422,7 +422,7 @@ export default function AdminPageForAlbums() {
                 onChange={handleModalChange}
               />
 
-              <label className="flex bg-gray-800 hover:bg-gray-700 text-white text-base font-medium px-4 py-2.5 outline-none rounded w-max cursor-pointer mx-auto">
+              <label className="block w-full rounded-lg bg-gray-900 p-3 text-sm text-gray-300">
                 Upload Cover
                 <input
                   aria-label="cover File"
@@ -461,9 +461,9 @@ export default function AdminPageForAlbums() {
                 <button
                   className={`${
                     isCreateModalOpen
-                      ? "bg-purple-600 hover:bg-purple-700"
-                      : "bg-yellow-500 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded disabled:opacity-50`}
+                      ? "bg-primary hover:bg-purple-300 text-primary-foreground"
+                      : "bg-primary hover:bg-purple-300"
+                  } text-primary-foreground px-4 py-2 rounded disabled:opacity-50`}
                   disabled={saving || !modalData.artistId}
                   onClick={isCreateModalOpen ? handleCreateSubmit : handleUpdateSubmit}
                 >

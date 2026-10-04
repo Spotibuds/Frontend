@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Song, API_CONFIG, userApi } from "./api";
 import { audioReducer, initialState, AudioState } from "./audioState";
+import { bufferedEnd, nextSongToPreload, permitsPreload } from "./audioBuffer";
 import { getSessionUser, SESSION_EVENT } from "./session";
 interface AudioContextType {
   state: AudioState;
@@ -47,6 +48,10 @@ interface AudioContextType {
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
 const playbackError =
   "Playback could not start. Check the local media service and press Play to retry.";
+const mediaUrl = (url: string) =>
+  url.startsWith(`${API_CONFIG.MUSIC_API}/api/media/`)
+    ? url
+    : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(url)}`;
 export function AudioProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(audioReducer, initialState);
   const latest = useRef(state);
@@ -54,6 +59,15 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     latest.current = state;
   }, [state]);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const players = useRef<Array<HTMLAudioElement | null>>([null, null]);
+  const activeSlot = useRef(0);
+  const warmed = useRef<{ id: string; url: string } | null>(null);
+  const clearPlayer = useCallback((audio: HTMLAudioElement | null) => {
+    if (!audio) return;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+  }, []);
   const owner = useRef<string | null>(null);
   const listeningSeconds = useRef(0);
   const historyAdded = useRef(false);
@@ -63,9 +77,8 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const restore = () => {
       const id = getSessionUser()?.id || null;
       if (owner.current === id) return;
-      audioRef.current?.pause();
-      audioRef.current?.removeAttribute("src");
-      audioRef.current?.load();
+      warmed.current = null;
+      players.current.forEach(clearPlayer);
       if (owner.current) {
         try {
           localStorage.removeItem(`audioState:${owner.current}`);
@@ -86,6 +99,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
                 isPlaying: false,
                 isLoading: false,
                 isSeeking: false,
+                bufferedTime: 0,
                 error: null,
               },
             });
@@ -101,7 +115,11 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     restore();
     window.addEventListener(SESSION_EVENT, restore);
     return () => window.removeEventListener(SESSION_EVENT, restore);
-  }, []);
+  }, [clearPlayer]);
+  useEffect(() => {
+    const mountedPlayers = [...players.current];
+    return () => mountedPlayers.forEach(clearPlayer);
+  }, [clearPlayer]);
   useEffect(() => {
     if (owner.current) {
       try {
@@ -144,8 +162,18 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         });
       return;
     }
-    if (audio && latest.current.isPlaying)
-      void audio.play().catch(() =>
+    if (audio && latest.current.isPlaying) {
+      const revision = latest.current.playbackRevision;
+      void audio.play().catch(cause => {
+        // Pausing or replacing a source rejects its pending play promise. It must
+        // not stop a newer track or undo a deliberate pause.
+        if (
+          cause?.name === "AbortError" ||
+          audioRef.current !== audio ||
+          latest.current.playbackRevision !== revision ||
+          !latest.current.isPlaying
+        )
+          return;
         dispatch({
           type: "PATCH",
           payload: {
@@ -153,21 +181,21 @@ export function AudioProvider({ children }: { children: ReactNode }) {
             isLoading: false,
             error: playbackError,
           },
-        })
-      );
+        });
+      });
+    }
   }, []);
   useEffect(() => {
-    const audio = audioRef.current;
+    let audio = audioRef.current;
     if (!audio) return;
     const url = state.currentSong?.fileUrl;
     listeningSeconds.current = 0;
     historyAdded.current = false;
     historyAttempts.current = 0;
     nextHistoryAttempt.current = 30;
-    audio.pause();
     if (!url?.trim()) {
-      audio.removeAttribute("src");
-      audio.load();
+      warmed.current = null;
+      players.current.forEach(clearPlayer);
       dispatch({
         type: "PATCH",
         payload: {
@@ -179,12 +207,85 @@ export function AudioProvider({ children }: { children: ReactNode }) {
       return;
     }
     // Public playback is always mediated by Music's catalogue allowlist.
-    audio.src = url.startsWith(`${API_CONFIG.MUSIC_API}/api/media/`)
-      ? url
-      : `${API_CONFIG.MUSIC_API}/api/media/audio?url=${encodeURIComponent(url)}`;
-    audio.load();
+    const target = mediaUrl(url);
+    const standbySlot = 1 - activeSlot.current;
+    const standby = players.current[standbySlot];
+    const prepared = warmed.current;
+    if (
+      prepared &&
+      prepared.id === state.currentSong?.id &&
+      prepared.url === target &&
+      standby?.getAttribute("src") === target
+    ) {
+      // Promote the same media element so its downloaded bytes are reused.
+      const previous = audio;
+      activeSlot.current = standbySlot;
+      audioRef.current = audio = standby;
+      warmed.current = null;
+      clearPlayer(previous);
+      dispatch({
+        type: "PATCH",
+        payload: {
+          bufferedTime: bufferedEnd(audio),
+          duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+        },
+      });
+    } else {
+      audio.pause();
+      audio.preload = latest.current.isPlaying ? "auto" : "metadata";
+      audio.src = target;
+      audio.load();
+    }
+    audio.preload = latest.current.isPlaying ? "auto" : "metadata";
+    audio.volume = latest.current.volume;
+    audio.muted = latest.current.isMuted;
     tryPlay();
-  }, [state.currentSong?.id, state.currentSong?.fileUrl, state.playbackRevision, tryPlay]);
+  }, [
+    state.currentSong?.id,
+    state.currentSong?.fileUrl,
+    state.playbackRevision,
+    tryPlay,
+    clearPlayer,
+  ]);
+  const next = nextSongToPreload(state);
+  const enoughBuffered = state.bufferedTime - state.currentTime >= 10;
+  useEffect(() => {
+    const standby = players.current[1 - activeSlot.current];
+    if (!standby) return;
+    if (
+      !next?.fileUrl?.trim() ||
+      next.id === latest.current.currentSong?.id ||
+      !state.isPlaying ||
+      state.isLoading ||
+      !permitsPreload()
+    ) {
+      if (warmed.current) {
+        warmed.current = null;
+        clearPlayer(standby);
+      }
+      return;
+    }
+    const url = mediaUrl(next.fileUrl);
+    if (warmed.current?.id === next.id && warmed.current.url === url) return;
+    clearPlayer(standby);
+    warmed.current = null;
+    // The last seconds of a fully buffered song naturally fall below the
+    // threshold. Keep an existing warmup; only use this gate to start a new one.
+    if (!enoughBuffered) return;
+    warmed.current = { id: next.id, url };
+    standby.preload = "metadata";
+    standby.muted = true;
+    standby.src = url;
+    standby.load();
+  }, [
+    next?.id,
+    next?.fileUrl,
+    state.currentSong?.id,
+    state.isPlaying,
+    state.isLoading,
+    enoughBuffered,
+    clearPlayer,
+  ]);
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -285,7 +386,10 @@ export function AudioProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(audio.duration)) return;
     audio.currentTime = Math.max(0, Math.min(time, audio.duration));
-    dispatch({ type: "PATCH", payload: { currentTime: audio.currentTime } });
+    dispatch({
+      type: "PATCH",
+      payload: { currentTime: audio.currentTime, bufferedTime: bufferedEnd(audio) },
+    });
   };
   const previousSong = () => {
     if ((audioRef.current?.currentTime || 0) > 3) seekTo(0);
@@ -305,7 +409,7 @@ export function AudioProvider({ children }: { children: ReactNode }) {
         ),
       }),
     playPlaylist: (songs, index = 0) => dispatch({ type: "PLAYLIST", songs, index }),
-    togglePlayPause: () => patch({ isPlaying: !state.isPlaying, error: null }),
+    togglePlayPause: () => patch({ isPlaying: !state.isPlaying, isLoading: false, error: null }),
     nextSong: () => dispatch({ type: "NEXT" }),
     previousSong,
     seekTo,
@@ -327,42 +431,79 @@ export function AudioProvider({ children }: { children: ReactNode }) {
   return (
     <AudioContext.Provider value={value}>
       {children}
-      <audio
-        ref={audioRef}
-        preload="metadata"
-        onTimeUpdate={() => patch({ currentTime: audioRef.current?.currentTime || 0 })}
-        onDurationChange={() =>
-          patch({
-            duration: Number.isFinite(audioRef.current?.duration) ? audioRef.current!.duration : 0,
-          })
-        }
-        onCanPlay={() => {
-          patch({ isLoading: false });
-          tryPlay();
-        }}
-        onLoadStart={() =>
-          patch({ isLoading: Boolean(latest.current.currentSong?.fileUrl?.trim()) })
-        }
-        onWaiting={() => patch({ isLoading: Boolean(latest.current.currentSong?.fileUrl?.trim()) })}
-        onPlaying={() => patch({ isLoading: false })}
-        onSeeking={() => patch({ isSeeking: true })}
-        onSeeked={() =>
-          patch({ isSeeking: false, currentTime: audioRef.current?.currentTime || 0 })
-        }
-        onError={() =>
-          patch({
-            isPlaying: false,
-            isLoading: false,
-            error: "Audio could not be loaded. Check the local Music service and retry.",
-          })
-        }
-        onEnded={() => {
-          if (latest.current.repeatMode === "one") {
-            seekTo(0);
+      {[0, 1].map(slot => (
+        <audio
+          key={slot}
+          ref={element => {
+            players.current[slot] = element;
+            if (slot === activeSlot.current) audioRef.current = element;
+          }}
+          preload="metadata"
+          onTimeUpdate={event => {
+            const audio = event.currentTarget;
+            if (audio !== audioRef.current) return;
+            patch({ currentTime: audio.currentTime, bufferedTime: bufferedEnd(audio) });
+          }}
+          onProgress={event => {
+            if (event.currentTarget === audioRef.current)
+              patch({ bufferedTime: bufferedEnd(event.currentTarget) });
+          }}
+          onDurationChange={event => {
+            if (event.currentTarget === audioRef.current)
+              patch({
+                duration: Number.isFinite(event.currentTarget.duration)
+                  ? event.currentTarget.duration
+                  : 0,
+              });
+          }}
+          onCanPlay={event => {
+            if (event.currentTarget !== audioRef.current) return;
+            patch({ isLoading: false });
             tryPlay();
-          } else dispatch({ type: "ENDED" });
-        }}
-      />
+          }}
+          onLoadStart={event => {
+            if (event.currentTarget === audioRef.current)
+              patch({ isLoading: latest.current.isPlaying });
+          }}
+          onWaiting={event => {
+            if (event.currentTarget === audioRef.current)
+              patch({ isLoading: latest.current.isPlaying });
+          }}
+          onPlaying={event => {
+            if (event.currentTarget === audioRef.current) patch({ isLoading: false });
+          }}
+          onSeeking={event => {
+            if (event.currentTarget === audioRef.current) patch({ isSeeking: true });
+          }}
+          onSeeked={event => {
+            if (event.currentTarget === audioRef.current)
+              patch({
+                isSeeking: false,
+                currentTime: event.currentTarget.currentTime,
+                bufferedTime: bufferedEnd(event.currentTarget),
+              });
+          }}
+          onError={event => {
+            if (event.currentTarget !== audioRef.current) {
+              warmed.current = null;
+              clearPlayer(event.currentTarget);
+              return;
+            }
+            patch({
+              isPlaying: false,
+              isLoading: false,
+              error: "Audio could not be loaded. Check the local Music service and retry.",
+            });
+          }}
+          onEnded={event => {
+            if (event.currentTarget !== audioRef.current) return;
+            if (latest.current.repeatMode === "one") {
+              seekTo(0);
+              tryPlay();
+            } else dispatch({ type: "ENDED" });
+          }}
+        />
+      ))}
     </AudioContext.Provider>
   );
 }

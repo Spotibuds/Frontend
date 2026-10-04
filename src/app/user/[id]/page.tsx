@@ -1,7 +1,8 @@
 "use client";
 import { useDeferredEffect } from "@/hooks/useDeferredEffect";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useDialog } from "@/hooks/useDialog";
 import Link from "next/link";
 
 import { useParams, useRouter } from "next/navigation";
@@ -13,10 +14,9 @@ import {
   CheckIcon,
   XMarkIcon,
   PencilIcon,
-  HeartIcon,
   MusicalNoteIcon,
 } from "@heroicons/react/24/outline";
-import { userApi, identityApi, safeString, type Artist, type User } from "@/lib/api";
+import { userApi, identityApi, type Artist, type User } from "@/lib/api";
 import { Playlist } from "@/lib/playlist";
 import { useFriendHub } from "@/hooks/useFriendHub";
 import { useFriendshipStatus } from "@/hooks/useFriendshipStatus";
@@ -34,8 +34,7 @@ interface UserProfile {
   isPrivate?: boolean;
   friendCount?: number;
   playlists?: { id: string }[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  topArtists?: any[];
+  topArtists?: Array<{ name: string; count: number }>;
   // Enhanced: hydrated artist details
   hydratedTopArtists?: Array<{
     id: string;
@@ -51,8 +50,7 @@ interface UserProfile {
     coverUrl?: string;
     time: string;
   }[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  publicPlaylists?: any[];
+  publicPlaylists?: Playlist[];
 }
 
 export default function UserProfilePage() {
@@ -93,6 +91,12 @@ export default function UserProfilePage() {
   const [friendsList, setFriendsList] = useState<User[]>([]);
   const [playlistsList, setPlaylistsList] = useState<Playlist[]>([]);
   const [isLoadingPopup, setIsLoadingPopup] = useState(false);
+  const [popupError, setPopupError] = useState("");
+  const [detailsError, setDetailsError] = useState("");
+  const [reactionsError, setReactionsError] = useState("");
+  const profileRequest = useRef({ version: 0 });
+  const friendsDialog = useDialog(showFriendsPopup, () => setShowFriendsPopup(false));
+  const playlistsDialog = useDialog(showPlaylistsPopup, () => setShowPlaylistsPopup(false));
 
   // Initialize friend hub for real-time notifications
   const { isConnected } = useFriendHub({
@@ -151,13 +155,15 @@ export default function UserProfilePage() {
 
   // Hydrate top artists with artist details (id, image)
   useEffect(() => {
+    let active = true;
     const fetchArtistDetails = async () => {
       if (!profileUser?.topArtists || profileUser.topArtists.length === 0) {
         setHydratedTopArtists([]);
         return;
       }
       const musicApi = (await import("@/lib/api")).musicApi;
-      const allArtists: Artist[] = await musicApi.getArtists();
+      const allArtists: Artist[] = await musicApi.getArtists().catch(() => []);
+      if (!active) return;
       const hydrated = profileUser.topArtists.map((a: { name: string; count: number }) => {
         const found = allArtists.find(
           (art: Artist) => art.name.toLowerCase() === a.name.toLowerCase()
@@ -171,15 +177,19 @@ export default function UserProfilePage() {
       });
       setHydratedTopArtists(hydrated);
     };
-    fetchArtistDetails();
+    void fetchArtistDetails();
+    return () => {
+      active = false;
+    };
   }, [profileUser?.topArtists]);
   const loadReactions = useCallback(async (identityUserId: string) => {
     try {
       setIsLoadingReactions(true);
+      setReactionsError("");
       const data = await userApi.getLatestReactions(identityUserId, 10, 0);
       setReactions(data);
     } catch (error) {
-      console.error("Failed to load reactions:", error);
+      setReactionsError(error instanceof Error ? error.message : "Reactions could not be loaded.");
     } finally {
       setIsLoadingReactions(false);
     }
@@ -187,9 +197,12 @@ export default function UserProfilePage() {
 
   const loadUserProfile = useCallback(
     async (identifier: string, authenticatedUser?: { id: string; username: string } | null) => {
+      const request = ++profileRequest.current.version;
+      const unavailable: string[] = [];
       try {
         setIsLoading(true);
         setError(null);
+        setDetailsError("");
 
         let userData: UserProfile | null = null;
 
@@ -231,6 +244,7 @@ export default function UserProfilePage() {
           }
         }
 
+        if (request !== profileRequest.current.version) return;
         if (!userData) {
           setError("User not found");
           setProfileUser(null);
@@ -286,7 +300,7 @@ export default function UserProfilePage() {
               );
           } catch (error) {
             console.error("Failed to load listening history:", error);
-            // Keep empty array if history fetch fails
+            unavailable.push("Recent activity could not be loaded.");
           }
         }
 
@@ -297,11 +311,12 @@ export default function UserProfilePage() {
           userPlaylists = await PlaylistService.getUserPlaylists(userData.identityUserId);
           // Filter to only public playlists (playlists that can be viewed by others)
           userPlaylists = userPlaylists.filter(
-            playlist => playlist.name && playlist.name.trim() !== ""
+            playlist => playlist.isPublic === true && playlist.name?.trim()
           );
         } catch (error) {
           console.error("Failed to load user playlists:", error);
           userPlaylists = [];
+          unavailable.push("Public playlists could not be loaded.");
         }
 
         // Fetch weekly top artists (only for own profile as marked private)
@@ -311,10 +326,12 @@ export default function UserProfilePage() {
             topArtists = await userApi.getWeeklyTopArtists(userData.identityUserId);
           }
         } catch {
-          // Non-blocking
           topArtists = [];
+          if (!userData.isPrivate || userData.identityUserId === activeUser?.id)
+            unavailable.push("Top artists could not be loaded.");
         }
 
+        if (request !== profileRequest.current.version) return;
         setProfileUser({
           id: userData.id,
           identityUserId: userData.identityUserId,
@@ -322,6 +339,7 @@ export default function UserProfilePage() {
           displayName: userData.displayName,
           bio: userData.bio,
           avatarUrl: userData.avatarUrl,
+          isPrivate: userData.isPrivate,
           friendCount: 0, // Will be set after fetching friends data
           playlists: Array.isArray(userData.playlists) ? userData.playlists : [],
           topArtists,
@@ -330,7 +348,7 @@ export default function UserProfilePage() {
         });
 
         // Load reactions for this user
-        if (userData.identityUserId) {
+        if (userData.identityUserId === activeUser?.id) {
           loadReactions(userData.identityUserId);
         }
 
@@ -338,16 +356,21 @@ export default function UserProfilePage() {
         try {
           const friends = await userApi.getFriends(userData.identityUserId);
           const friendsCount = Array.isArray(friends) ? friends.length : 0;
+          if (request !== profileRequest.current.version) return;
           setProfileUser(prev => (prev ? { ...prev, friendCount: friendsCount } : prev));
         } catch (error) {
           console.error("Failed to load friends count:", error);
+          unavailable.push("Friends could not be loaded.");
         }
+        if (request === profileRequest.current.version) setDetailsError(unavailable.join(" "));
       } catch (error) {
         console.error("Failed to load user profile:", error);
-        setError("Failed to load user profile");
-        setProfileUser(null);
+        if (request === profileRequest.current.version) {
+          setError("Failed to load user profile");
+          setProfileUser(null);
+        }
       } finally {
-        setIsLoading(false);
+        if (request === profileRequest.current.version) setIsLoading(false);
       }
     },
     [loadReactions]
@@ -368,6 +391,10 @@ export default function UserProfilePage() {
     } else {
       router.replace(`/user/${user.id}`);
     }
+    const lifecycle = profileRequest.current;
+    return () => {
+      lifecycle.version++;
+    };
   }, [userId, router, loadUserProfile]);
 
   const handleSendFriendRequest = async () => {
@@ -507,6 +534,7 @@ export default function UserProfilePage() {
     if (!profileUser) return;
 
     setIsLoadingPopup(true);
+    setPopupError("");
     setShowFriendsPopup(true);
 
     try {
@@ -523,6 +551,7 @@ export default function UserProfilePage() {
     } catch (error) {
       console.error("Failed to load friends:", error);
       setFriendsList([]);
+      setPopupError(error instanceof Error ? error.message : "Friends could not be loaded.");
     } finally {
       setIsLoadingPopup(false);
     }
@@ -536,830 +565,475 @@ export default function UserProfilePage() {
   };
 
   const renderActionButtons = () => {
-    if (isOwnProfile) {
+    const busy = isLoadingAction || friendshipLoading || !!friendshipError;
+    if (isOwnProfile)
       return (
-        <Button
-          onClick={handleEditProfile}
-          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-        >
-          <PencilIcon className="w-5 h-5 mr-2" />
-          Edit Profile
+        <Button onClick={handleEditProfile} variant="outline">
+          <PencilIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+          Edit profile
         </Button>
       );
-    }
-
     if (!friendshipStatus)
       return (
         <Button disabled>
-          {friendshipLoading ? "Loading friendship status..." : "Friendship status unavailable"}
+          {friendshipLoading ? "Loading friendship…" : "Friendship unavailable"}
         </Button>
       );
-    const status = friendshipStatus.status;
-
-    switch (status) {
-      case "accepted":
+    if (friendshipStatus.status === "accepted")
+      return (
+        <>
+          <Button onClick={handleMessage}>Message</Button>
+          <Button onClick={handleRemoveFriend} variant="outline" disabled={busy}>
+            Remove Friend
+          </Button>
+        </>
+      );
+    if (friendshipStatus.status === "blocked")
+      return (
+        <Button disabled variant="outline">
+          Blocked
+        </Button>
+      );
+    if (friendshipStatus.status === "pending") {
+      if (friendshipStatus.requesterId === currentUser?.id)
         return (
-          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4">
-            <Button
-              onClick={handleMessage}
-              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            >
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Message
-            </Button>
-            <Button
-              onClick={handleRemoveFriend}
-              variant="outline"
-              className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300"
-              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
-            >
-              Remove Friend
-            </Button>
-          </div>
-        );
-
-      case "pending":
-        // Check if the current user is the one who sent the request
-        // The backend returns requesterId, so we need to check if currentUser.id matches it
-        const isPendingRequest = friendshipStatus?.requesterId === currentUser?.id;
-
-        return isPendingRequest ? (
-          <div className="flex flex-col items-center space-y-2">
-            <Button
-              variant="outline"
-              className="border-yellow-500 text-yellow-400 font-semibold px-8 py-3 rounded-xl"
-              disabled
-            >
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Friend Request Sent
-            </Button>
+          <>
+            <span className="text-sm text-gray-400">Request sent</span>
             <Button
               aria-label={`Cancel friend request to ${profileUser?.username || "user"}`}
               onClick={handleCancelFriendRequest}
-              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
+              disabled={busy}
               variant="outline"
             >
               Cancel request
             </Button>
-            <p className="text-sm text-gray-400 text-center">
-              Waiting for {profileUser?.displayName || profileUser?.username} to respond
-            </p>
-            {showSuccessMessage && (
-              <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
-                <p className="text-sm text-green-400 text-center">
-                  ✓ Friend request sent successfully!
-                </p>
+          </>
+        );
+      return (
+        <>
+          <Button onClick={handleAcceptFriendRequest} disabled={busy}>
+            <CheckIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+            Accept Request
+          </Button>
+          <Button onClick={handleDeclineFriendRequest} disabled={busy} variant="outline">
+            Decline
+          </Button>
+        </>
+      );
+    }
+    return (
+      <Button onClick={handleSendFriendRequest} disabled={busy}>
+        <UserPlusIcon className="mr-2 h-4 w-4" aria-hidden="true" />
+        {isLoadingAction ? "Sending…" : "Add Friend"}
+      </Button>
+    );
+  };
+
+  if (isLoading)
+    return (
+      <p role="status" className="p-6 text-gray-300">
+        Loading profile…
+      </p>
+    );
+  if (error || !profileUser)
+    return (
+      <main className="mx-auto max-w-3xl space-y-4 p-4 sm:p-8">
+        <h1 className="text-2xl font-semibold">Profile unavailable</h1>
+        <p role="alert" className="text-gray-300">
+          {error || "This profile could not be loaded."}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Button onClick={() => void loadUserProfile(userId, currentUser)}>Retry profile</Button>
+          <Link
+            href="/search"
+            className="inline-flex min-h-11 items-center px-3 text-purple-300 hover:underline"
+          >
+            Find people
+          </Link>
+        </div>
+      </main>
+    );
+
+  const canViewActivity = isOwnProfile || !profileUser.isPrivate;
+  const playlistCards = (playlists: Playlist[]) => (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4">
+      {playlists.map(playlist => (
+        <Link
+          key={playlist.id}
+          href={`/playlists/${playlist.id}`}
+          onClick={() => setShowPlaylistsPopup(false)}
+          className="group min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-300"
+        >
+          <div className="mb-3 aspect-square overflow-hidden rounded-lg bg-gray-800">
+            {playlist.coverUrl ? (
+              <MusicImage
+                src={playlist.coverUrl}
+                alt=""
+                size="large"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <MusicalNoteIcon className="h-10 w-10 text-gray-400" aria-hidden="true" />
               </div>
             )}
           </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-4">
-            <Button
-              onClick={handleAcceptFriendRequest}
-              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
-            >
-              <CheckIcon className="w-5 h-5 mr-2" />
-              Accept Request
-            </Button>
-            <Button
-              onClick={handleDeclineFriendRequest}
-              variant="outline"
-              className="border-gray-500 text-gray-400 hover:bg-gray-500 hover:text-white font-semibold px-6 py-3 rounded-xl transition-all duration-300"
-              disabled={isLoadingAction || friendshipLoading || !!friendshipError}
-            >
-              <XMarkIcon className="w-5 h-5 mr-2" />
-              Decline
-            </Button>
-          </div>
-        );
-
-      case "blocked":
-        return (
-          <Button
-            variant="outline"
-            className="border-red-600 text-red-400 font-semibold px-8 py-3 rounded-xl"
-            disabled
-          >
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            Blocked
-          </Button>
-        );
-
-      case "declined":
-        // Don't show declined status to the other user - treat it as "none" for privacy
-        return (
-          <Button
-            onClick={handleSendFriendRequest}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            disabled={isLoadingAction || friendshipLoading || !!friendshipError}
-          >
-            {isLoadingAction ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Sending Request...
-              </>
-            ) : (
-              <>
-                <UserPlusIcon className="w-5 h-5 mr-2" />
-                Add Friend
-              </>
-            )}
-          </Button>
-        );
-
-      default:
-        return (
-          <Button
-            onClick={handleSendFriendRequest}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-semibold px-8 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-            disabled={isLoadingAction || friendshipLoading || !!friendshipError}
-          >
-            {isLoadingAction ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Sending Request...
-              </>
-            ) : (
-              <>
-                <UserPlusIcon className="w-5 h-5 mr-2" />
-                Add Friend
-              </>
-            )}
-          </Button>
-        );
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <>
-        <div className="p-6 flex items-center justify-center">
-          <div className="flex items-center space-x-3">
-            <div className="w-6 h-6 animate-spin rounded-full border-2 border-green-500 border-t-transparent"></div>
-            <span className="text-white">Loading profile...</span>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  if (error || !profileUser) {
-    return (
-      <>
-        <div className="p-6 text-center space-y-4">
-          <h1 className="text-2xl font-bold text-white">User Not Found</h1>
-          <p className="text-gray-400">{error || "This user does not exist."}</p>
-          <div className="flex items-center justify-center space-x-3">
-            <Button
-              onClick={() => router.push("/search")}
-              className="bg-green-500 hover:bg-green-600 text-black"
-            >
-              Search for Users
-            </Button>
-            <Button
-              onClick={() => router.push("/dashboard")}
-              variant="outline"
-              className="border-gray-600 text-gray-300 hover:bg-gray-800"
-            >
-              Go to Dashboard
-            </Button>
-          </div>
-        </div>
-      </>
-    );
-  }
+          <h3 className="truncate font-medium text-white group-hover:underline">{playlist.name}</h3>
+          <p className="text-sm text-gray-400">
+            {playlist.songCount ?? playlist.songs?.length ?? 0} songs
+          </p>
+        </Link>
+      ))}
+    </div>
+  );
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black">
-        {/* Hero Section with Background */}
-        <div className="relative h-64 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600">
-          <div className="absolute inset-0 bg-black/20"></div>
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/80 to-transparent"></div>
-        </div>
-
-        {/* Profile Content */}
-        <div className="relative -mt-32 px-6 pb-8">
-          {/* Profile Header Card */}
-          <div className="bg-gray-800/80 backdrop-blur-sm border border-gray-700 rounded-2xl p-8 mb-8 shadow-2xl">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
-              {/* Avatar */}
-              <div className="relative">
-                <div className="w-32 h-32 lg:w-40 lg:h-40 rounded-full overflow-hidden shadow-2xl border-4 border-gray-800">
-                  {profileUser.avatarUrl ? (
-                    <MusicImage
-                      src={profileUser.avatarUrl}
-                      alt={profileUser.displayName || profileUser.username}
-                      size="xl"
-                      type="circle"
-                      className="w-full h-full"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 flex items-center justify-center">
-                      <span className="text-white font-bold text-4xl lg:text-5xl">
-                        {(profileUser.displayName && profileUser.displayName.trim() !== ""
-                          ? profileUser.displayName
-                          : profileUser.username
-                        )
-                          .charAt(0)
-                          .toUpperCase()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {isOwnProfile && (
-                  <Link href="/user/edit">
-                    <button className="absolute -bottom-2 -right-2 w-10 h-10 bg-green-500 hover:bg-green-600 rounded-full flex items-center justify-center shadow-lg transition-colors">
-                      <PencilIcon className="w-5 h-5 text-white" />
-                    </button>
-                  </Link>
-                )}
-              </div>
-
-              {/* Profile Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-3">
-                      <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full border border-green-500/30">
-                        {isOwnProfile ? "Your Profile" : "Profile"}
-                      </span>
-                      {profileUser.isPrivate && (
-                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 text-xs font-medium rounded-full border border-yellow-500/30">
-                          Private
-                        </span>
-                      )}
-                    </div>
-                    <h1 className="text-4xl lg:text-5xl font-bold text-white">
-                      {profileUser.displayName && profileUser.displayName.trim() !== ""
-                        ? profileUser.displayName
-                        : profileUser.username}
-                    </h1>
-                    <p className="text-gray-300 text-lg">@{safeString(profileUser.username)}</p>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-                    {renderActionButtons()}
-                    {!isOwnProfile && (
-                      <Button
-                        onClick={handleFollow}
-                        disabled={isFollowing === null || isSavingFollow}
-                        aria-pressed={isFollowing === true}
-                      >
-                        {isSavingFollow ? "Saving follow…" : isFollowing ? "Unfollow" : "Follow"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-                {actionError && (
-                  <p role="alert" className="mt-3 text-red-300">
-                    {actionError}
-                  </p>
-                )}
-                {friendshipError && !isOwnProfile && (
-                  <p role="alert" className="mt-3 text-red-300">
-                    {friendshipError}{" "}
-                    <button
-                      disabled={friendshipLoading}
-                      onClick={() => void loadFriendshipStatus()}
-                    >
-                      Retry friendship status
-                    </button>
-                  </p>
-                )}
-
-                {/* Bio */}
-                <div className="mt-6">
-                  {profileUser.bio && profileUser.bio.trim() !== "" ? (
-                    <p className="text-gray-300 text-lg leading-relaxed max-w-3xl">
-                      {safeString(profileUser.bio)}
-                    </p>
-                  ) : (
-                    <p className="text-gray-500 text-lg italic">
-                      {isOwnProfile ? "Add a bio to tell others about yourself..." : "No bio yet"}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div
-              className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors cursor-pointer"
-              onClick={handleShowFriends}
-            >
-              <div className="text-3xl font-bold text-white mb-2">
-                {profileUser.friendCount || 0}
-              </div>
-              <div className="text-gray-400 text-sm font-medium">Friends</div>
-            </div>
-            <div
-              className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-xl p-6 text-center hover:bg-gray-800/80 transition-colors cursor-pointer"
-              onClick={handleShowPlaylists}
-            >
-              <div className="text-3xl font-bold text-white mb-2">
-                {Array.isArray(profileUser.publicPlaylists)
-                  ? profileUser.publicPlaylists.length
-                  : 0}
-              </div>
-              <div className="text-gray-400 text-sm font-medium">Playlists</div>
-            </div>
-          </div>
-
-          {/* Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Top Artists */}
-            {(isOwnProfile || !profileUser.isPrivate) && (
-              <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-bold text-white">Top Artists (This Week)</h3>
-                  {isOwnProfile && (
-                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs font-medium rounded-full">
-                      Private
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  {hydratedTopArtists && hydratedTopArtists.length > 0 ? (
-                    hydratedTopArtists.slice(0, 3).map((artist, index) => (
-                      <Link
-                        key={artist.id || artist.name}
-                        href={artist.id ? `/artist/${artist.id}` : "#"}
-                        className="block"
-                      >
-                        <div className="flex items-center space-x-4 p-3 hover:bg-gray-700/30 rounded-xl transition-colors">
-                          <span className="text-gray-400 font-bold text-lg w-6">{index + 1}</span>
-                          <MusicImage
-                            src={artist.imageUrl}
-                            alt={safeString(artist.name || "")}
-                            fallbackText={safeString(artist.name || "")}
-                            size="small"
-                            type="circle"
-                            className="border-2 border-blue-500"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-white font-medium truncate">
-                              {safeString(artist.name || "")}
-                            </p>
-                            <p className="text-gray-400 text-sm">Artist</p>
-                          </div>
-                          <span className="text-blue-400 font-bold text-lg ml-2">
-                            {artist.count}
-                          </span>
-                        </div>
-                      </Link>
-                    ))
-                  ) : (
-                    <div className="text-center py-8">
-                      <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                        <svg
-                          className="w-8 h-8 text-gray-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-gray-400 text-sm">No top artists yet</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Recent Activity */}
-            <div className="lg:col-span-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold text-white">Recent Activity</h3>
-                {(isOwnProfile || !profileUser.isPrivate) &&
-                  profileUser.recentActivity &&
-                  profileUser.recentActivity.length > 0 && (
-                    <button
-                      onClick={() => router.push(`/user/${userId}/listening-history`)}
-                      className="px-3 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 text-sm font-medium rounded-full border border-green-500/30 transition-colors"
-                    >
-                      View All
-                    </button>
-                  )}
-              </div>
-              <div className="space-y-4">
-                {isOwnProfile || !profileUser.isPrivate ? (
-                  profileUser.recentActivity && profileUser.recentActivity.length > 0 ? (
-                    profileUser.recentActivity.slice(0, 3).map((activity, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-4 hover:bg-gray-700/30 rounded-xl transition-colors"
-                      >
-                        <div className="flex items-center space-x-4">
-                          {activity.coverUrl ? (
-                            <MusicImage
-                              src={activity.coverUrl}
-                              alt={activity.item}
-                              fallbackText={activity.item}
-                              size="medium"
-                              type="square"
-                              className="w-12 h-12"
-                            />
-                          ) : (
-                            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
-                              <svg
-                                className="w-6 h-6 text-white"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-white">
-                              {activity.action} <span className="font-medium">{activity.item}</span>
-                              {activity.artist && (
-                                <span className="text-gray-400">
-                                  {" "}
-                                  by {safeString(activity.artist)}
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-gray-400 text-sm">{activity.time}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-12">
-                      <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                        <svg
-                          className="w-8 h-8 text-gray-600"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <p className="text-gray-400 text-sm">No recent activity</p>
-                    </div>
-                  )
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                      <svg
-                        className="w-8 h-8 text-gray-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                    <p className="text-gray-400 text-sm">This user&apos;s activity is private</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Reactions (private to the owner) */}
-          <div className="bg-gray-800/60 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 mt-8">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-bold text-white flex items-center">
-                <HeartIcon className="w-5 h-5 mr-2 text-red-400" />
-                Recent Reactions
-              </h3>
-            </div>
-            {isOwnProfile ? (
-              <div className="space-y-4">
-                {isLoadingReactions ? (
-                  <div className="text-center py-8">
-                    <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-400 text-sm">Loading reactions...</p>
-                  </div>
-                ) : reactions.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {reactions.map((reaction, index) => {
-                      const search = new URLSearchParams({
-                        focusType: reaction.contextType || "recent_song",
-                        to: profileUser!.identityUserId,
-                      });
-                      if (
-                        (reaction.contextType === "recent_song" || !reaction.contextType) &&
-                        reaction.songId
-                      ) {
-                        search.set("songId", reaction.songId);
-                      }
-
-                      // If we have a concrete postId, prefer linking to a post detail route
-                      const href = reaction.postId
-                        ? `/feed/post/${encodeURIComponent(reaction.postId)}`
-                        : `/feed?${search.toString()}`;
-
-                      return (
-                        <div
-                          key={index}
-                          className="group bg-white/5 rounded-xl p-4 text-white hover:bg-white/10 transition-all duration-200 cursor-pointer border border-transparent hover:border-purple-500/30"
-                        >
-                          <div
-                            onClick={() => router.push(href)}
-                            className="flex items-center justify-between h-full"
-                          >
-                            <div className="flex items-center space-x-3 flex-1 min-w-0">
-                              <span className="text-2xl select-none">{reaction.emoji}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <Link
-                                    href={`/user/${reaction.fromIdentityUserId}`}
-                                    onClick={e => e.stopPropagation()}
-                                    className="text-purple-300 font-medium hover:text-purple-200 transition-colors"
-                                  >
-                                    {reaction.fromUserName || "Unknown User"}
-                                  </Link>
-                                  {reaction.postId && (
-                                    <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
-                                      Post
-                                    </span>
-                                  )}
-                                </div>
-                                {reaction.songTitle && (
-                                  <p className="text-gray-400 text-sm truncate">
-                                    on {reaction.songTitle}
-                                  </p>
-                                )}
-                                <div className="text-xs text-gray-500 mt-1">
-                                  {new Date(reaction.createdAt).toLocaleDateString()} • Click to
-                                  view
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                              →
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-4">
-                      <HeartIcon className="w-8 h-8 text-gray-600" />
-                    </div>
-                    <p className="text-gray-400 text-sm">No reactions yet</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-400 text-sm">
-                Reactions are private to this user.
-              </div>
-            )}
-          </div>
-
-          {/* Public Playlists */}
-          <div className="mt-8">
-            <h2 className="text-2xl font-bold text-white mb-6">Public Playlists</h2>
-            {profileUser.publicPlaylists && profileUser.publicPlaylists.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                {profileUser.publicPlaylists.map(playlist => (
-                  <div
-                    key={playlist.id}
-                    className="group cursor-pointer"
-                    onClick={() => router.push(`/playlist/${playlist.id}`)}
-                  >
-                    <div className="w-full aspect-square rounded-xl mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                      {playlist.coverUrl ? (
-                        <MusicImage
-                          src={playlist.coverUrl}
-                          alt={playlist.name}
-                          size="large"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center">
-                          <MusicalNoteIcon className="w-12 h-12 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    <h3 className="text-white font-semibold text-sm truncate">
-                      {safeString(playlist.name)}
-                    </h3>
-                    <p className="text-gray-400 text-xs">
-                      By {safeString(profileUser.displayName || profileUser.username)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-16 bg-gray-800/40 backdrop-blur-sm border border-gray-700 rounded-2xl">
-                <div className="w-24 h-24 mx-auto bg-gray-700/50 rounded-full flex items-center justify-center mb-6">
-                  <svg className="w-12 h-12 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path
-                      fillRule="evenodd"
-                      d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <p className="text-gray-400 text-lg">No public playlists yet</p>
-                {isOwnProfile && (
-                  <p className="text-gray-500 text-sm mt-2">
-                    Create your first playlist to share with others
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Toast notifications */}
-
-      {/* Friends Popup Modal */}
-      {showFriendsPopup && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
-            <div className="p-6 border-b border-gray-700">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-white">Friends</h3>
-                <button
-                  onClick={() => setShowFriendsPopup(false)}
-                  className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  <XMarkIcon className="w-5 h-5 text-gray-400" />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 max-h-96 overflow-y-auto">
-              {isLoadingPopup ? (
-                <div className="text-center py-8">
-                  <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-gray-400">Loading friends...</p>
-                </div>
-              ) : friendsList.length > 0 ? (
-                <div className="space-y-4">
-                  {friendsList.map(friend => (
-                    <div
-                      key={friend.id}
-                      className="flex items-center space-x-4 p-3 hover:bg-gray-700/30 rounded-xl transition-colors cursor-pointer"
-                      onClick={() => {
-                        setShowFriendsPopup(false);
-                        router.push(`/user/${friend.id}`);
-                      }}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 via-pink-500 to-blue-500 flex items-center justify-center">
-                        <span className="text-white font-bold">
-                          {(friend.displayName || friend.username).charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white font-medium truncate">
-                          {friend.displayName || friend.username}
-                        </p>
-                        <p className="text-gray-400 text-sm truncate">@{friend.username}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+      <main className="mx-auto max-w-5xl space-y-10 p-4 sm:p-8">
+        <header className="space-y-5 border-b border-gray-700 pb-6">
+          <div className="flex items-start gap-4 sm:gap-6">
+            <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-gray-800 sm:h-24 sm:w-24">
+              {profileUser.avatarUrl ? (
+                <MusicImage
+                  src={profileUser.avatarUrl}
+                  alt=""
+                  type="circle"
+                  size="large"
+                  className="h-full w-full"
+                />
               ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-400">No friends yet</p>
+                <div className="flex h-full items-center justify-center text-3xl font-semibold">
+                  {(profileUser.displayName || profileUser.username).charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="break-words text-2xl font-semibold sm:text-4xl">
+                {profileUser.displayName || profileUser.username}
+              </h1>
+              <p className="mt-1 break-words text-gray-400">@{profileUser.username}</p>
+              {profileUser.isPrivate && (
+                <p className="mt-2 text-sm text-gray-400">Private profile</p>
+              )}
+              {profileUser.bio && (
+                <p className="mt-3 max-w-prose whitespace-pre-wrap break-words text-gray-300">
+                  {profileUser.bio}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {renderActionButtons()}
+            {!isOwnProfile && (
+              <Button
+                onClick={handleFollow}
+                variant="outline"
+                disabled={isFollowing === null || isSavingFollow}
+                aria-pressed={isFollowing === true}
+              >
+                {isSavingFollow ? "Saving…" : isFollowing ? "Unfollow" : "Follow"}
+              </Button>
+            )}
+          </div>
+          <nav
+            aria-label="Profile collections"
+            className="flex flex-wrap items-center gap-x-5 gap-y-2"
+          >
+            <button
+              onClick={handleShowFriends}
+              className="min-h-11 text-gray-300 hover:text-white hover:underline"
+            >
+              Friends{" "}
+              {detailsError.includes("Friends")
+                ? "unavailable"
+                : "(" + (profileUser.friendCount ?? 0) + ")"}
+            </button>
+            <button
+              onClick={handleShowPlaylists}
+              className="min-h-11 text-gray-300 hover:text-white hover:underline"
+            >
+              Public playlists{" "}
+              {detailsError.includes("playlists")
+                ? "unavailable"
+                : "(" + (profileUser.publicPlaylists?.length ?? 0) + ")"}
+            </button>
+            {canViewActivity && (
+              <Link
+                href={`/user/${profileUser.identityUserId}/listening-history`}
+                className="inline-flex min-h-11 items-center text-gray-300 hover:text-white hover:underline"
+              >
+                Listening history
+              </Link>
+            )}
+          </nav>
+          {showSuccessMessage && (
+            <p role="status" className="text-sm text-green-300">
+              Friend request sent.
+            </p>
+          )}
+          {actionError && (
+            <p role="alert" className="text-sm text-red-300">
+              {actionError}
+            </p>
+          )}
+          {friendshipError && !isOwnProfile && (
+            <p role="alert" className="text-sm text-red-300">
+              {friendshipError}{" "}
+              <button
+                onClick={() => void loadFriendshipStatus()}
+                disabled={friendshipLoading}
+                className="min-h-11 px-2 underline"
+              >
+                Retry friendship status
+              </button>
+            </p>
+          )}
+        </header>
+        {detailsError && (
+          <p role="alert" className="text-sm text-amber-200">
+            {detailsError}{" "}
+            <button
+              onClick={() => void loadUserProfile(userId, currentUser)}
+              className="min-h-11 px-2 underline"
+            >
+              Retry profile details
+            </button>
+          </p>
+        )}
+        {canViewActivity ? (
+          <div className="grid gap-10 lg:grid-cols-2">
+            <section aria-labelledby="profile-artists">
+              <h2 id="profile-artists" className="mb-4 text-lg font-semibold">
+                Top artists this week
+              </h2>
+              {hydratedTopArtists.length ? (
+                <ol className="divide-y divide-gray-700">
+                  {hydratedTopArtists.slice(0, 5).map(artist => (
+                    <li key={artist.id || artist.name} className="flex items-center gap-3 py-3">
+                      <MusicImage src={artist.imageUrl} alt="" type="circle" size="small" />
+                      <div className="min-w-0 flex-1">
+                        {artist.id ? (
+                          <Link
+                            href={`/artist/${artist.id}`}
+                            className="break-words font-medium hover:underline"
+                          >
+                            {artist.name}
+                          </Link>
+                        ) : (
+                          <span className="break-words font-medium">{artist.name}</span>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-sm text-gray-400">{artist.count} plays</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                !detailsError.includes("Top artists") && (
+                  <p className="text-sm text-gray-400">
+                    No top artists yet. Your listening will appear here.
+                  </p>
+                )
+              )}
+            </section>
+            <section aria-labelledby="profile-activity">
+              <h2 id="profile-activity" className="mb-4 text-lg font-semibold">
+                Recent listening
+              </h2>
+              {profileUser.recentActivity?.length ? (
+                <ol className="divide-y divide-gray-700">
+                  {profileUser.recentActivity.slice(0, 5).map((activity, index) => (
+                    <li
+                      key={index}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="break-words font-medium">{activity.item}</p>
+                        <p className="text-sm text-gray-400">{activity.artist}</p>
+                      </div>
+                      <span className="text-xs text-gray-400">{activity.time}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                !detailsError.includes("Recent activity") && (
+                  <p className="text-sm text-gray-400">No recent listening yet.</p>
+                )
+              )}
+            </section>
+          </div>
+        ) : (
+          <p className="text-gray-400">This user&apos;s listening activity is private.</p>
+        )}
+        {isOwnProfile && (
+          <section aria-labelledby="profile-reactions">
+            <h2 id="profile-reactions" className="mb-4 text-lg font-semibold">
+              Recent reactions
+            </h2>
+            {isLoadingReactions ? (
+              <p role="status" className="text-gray-400">
+                Loading reactions…
+              </p>
+            ) : reactionsError ? (
+              <p role="alert" className="text-red-300">
+                {reactionsError}{" "}
+                <button
+                  onClick={() => void loadReactions(profileUser.identityUserId)}
+                  className="min-h-11 px-2 underline"
+                >
+                  Retry reactions
+                </button>
+              </p>
+            ) : reactions.length ? (
+              <ul className="divide-y divide-gray-700">
+                {reactions.map((reaction, index) => {
+                  const search = new URLSearchParams({
+                    focusType: reaction.contextType || "recent_song",
+                    to: profileUser.identityUserId,
+                  });
+                  if (reaction.songId) search.set("songId", reaction.songId);
+                  const href = reaction.postId
+                    ? `/feed/post/${encodeURIComponent(reaction.postId)}`
+                    : `/feed?${search.toString()}`;
+                  return (
+                    <li
+                      key={index}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="text-2xl">{reaction.emoji}</span>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/user/${reaction.fromIdentityUserId}`}
+                            className="font-medium hover:underline"
+                          >
+                            {reaction.fromUserName || "User"}
+                          </Link>
+                          <p className="text-sm text-gray-400">
+                            {reaction.songTitle && `on ${reaction.songTitle}`}
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        href={href}
+                        className="inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+                      >
+                        View activity
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-gray-400">No reactions yet.</p>
+            )}
+          </section>
+        )}
+        <section aria-labelledby="profile-playlists">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 id="profile-playlists" className="text-lg font-semibold">
+              Public playlists
+            </h2>
+            {isOwnProfile && (
+              <Link
+                href="/playlists"
+                className="inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+              >
+                Manage playlists
+              </Link>
+            )}
+          </div>
+          {profileUser.publicPlaylists?.length
+            ? playlistCards(profileUser.publicPlaylists)
+            : !detailsError.includes("playlists") && (
+                <p className="text-sm text-gray-400">No public playlists yet.</p>
+              )}
+        </section>
+      </main>
+      {showFriendsPopup && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div
+            ref={friendsDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-friends-title"
+            tabIndex={-1}
+            className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 id="profile-friends-title" className="text-lg font-semibold">
+                Friends
+              </h2>
+              <button
+                aria-label="Close friends"
+                onClick={() => setShowFriendsPopup(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-800"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+            {isLoadingPopup ? (
+              <p role="status">Loading friends…</p>
+            ) : popupError ? (
+              <p role="alert" className="text-red-300">
+                {popupError}
+                <button onClick={handleShowFriends} className="min-h-11 px-2 underline">
+                  Retry friends
+                </button>
+              </p>
+            ) : friendsList.length ? (
+              <ul className="divide-y divide-gray-700">
+                {friendsList.map(friend => (
+                  <li key={friend.id}>
+                    <Link
+                      href={`/user/${friend.id}`}
+                      onClick={() => setShowFriendsPopup(false)}
+                      className="flex min-h-16 items-center gap-3 py-3 hover:underline"
+                    >
+                      <MusicImage src={friend.avatarUrl} alt="" type="circle" size="small" />
+                      <span className="min-w-0 break-words">
+                        {friend.displayName || friend.username}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-400">No friends yet.</p>
+            )}
           </div>
         </div>
       )}
-
-      {/* Playlists Popup Modal */}
       {showPlaylistsPopup && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden">
-            <div className="p-6 border-b border-gray-700">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xl font-bold text-white">Public Playlists</h3>
-                <button
-                  onClick={() => setShowPlaylistsPopup(false)}
-                  className="p-2 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  <XMarkIcon className="w-5 h-5 text-gray-400" />
-                </button>
-              </div>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div
+            ref={playlistsDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-playlists-title"
+            tabIndex={-1}
+            className="max-h-[85dvh] w-full max-w-2xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-5"
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 id="profile-playlists-title" className="text-lg font-semibold">
+                Public playlists
+              </h2>
+              <button
+                aria-label="Close playlists"
+                onClick={() => setShowPlaylistsPopup(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-gray-800"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
             </div>
-            <div className="p-6 max-h-96 overflow-y-auto">
-              {playlistsList.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {playlistsList.map(playlist => (
-                    <div
-                      key={playlist.id}
-                      className="group cursor-pointer"
-                      onClick={() => {
-                        setShowPlaylistsPopup(false);
-                        router.push(`/playlist/${playlist.id}`);
-                      }}
-                    >
-                      <div className="w-full aspect-square rounded-xl mb-3 overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                        {playlist.coverUrl ? (
-                          <MusicImage
-                            src={playlist.coverUrl}
-                            alt={playlist.name}
-                            size="large"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 flex items-center justify-center">
-                            <MusicalNoteIcon className="w-12 h-12 text-white" />
-                          </div>
-                        )}
-                      </div>
-                      <h3 className="text-white font-semibold text-sm truncate">
-                        {safeString(playlist.name)}
-                      </h3>
-                      <p className="text-gray-400 text-xs">
-                        By {safeString(profileUser.displayName || profileUser.username)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-400">No public playlists yet</p>
-                </div>
-              )}
-            </div>
+            {detailsError.includes("playlists") ? (
+              <p role="alert" className="text-amber-200">
+                Public playlists could not be loaded. Close this dialog and retry profile details.
+              </p>
+            ) : playlistsList.length ? (
+              playlistCards(playlistsList)
+            ) : (
+              <p className="text-gray-400">No public playlists yet.</p>
+            )}
           </div>
         </div>
       )}

@@ -37,8 +37,6 @@ function FeedInner() {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [visiblePost, setVisiblePost] = useState<string | null>(null);
-  const navigationLock = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const touchStart = useRef<number | null>(null);
   const slidesRef = useRef(slides);
   const currentRef = useRef(currentIndex);
   useLayoutEffect(() => {
@@ -159,43 +157,6 @@ function FeedInner() {
     const slide = slides.find(item => item.postId === visiblePost);
     if (slide) markSeen(slide);
   }, [visiblePost, slides, markSeen]);
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-    const advance = (direction: number) => {
-      if (navigationLock.current) return;
-      navigationLock.current = setTimeout(() => {
-        navigationLock.current = null;
-      }, 650);
-      void navigate(direction);
-    };
-    const wheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) < 24) return;
-      event.preventDefault();
-      advance(event.deltaY > 0 ? 1 : -1);
-    };
-    const start = (event: TouchEvent) => {
-      touchStart.current = event.touches[0]?.clientY ?? null;
-    };
-    const move = (event: TouchEvent) => {
-      if (touchStart.current === null) return;
-      const delta = (event.touches[0]?.clientY ?? touchStart.current) - touchStart.current;
-      if (Math.abs(delta) < 32) return;
-      event.preventDefault();
-      advance(delta < 0 ? 1 : -1);
-      touchStart.current = null;
-    };
-    root.addEventListener("wheel", wheel, { passive: false });
-    root.addEventListener("touchstart", start, { passive: true });
-    root.addEventListener("touchmove", move, { passive: false });
-    return () => {
-      root.removeEventListener("wheel", wheel);
-      root.removeEventListener("touchstart", start);
-      root.removeEventListener("touchmove", move);
-      if (navigationLock.current) clearTimeout(navigationLock.current);
-      navigationLock.current = null;
-    };
-  }, [navigate, slides.length]);
   if (!me) {
     return (
       <>
@@ -210,7 +171,7 @@ function FeedInner() {
     <FeedCardContext.Provider
       value={{ me, artists, reacting, reactionFlash, reactions, handleReact: feed.react }}
     >
-      <div className="relative flex min-h-0 h-[calc(100dvh-9rem-1px)] flex-col">
+      <div className="relative flex min-h-0 h-[calc(100dvh-11rem-1px)] flex-col">
         <div className="mx-auto w-full max-w-2xl shrink-0 flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <h1 className="text-xl font-semibold text-white">Feed</h1>
           <button
@@ -305,7 +266,7 @@ function FeedInner() {
                   void navigate(event.key === "ArrowDown" ? 1 : -1);
                 }
               }}
-              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain snap-y snap-mandatory"
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain snap-y snap-proximity"
             >
               {slides.map((slide, idx) => (
                 <section

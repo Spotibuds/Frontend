@@ -483,7 +483,7 @@ export const TopArtistsCard = memo(
           </div>
           {/* Post label moved to bottom right */}
           <div className="absolute right-3 bottom-3 z-10">
-            <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
+            <div className="text-white/60 text-xs bg-black/20  px-2 py-1 rounded">
               Top artists this week
             </div>
           </div>
@@ -550,7 +550,7 @@ export const TopSongsCard = memo(
           </div>
           {/* Post label moved to bottom right */}
           <div className="absolute right-3 bottom-3 z-10">
-            <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
+            <div className="text-white/60 text-xs bg-black/20  px-2 py-1 rounded">
               Top songs this week
             </div>
           </div>
@@ -737,7 +737,7 @@ export const CommonArtistsCard = memo(
           </div>
           {/* Post label moved to bottom right */}
           <div className="absolute right-3 bottom-3 z-10">
-            <div className="text-white/60 text-xs bg-black/20 backdrop-blur-sm px-2 py-1 rounded">
+            <div className="text-white/60 text-xs bg-black/20  px-2 py-1 rounded">
               Artists in common
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { BellIcon } from "@heroicons/react/24/outline";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -23,7 +24,11 @@ export default function NotificationDropdown({
     if (!open) return;
     panel.current?.querySelector<HTMLElement>("button:not([disabled]),a")?.focus();
     const outside = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      if (
+        !root.current?.contains(event.target as Node) &&
+        !panel.current?.contains(event.target as Node)
+      )
+        setOpen(false);
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
@@ -41,7 +46,11 @@ export default function NotificationDropdown({
         }
       }}
       onBlur={event => {
-        if (event.relatedTarget && !root.current?.contains(event.relatedTarget as Node))
+        if (
+          event.relatedTarget &&
+          !root.current?.contains(event.relatedTarget as Node) &&
+          !panel.current?.contains(event.relatedTarget as Node)
+        )
           setOpen(false);
       }}
     >
@@ -68,40 +77,42 @@ export default function NotificationDropdown({
       <span id={`${id}-count`} className="sr-only">
         {unreadCount === null ? "Unread count loading" : `${unreadCount} unread notifications`}
       </span>
-      {open && (
-        <div
-          id={id}
-          ref={panel}
-          role="region"
-          aria-label="Notification inbox"
-          className="fixed inset-x-3 top-20 z-50 overflow-hidden rounded-xl bg-white text-gray-900 shadow-lg shadow-black/20 sm:absolute sm:inset-x-auto sm:end-0 sm:top-full sm:mt-2 sm:w-96 dark:bg-gray-800 dark:text-white"
-        >
-          <div className="border-b border-gray-200 p-4 dark:border-gray-700">
-            <h2 className="font-semibold">Notifications</h2>
-            <NotificationActions />
-          </div>
-          <div className="max-h-[min(65vh,36rem)] overflow-y-auto overscroll-contain">
-            <NotificationStatus />
-            {!loading && synced && !error && !notifications.length && (
-              <p className="p-6 text-center text-gray-600 dark:text-gray-300">
-                No notifications yet.
-              </p>
-            )}
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
-              {notifications.slice(0, 20).map(item => (
-                <NotificationItem key={item.id} notification={item} />
-              ))}
-            </div>
-          </div>
-          <Link
-            href="/notifications"
-            onClick={() => setOpen(false)}
-            className="block min-h-11 border-t border-gray-200 p-3 text-center text-sm font-medium text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-gray-700 dark:text-purple-300 dark:hover:bg-gray-700"
+      {open &&
+        createPortal(
+          <div
+            id={id}
+            ref={panel}
+            role="region"
+            aria-label="Notification inbox"
+            className="fixed inset-x-3 top-20 z-[80] overflow-hidden rounded-xl bg-gray-800 text-white shadow-lg shadow-black/20 sm:start-auto sm:end-4 sm:w-96"
           >
-            View all notifications
-          </Link>
-        </div>
-      )}
+            <div className="border-b border-gray-200 p-4 dark:border-gray-700">
+              <h2 className="font-semibold">Notifications</h2>
+              <NotificationActions />
+            </div>
+            <div className="max-h-[min(65vh,36rem)] overflow-y-auto overscroll-contain">
+              <NotificationStatus />
+              {!loading && synced && !error && !notifications.length && (
+                <p className="p-6 text-center text-gray-600 dark:text-gray-300">
+                  No notifications yet.
+                </p>
+              )}
+              <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                {notifications.slice(0, 20).map(item => (
+                  <NotificationItem key={item.id} notification={item} />
+                ))}
+              </div>
+            </div>
+            <Link
+              href="/notifications"
+              onClick={() => setOpen(false)}
+              className="block min-h-11 border-t border-gray-200 p-3 text-center text-sm font-medium text-purple-700 hover:bg-purple-50 focus-visible:outline-2 focus-visible:outline-purple-600 dark:border-gray-700 dark:text-purple-300 dark:hover:bg-gray-700"
+            >
+              View all notifications
+            </Link>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

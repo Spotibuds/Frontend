@@ -20,7 +20,7 @@ export default function NotificationsPage() {
     hasMore,
   } = useNotifications();
   return (
-    <main className="min-h-screen min-w-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 px-4 py-8 text-white sm:px-6">
+    <main className="min-h-screen min-w-0 bg-gray-800 px-4 py-8 text-white sm:px-6">
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>

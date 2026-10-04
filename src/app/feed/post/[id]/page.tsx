@@ -23,22 +23,22 @@ const UserHeader = ({ post, userProfile }: { post: FeedPost; userProfile?: User 
   const avatarUrl = userProfile?.avatarUrl;
 
   return (
-    <div className="flex items-center gap-3 mb-4">
+    <div className="mb-4 flex min-w-0 items-center gap-3">
       <div className="relative">
         {avatarUrl ? (
           <MusicImage src={avatarUrl} alt={displayName} type="circle" size="small" />
         ) : (
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+          <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center">
             <span className="text-white font-bold text-lg">
               {displayName.charAt(0).toUpperCase()}
             </span>
           </div>
         )}
       </div>
-      <div className="flex flex-col">
+      <div className="flex min-w-0 flex-col">
         <Link
           href={`/user/${post.identityUserId}`}
-          className="text-white font-semibold hover:underline"
+          className="break-words text-white font-semibold hover:underline"
         >
           {displayName}
         </Link>
@@ -50,15 +50,23 @@ const UserHeader = ({ post, userProfile }: { post: FeedPost; userProfile?: User 
   );
 };
 
-// Enhanced Card component with gradient border
 const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div
-    className={`relative bg-gradient-to-br from-gray-900/80 to-gray-800/60 border border-gray-700/50 rounded-2xl p-6 shadow-lg backdrop-blur-sm w-full max-w-3xl mx-auto ${className}`}
-  >
-    <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-2xl pointer-events-none"></div>
-    <div className="relative z-10">{children}</div>
-  </div>
+  <article className={`mx-auto w-full max-w-3xl space-y-5 ${className}`}>{children}</article>
 );
+const ArtistName = ({
+  artist,
+  children,
+}: {
+  artist: { id?: string };
+  children: React.ReactNode;
+}) =>
+  artist.id ? (
+    <Link href={`/artist/${artist.id}`} className="hover:underline">
+      {children}
+    </Link>
+  ) : (
+    <span>{children}</span>
+  );
 
 export default function SinglePostPage() {
   const params = useParams();
@@ -84,6 +92,8 @@ export default function SinglePostPage() {
   const [userProfile, setUserProfile] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [detailsError, setDetailsError] = useState("");
   const { playSong } = useAudio();
   const canPlaySong = Boolean(song?.fileUrl?.trim());
 
@@ -98,6 +108,8 @@ export default function SinglePostPage() {
       try {
         setIsLoading(true);
         setError(null);
+        setDetailsError("");
+        setArtists([]);
         setPost(null);
         setSong(null);
         setUserProfile(null);
@@ -141,6 +153,15 @@ export default function SinglePostPage() {
                 topSongResult.value.filter(item => item.song).map(item => [item.id, item.song!])
               )
             );
+          const failedDetails =
+            [profileResult, songResult, topSongResult].some(
+              result => result.status === "rejected"
+            ) ||
+            (topSongResult.status === "fulfilled" && topSongResult.value.some(item => !item.song));
+          if (failedDetails || artistsResult.status === "rejected")
+            setDetailsError(
+              "Some artist, profile or playback details could not be loaded. The post is still available."
+            );
         } else {
           setError(
             postDataResult.reason instanceof Error
@@ -164,13 +185,21 @@ export default function SinglePostPage() {
     return () => {
       active = false;
     };
-  }, [postId, me, owner.generation, ownerKey]);
+  }, [postId, me, owner.generation, ownerKey, retry]);
 
   if (!me || !getSessionUser()) {
     return (
       <>
         <div className="min-h-[60vh] flex items-center justify-center">
-          <div className="text-gray-300">Please log in to view posts.</div>
+          <div className="text-gray-300">
+            Please log in to view posts.{" "}
+            <Link
+              href="/"
+              className="inline-flex min-h-11 items-center px-2 text-purple-300 underline"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
       </>
     );
@@ -203,11 +232,17 @@ export default function SinglePostPage() {
               {error || "Post not found"}
             </div>
             <button
-              onClick={() => router.back()}
+              onClick={() => setRetry(value => value + 1)}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
             >
-              Go Back
+              Retry post
             </button>
+            <Link
+              href="/feed"
+              className="ml-3 inline-flex min-h-11 items-center px-2 text-gray-300 hover:underline"
+            >
+              Back to feed
+            </Link>
           </div>
         </div>
       </>
@@ -218,10 +253,10 @@ export default function SinglePostPage() {
     <>
       <div className="px-4 pt-8 max-w-4xl mx-auto">
         {/* Back button */}
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={() => router.back()}
-            className="flex items-center text-gray-400 hover:text-white transition-colors"
+            className="flex min-h-11 items-center text-gray-400 hover:text-white transition-colors"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -233,7 +268,24 @@ export default function SinglePostPage() {
             </svg>
             Back
           </button>
+          <Link
+            href="/feed"
+            className="inline-flex min-h-11 items-center text-sm text-purple-300 hover:underline"
+          >
+            Back to feed
+          </Link>
         </div>
+        {detailsError && (
+          <p role="alert" className="mb-5 text-sm text-amber-200">
+            {detailsError}{" "}
+            <button
+              onClick={() => setRetry(value => value + 1)}
+              className="min-h-11 px-2 underline"
+            >
+              Retry details
+            </button>
+          </p>
+        )}
 
         {/* Post content */}
         {(post.type === "recent_song" || post.type === "now_playing") && (
@@ -249,7 +301,7 @@ export default function SinglePostPage() {
               <div className="flex flex-col lg:flex-row items-center gap-6 bg-white/5 rounded-xl p-4">
                 {/* Album art */}
                 <button
-                  className="w-40 h-40 rounded-xl overflow-hidden bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex-shrink-0 hover:scale-105 transition-transform group"
+                  className="w-40 h-40 rounded-xl overflow-hidden bg-gray-800 flex-shrink-0  transition-transform group"
                   onClick={() => song && canPlaySong && playSong(song)}
                   title="Play song"
                   aria-label={`Play ${song?.title?.trim() || post.songTitle?.trim() || "song"}`}
@@ -262,7 +314,7 @@ export default function SinglePostPage() {
                       size="large"
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 opacity-100 transition-opacity flex items-center justify-center">
                       <div className="w-12 h-12 bg-white/90 rounded-full flex items-center justify-center">
                         <svg
                           className="w-6 h-6 text-black ml-1"
@@ -284,14 +336,10 @@ export default function SinglePostPage() {
                   <div className="text-gray-300 text-xl mb-3">
                     {song?.artists?.length ? (
                       song.artists.map((a, i: number) => (
-                        <Link
-                          key={a.id || `${a.name}-${i}`}
-                          href={a.id ? `/artist/${a.id}` : "#"}
-                          className="hover:underline hover:text-purple-300 transition-colors"
-                        >
+                        <ArtistName key={a.id || `${a.name}-${i}`} artist={a}>
                           {a.name}
                           {i < (song.artists?.length || 0) - 1 ? ", " : ""}
-                        </Link>
+                        </ArtistName>
                       ))
                     ) : (
                       <span className="hover:text-purple-300 transition-colors">{post.artist}</span>
@@ -360,7 +408,7 @@ export default function SinglePostPage() {
           <Card>
             <div className="space-y-6">
               {/* User header */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <UserHeader post={post} userProfile={userProfile} />
                 <div className="text-purple-300 text-sm font-medium bg-purple-500/20 px-3 py-1 rounded-full">
                   Top Artists This Week
@@ -372,7 +420,7 @@ export default function SinglePostPage() {
                     ar => ar.name.toLowerCase() === a.name.toLowerCase()
                   );
                   return (
-                    <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                    <div key={i} className="flex items-center gap-3 border-b border-gray-700 py-3">
                       <div className="w-12 h-12 rounded-lg overflow-hidden">
                         <MusicImage
                           src={artistDetails?.imageUrl}
@@ -409,9 +457,9 @@ export default function SinglePostPage() {
 
         {post.type === "top_songs_week" && (
           <Card>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
                   <span className="text-white font-bold text-sm">
                     {(post.displayName || post.username || "U").charAt(0).toUpperCase()}
                   </span>
@@ -433,7 +481,7 @@ export default function SinglePostPage() {
                 const artistName =
                   songData?.artists?.map(a => a.name).join(", ") || ts.artist || "Unknown Artist";
                 return (
-                  <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                  <div key={i} className="flex items-center gap-3 border-b border-gray-700 py-3">
                     <div className="w-12 h-12 rounded-lg overflow-hidden">
                       <MusicImage
                         src={songData?.coverUrl}
@@ -456,14 +504,10 @@ export default function SinglePostPage() {
                       <div className="text-gray-300 text-sm truncate">
                         {songData?.artists?.length
                           ? songData.artists.map((a, j: number) => (
-                              <Link
-                                key={a.id || `${a.name}-${j}`}
-                                href={a.id ? `/artist/${a.id}` : "#"}
-                                className="hover:underline"
-                              >
+                              <ArtistName key={a.id || `${a.name}-${j}`} artist={a}>
                                 {a.name}
                                 {j < (songData.artists?.length || 0) - 1 ? ", " : ""}
-                              </Link>
+                              </ArtistName>
                             ))
                           : artistName}
                         <span className="text-gray-500"> • {ts.count} plays</span>
@@ -495,9 +539,9 @@ export default function SinglePostPage() {
 
         {post.type === "common_artists" && (
           <Card>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
                   <span className="text-white font-bold text-sm">
                     {(post.displayName || post.username || "U").charAt(0).toUpperCase()}
                   </span>
@@ -517,7 +561,7 @@ export default function SinglePostPage() {
                   ar => ar.name.toLowerCase() === artist.toLowerCase()
                 );
                 return (
-                  <div key={i} className="flex items-center gap-3 bg-white/5 rounded-xl p-3">
+                  <div key={i} className="flex items-center gap-3 border-b border-gray-700 py-3">
                     <div className="w-10 h-10 rounded-lg overflow-hidden">
                       <MusicImage
                         src={artistDetails?.imageUrl}
