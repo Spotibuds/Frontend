@@ -13,6 +13,8 @@ Spotibuds brings music listening and social interaction into one app. This showc
 
 Both videos are 1080p H.264 with captions and no audio. They show actual browser interactions with the live APIs and media endpoints, using independent synthetic accounts. Editing trims waiting and navigation between scenes; actions are not sped up. A 393 × 852 touch viewport demonstrates mobile web behavior, rather than a separate native app. All music comes from the existing catalogue; downloadable song files and account credentials are excluded.
 
+![Short player navigation excerpt](preview.gif)
+
 ## Walkthrough guide
 
 Times are approximate; the release includes precise chapter timestamps.
@@ -78,7 +80,8 @@ Follow the [isolated demo guide](../../demo/README.md) for the four sibling repo
 
 ## Suggested CV entry
 
-**Spotibuds — Full-stack social music application**  
+**Spotibuds — Full-stack social music application**
+
 Next.js, TypeScript, C#, ASP.NET Core, PostgreSQL, MongoDB, SignalR, Docker, Azure
 
 - Built and deployed a responsive music app with favorites, playlists, listening activity, friendship requests and realtime chat.
