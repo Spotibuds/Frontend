@@ -2,20 +2,22 @@
 
 Spotibuds is a social music app built with Next.js, TypeScript and C# services. Listen to music, save collections, discover listening activity and chat across desktop and mobile.
 
-[![Spotibuds listening on desktop and chatting on mobile](docs/portfolio/preview.jpg)](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)
+[![Spotibuds listening on desktop and chatting on mobile](docs/portfolio/preview.jpg)](https://spotibuds.github.io/.github/#overview)
 
-**[Watch the 1:16 overview with sound](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)** · [Organization showcase](https://github.com/Spotibuds) · [Live app](https://spotibuds-cfd43e7a.swedencentral.cloudapp.azure.com) · [Architecture and setup](docs/portfolio/README.md)
+**[Watch the 1:16 overview with sound](https://spotibuds.github.io/.github/#overview)** · [Organization showcase](https://github.com/Spotibuds) · [Architecture and setup](docs/portfolio/README.md)
 
 ## Explore the demos
 
-| Video                                                                                                                                                        | Length | Workflows                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------- |
-| [Overview](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)                                             | 1:16   | Audible listening, reactions, collections and independent desktop/mobile chat                             |
-| [Discover and listen](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-01-Discover-and-Listen.mp4)                    | 1:54   | Home, catalogue paging, music/people search, playback, queue, album/artist links and mobile navigation    |
-| [Favorites and playlists](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-02-Favorites-and-Playlists.mp4)            | 0:57   | Favorites, creation, covers, visibility, album/song additions, order, persistence and disposable deletion |
-| [Feed and listening profiles](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-03-Feed-and-Profiles.mp4)              | 1:42   | All five feed cards, navigation, playback, reactions, profiles, post links and listening history          |
-| [Friends, chat and notifications](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-04-Friends-Chat-Notifications.mp4) | 1:24   | Request/cancel/decline/accept, profile messaging, delivery, receipts, saved chats and inbox actions       |
-| [Accounts and administration](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-05-Accounts-and-Administration.mp4)    | 1:46   | Registration, profile/avatar/privacy, sign-in/out, recovery limits and administration previews            |
+Watch directly in your browser with sound, captions and chapter navigation. No download or account is needed; the recordings are hosted independently of the app server.
+
+| Video                                                                           | Length | Workflows                                                                                                 |
+| ------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| [Overview](https://spotibuds.github.io/.github/#overview)                       | 1:16   | Audible listening, reactions, collections and independent desktop/mobile chat                             |
+| [Discover and listen](https://spotibuds.github.io/.github/#discover)            | 1:54   | Home, catalogue paging, music/people search, playback, queue, album/artist links and mobile navigation    |
+| [Favorites and playlists](https://spotibuds.github.io/.github/#favorites)       | 0:57   | Favorites, creation, covers, visibility, album/song additions, order, persistence and disposable deletion |
+| [Feed and listening profiles](https://spotibuds.github.io/.github/#feed)        | 1:42   | All five feed cards, navigation, playback, reactions, profiles, post links and listening history          |
+| [Friends, chat and notifications](https://spotibuds.github.io/.github/#friends) | 1:24   | Request/cancel/decline/accept, profile messaging, delivery, receipts, saved chats and inbox actions       |
+| [Accounts and administration](https://spotibuds.github.io/.github/#accounts)    | 1:46   | Registration, profile/avatar/privacy, sign-in/out, recovery limits and administration previews            |
 
 Recorded on the deployed app with existing music and independent synthetic accounts. Listening footage includes actual playback audio; other scenes have no added soundtrack. Videos are 1080p MP4 with readable captions, matching SRT files and chapter timestamps. [All videos, captions and verification](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Feature coverage plan](docs/demo-coverage.md) · [Recorded action index](docs/demo-coverage.json).
 
@@ -52,7 +54,7 @@ npm run build
 
 Access tokens stay in memory. Refresh credentials stay in Identity's HttpOnly, SameSite Strict cookie. Cookie writes require the custom request header and exact local browser Origin. Expiry uses one refresh coordinator and one ten-second deadline for both phases. Login, logout and renewal share browser Web Locks so cookie mutations cannot overlap across tabs. Prepare installs a pending HttpOnly cookie without consuming its predecessor; complete consumes the predecessor only after the browser presents that installed successor, and does not write another cookie. Only a random operation ID and timestamp are retained for up to 30 seconds across navigation, so an interrupted phase can resume safely. No access or refresh credential enters storage. Consumed-predecessor replay still revokes the entire family. Requests retry a 401 once. Logout immediately clears local state, aborts old requests and stops playback/hubs. A token-free sign-out intent blocks automatic cookie renewal across reloads until an explicit successful login. If server revocation fails, the login page displays the actual failure and a bounded manual retry; it never reports that the server session was revoked. Blocked or full storage disables automatic bootstrap. Other tabs receive a token-free session-change event. Profile JSON in storage is a display hint, validated before authenticated navigation.
 
-Registration requires an 8Ã¢â‚¬â€œ100 character password containing upper and lower case, a digit, a symbol and six distinct characters. A synchronization-pending registration keeps the form and retries sign-in. Recovery is public and calls Identity; open the local Mailpit inbox described in the demo guide. Reset tokens are single use. Email changes are unavailable until a verified email-change workflow exists.
+Registration requires an 8–100 character password containing upper and lower case, a digit, a symbol and six distinct characters. A synchronization-pending registration keeps the form and retries sign-in. Recovery is public and calls Identity; open the local Mailpit inbox described in the demo guide. Reset tokens are single use. Email changes are unavailable until a verified email-change workflow exists.
 
 Private avatars and playlist covers are fetched with the shared authenticated client into revocable object URLs. Music playback uses catalogue-controlled local media endpoints. Failed writes retain form/draft data with error feedback. Chat waits for join and persisted acknowledgement, using an idempotent draft ID. History pages use bounded skip pagination and a terminal marker.
 

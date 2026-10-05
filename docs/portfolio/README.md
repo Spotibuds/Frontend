@@ -2,22 +2,24 @@
 
 Spotibuds brings music listening and social interaction into one app. These recordings demonstrate complete workflows; the source and verification records explain their implementation.
 
-[![Desktop listening and mobile chat](preview.jpg)](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)
+[![Desktop listening and mobile chat](preview.jpg)](https://spotibuds.github.io/.github/#overview)
 
 ## Watch
 
-Start with the **[1:16 overview with sound](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)**, then choose a workflow:
+Start with the **[1:16 overview with sound](https://spotibuds.github.io/.github/#overview)**, then choose a workflow:
 
-| Video                                                                                                                                                        | Length | Workflows                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------- |
-| [Overview](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-Overview.mp4)                                             | 1:16   | Audible listening, reactions, collections and independent desktop/mobile chat                             |
-| [Discover and listen](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-01-Discover-and-Listen.mp4)                    | 1:54   | Home, catalogue paging, music/people search, playback, queue, album/artist links and mobile navigation    |
-| [Favorites and playlists](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-02-Favorites-and-Playlists.mp4)            | 0:57   | Favorites, creation, covers, visibility, album/song additions, order, persistence and disposable deletion |
-| [Feed and listening profiles](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-03-Feed-and-Profiles.mp4)              | 1:42   | All five feed cards, navigation, playback, reactions, profiles, post links and listening history          |
-| [Friends, chat and notifications](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-04-Friends-Chat-Notifications.mp4) | 1:24   | Request/cancel/decline/accept, profile messaging, delivery, receipts, saved chats and inbox actions       |
-| [Accounts and administration](https://github.com/Spotibuds/Frontend/releases/download/demo-suite-2026-10-05/Spotibuds-05-Accounts-and-Administration.mp4)    | 1:46   | Registration, profile/avatar/privacy, sign-in/out, recovery limits and administration previews            |
+| Video                                                                           | Length | Workflows                                                                                                 |
+| ------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| [Overview](https://spotibuds.github.io/.github/#overview)                       | 1:16   | Audible listening, reactions, collections and independent desktop/mobile chat                             |
+| [Discover and listen](https://spotibuds.github.io/.github/#discover)            | 1:54   | Home, catalogue paging, music/people search, playback, queue, album/artist links and mobile navigation    |
+| [Favorites and playlists](https://spotibuds.github.io/.github/#favorites)       | 0:57   | Favorites, creation, covers, visibility, album/song additions, order, persistence and disposable deletion |
+| [Feed and listening profiles](https://spotibuds.github.io/.github/#feed)        | 1:42   | All five feed cards, navigation, playback, reactions, profiles, post links and listening history          |
+| [Friends, chat and notifications](https://spotibuds.github.io/.github/#friends) | 1:24   | Request/cancel/decline/accept, profile messaging, delivery, receipts, saved chats and inbox actions       |
+| [Accounts and administration](https://spotibuds.github.io/.github/#accounts)    | 1:46   | Registration, profile/avatar/privacy, sign-in/out, recovery limits and administration previews            |
 
-[Captions, chapters, checksums and verification](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Coverage plan](../demo-coverage.md) · [Recorded feature index](../demo-coverage.json) · [Live app](https://spotibuds-cfd43e7a.swedencentral.cloudapp.azure.com)
+[Captions, chapters, checksums and verification](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Coverage plan](../demo-coverage.md) · [Recorded feature index](../demo-coverage.json)
+
+Watch directly in your browser with sound, captions and chapter navigation. No download or account is needed; the recordings are hosted independently of the app server.
 
 The videos use actual browser interactions, live APIs and existing catalogue media. Music is audible where the app plays it, including pauses, mute and seeking. Actions remain at real speed; edits trim navigation/loading between scenes and briefly hold final states for caption reading. Paired desktop/mobile chat footage uses independent sessions. Mobile footage demonstrates web behavior at a 393 × 852 touch viewport.
 
@@ -66,7 +68,7 @@ The frontend readiness pass completed **234 tests across 27 files**, TypeScript 
 
 [Product readiness evidence](../product-readiness-verification.json) lists the reviewed areas, fixes and test methods. [Showcase verification](showcase-verification.json) records the deployed source revisions, recording method and final encoding checks. The [demo release](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) includes captions and SHA-256 checksums.
 
-Own-profile navigation samples decreased from about 1.94 seconds before the change to 0.45Ã¢â‚¬â€œ0.94 seconds afterward. Those few samples include browser rendering and variable network activity; they are not a performance SLA. Artist timings remained variable, so the improvement claimed there is earlier primary content and independent section loading. The live playback check observed progress and a successful HTTP 206 response without media interception.
+Own-profile navigation samples decreased from about 1.94 seconds before the change to 0.45–0.94 seconds afterward. Those few samples include browser rendering and variable network activity; they are not a performance SLA. Artist timings remained variable, so the improvement claimed there is earlier primary content and independent section loading. The live playback check observed progress and a successful HTTP 206 response without media interception.
 
 Remaining operational work includes configuring the production email relay for password recovery, upgrading Identity's .NET 8 runtime, and testing load and multiple replicas before scaling. Three artists retain initial-based artwork fallbacks where a verified picture was unavailable. The dependency audit exception and expiry are documented in the [frontend README](../../README.md#dependency-exception-and-evidence).
 
