@@ -6,7 +6,7 @@ Spotibuds combines music discovery, personal collections and conversations with 
 
 ## The app in 76 seconds
 
-Listen to an album, react to a friend's activity, build a collection and send a message from desktop to mobile. Play the recording below with sound.
+Listen to an album, react to a friend's activity, build a collection and send a message from desktop to mobile. Play the recording below; unmute the player to hear the music.
 
 https://github.com/user-attachments/assets/e77e37b6-90f7-4a4f-bab4-9d27be7a8e78
 
