@@ -1,27 +1,74 @@
 # Spotibuds Frontend
 
-Spotibuds is a social music app built with Next.js, TypeScript and C# services. Listen to music, save collections, discover listening activity and chat across desktop and mobile.
+Spotibuds combines music discovery, personal collections and conversations with friends in a responsive web app.
 
-[![Spotibuds listening on desktop and chatting on mobile](docs/portfolio/preview.jpg)](https://spotibuds.github.io/.github/#overview)
+**Next.js · React · TypeScript · ASP.NET Core · PostgreSQL · MongoDB · SignalR**
 
-**[Watch the 1:16 overview with sound](https://spotibuds.github.io/.github/#overview)** · [Organization showcase](https://github.com/Spotibuds) · [Architecture and setup](docs/portfolio/README.md)
+## The app in 76 seconds
 
-## Explore the demos
+Listen to an album, react to a friend's activity, build a collection and send a message from desktop to mobile. Play the recording below with sound.
 
-Watch directly in your browser with sound, captions and chapter navigation. No download or account is needed; the recordings are hosted independently of the app server.
+https://github.com/user-attachments/assets/e77e37b6-90f7-4a4f-bab4-9d27be7a8e78
 
-| Video                                                                           | Length | Workflows                                                                                                 |
-| ------------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| [Overview](https://spotibuds.github.io/.github/#overview)                       | 1:16   | Audible listening, reactions, collections and independent desktop/mobile chat                             |
-| [Discover and listen](https://spotibuds.github.io/.github/#discover)            | 1:54   | Home, catalogue paging, music/people search, playback, queue, album/artist links and mobile navigation    |
-| [Favorites and playlists](https://spotibuds.github.io/.github/#favorites)       | 0:57   | Favorites, creation, covers, visibility, album/song additions, order, persistence and disposable deletion |
-| [Feed and listening profiles](https://spotibuds.github.io/.github/#feed)        | 1:42   | All five feed cards, navigation, playback, reactions, profiles, post links and listening history          |
-| [Friends, chat and notifications](https://spotibuds.github.io/.github/#friends) | 1:24   | Request/cancel/decline/accept, profile messaging, delivery, receipts, saved chats and inbox actions       |
-| [Accounts and administration](https://spotibuds.github.io/.github/#accounts)    | 1:46   | Registration, profile/avatar/privacy, sign-in/out, recovery limits and administration previews            |
+## Behind the experience
 
-Recorded on the deployed app with existing music and independent synthetic accounts. Listening footage includes actual playback audio; other scenes have no added soundtrack. Videos are 1080p MP4 with readable captions, matching SRT files and chapter timestamps. [All videos, captions and verification](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Feature coverage plan](docs/demo-coverage.md) · [Recorded action index](docs/demo-coverage.json).
+- **One player across the app.** Catalogue rows, feed posts and the expanded player share playback state. Album and artist navigation keeps the music playing; byte-range media delivery supports progressive playback and seeking.
+- **Persistent social interaction.** SignalR delivers chat and notifications between independent sessions. Messages have persisted acknowledgements and read receipts; the recordings check history after reloading.
+- **Separate services, shared contracts.** Identity handles accounts and sessions in PostgreSQL. Music owns the catalogue and playlists in MongoDB. User handles profiles, listening activity and friendships, also in MongoDB.
+- **Sessions and loading states.** Access tokens stay in memory and refresh credentials use HttpOnly cookies. Independent page sections load separately, with request guards to prevent stale responses from replacing the current view.
 
-Catalogue and account administration changes are previewed or canceled. Production password recovery explicitly reports its missing email relay. Videos are release attachments; credentials, song downloads and downloader code are excluded from Git history.
+## Explore the workflows
+
+### Discover and listen · 1:54
+
+Search songs, albums, artists and people. Open an album, play tracks, manage the queue and move through the app on mobile.
+
+https://github.com/user-attachments/assets/46847f3f-ade7-4c8e-ab09-19c5ffa80536
+
+### Favorites and playlists · 0:57
+
+Save a song, create a playlist, add songs and albums, edit its cover and visibility, reorder tracks and check that changes survive a reload.
+
+https://github.com/user-attachments/assets/a4ca6f5b-31b1-4037-a924-0c9cb51af75e
+
+### Feed and listening profiles · 1:42
+
+Play a song from a friend's listening activity, add or remove a reaction, see who reacted and follow the post into a listening profile. Weekly tracks, top artists and shared tastes appear in the same feed.
+
+https://github.com/user-attachments/assets/71aa5a37-a19e-4dab-b31d-fbe0c263c614
+
+### Friends, chat and notifications · 1:24
+
+Send and respond to friend requests, then exchange messages between independent desktop and mobile sessions. Delivery, read receipts, saved history and inbox actions are shown in context.
+
+https://github.com/user-attachments/assets/2e04e1f5-ab94-49f5-847f-b6135ca6d42f
+
+### Accounts and administration · 1:46
+
+Register, sign in, update a profile and avatar, change privacy settings and explore the administration screens. Catalogue writes and role changes are previewed without saving; the recording also shows unavailable email recovery.
+
+https://github.com/user-attachments/assets/ddf68cbf-700a-4269-8efe-8535aeca6b93
+
+## Source and local setup
+
+| Repository                                        | Responsibility                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [Frontend](https://github.com/Spotibuds/Frontend) | Next.js, React and TypeScript; shared player, navigation and session coordination     |
+| [Identity](https://github.com/Spotibuds/Identity) | ASP.NET Core accounts, roles and refresh sessions; PostgreSQL                         |
+| [Music](https://github.com/Spotibuds/Music)       | ASP.NET Core catalogue, playlists and media access; MongoDB and Azure Blob Storage    |
+| [User](https://github.com/Spotibuds/User)         | ASP.NET Core profiles, feed, friendships, notifications and chat; MongoDB and SignalR |
+
+The recorded deployment ran Docker services behind Caddy HTTPS on an Azure VM. The [local demo guide](https://github.com/Spotibuds/Frontend/tree/main/demo) starts the same service layout with generated credentials and audio fixtures; cloud credentials and production song downloads are not required. [Architecture and engineering details](https://github.com/Spotibuds/Frontend/tree/main/docs/portfolio).
+
+## Verification and scope
+
+The recorded source passed **234 frontend tests**, TypeScript checks, ESLint and a production build. **31 live checks** were repeated after recording. [Verification record](https://github.com/Spotibuds/Frontend/blob/main/docs/portfolio/showcase-verification.json).
+
+The videos show actual browser interactions with existing catalogue music and synthetic participants. Listening scenes contain captured playback audio, and captions are visible in the footage. Mobile footage shows the responsive web app. Administration writes are previews; production recovery email still needs a relay. Device and load testing remain scoped rather than exhaustive.
+
+[Recording files, captions and chapters](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Recorded feature index](https://github.com/Spotibuds/Frontend/blob/main/docs/demo-coverage.json).
+
+## Work on the frontend
 
 This repository is one of four sibling Git repositories. The complete isolated demo lives in [demo/README.md](demo/README.md); follow that guide to generate local secrets, start all dependencies, migrate, seed and verify the stack. Do not reuse historical cloud endpoints or credentials.
 
@@ -54,7 +101,7 @@ npm run build
 
 Access tokens stay in memory. Refresh credentials stay in Identity's HttpOnly, SameSite Strict cookie. Cookie writes require the custom request header and exact local browser Origin. Expiry uses one refresh coordinator and one ten-second deadline for both phases. Login, logout and renewal share browser Web Locks so cookie mutations cannot overlap across tabs. Prepare installs a pending HttpOnly cookie without consuming its predecessor; complete consumes the predecessor only after the browser presents that installed successor, and does not write another cookie. Only a random operation ID and timestamp are retained for up to 30 seconds across navigation, so an interrupted phase can resume safely. No access or refresh credential enters storage. Consumed-predecessor replay still revokes the entire family. Requests retry a 401 once. Logout immediately clears local state, aborts old requests and stops playback/hubs. A token-free sign-out intent blocks automatic cookie renewal across reloads until an explicit successful login. If server revocation fails, the login page displays the actual failure and a bounded manual retry; it never reports that the server session was revoked. Blocked or full storage disables automatic bootstrap. Other tabs receive a token-free session-change event. Profile JSON in storage is a display hint, validated before authenticated navigation.
 
-Registration requires an 8–100 character password containing upper and lower case, a digit, a symbol and six distinct characters. A synchronization-pending registration keeps the form and retries sign-in. Recovery is public and calls Identity; open the local Mailpit inbox described in the demo guide. Reset tokens are single use. Email changes are unavailable until a verified email-change workflow exists.
+Registration requires an 8â€“100 character password containing upper and lower case, a digit, a symbol and six distinct characters. A synchronization-pending registration keeps the form and retries sign-in. Recovery is public and calls Identity; open the local Mailpit inbox described in the demo guide. Reset tokens are single use. Email changes are unavailable until a verified email-change workflow exists.
 
 Private avatars and playlist covers are fetched with the shared authenticated client into revocable object URLs. Music playback uses catalogue-controlled local media endpoints. Failed writes retain form/draft data with error feedback. Chat waits for join and persisted acknowledgement, using an idempotent draft ID. History pages use bounded skip pagination and a terminal marker.
 
