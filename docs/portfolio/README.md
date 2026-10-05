@@ -1,72 +1,66 @@
-# Spotibuds project showcase
+<h1 align="center">Spotibuds</h1>
 
-Spotibuds combines music discovery, personal collections and conversations with friends in a responsive web app.
+<p align="center">Discover music, make it yours and share it with friends.</p>
 
-**Next.js · React · TypeScript · ASP.NET Core · PostgreSQL · MongoDB · SignalR**
+<p align="center"><img src="product-preview.gif" width="720" alt="Silent preview of album playback, a feed reaction and desktop-to-mobile chat"></p>
 
-## The app in 76 seconds
+<p align="center">Albums and playback · Favorites and playlists · Listening feed · Friends and live chat</p>
 
-Listen to an album, react to a friend's activity, build a collection and send a message from desktop to mobile. Play the recording below; unmute the player to hear the music.
+## Watch the app in action
+
+Play a recording below and unmute to hear the music. All six demos are visible on this page.
+
+### Overview · 1:16
+
+Listen, collect, react and chat across desktop and mobile in 76 seconds.
 
 https://github.com/user-attachments/assets/e77e37b6-90f7-4a4f-bab4-9d27be7a8e78
 
-## Behind the experience
-
-- **One player across the app.** Catalogue rows, feed posts and the expanded player share playback state. Album and artist navigation keeps the music playing; byte-range media delivery supports progressive playback and seeking.
-- **Persistent social interaction.** SignalR delivers chat and notifications between independent sessions. Messages have persisted acknowledgements and read receipts; the recordings check history after reloading.
-- **Separate services, shared contracts.** Identity handles accounts and sessions in PostgreSQL. Music owns the catalogue and playlists in MongoDB. User handles profiles, listening activity and friendships, also in MongoDB.
-- **Sessions and loading states.** Access tokens stay in memory and refresh credentials use HttpOnly cookies. Independent page sections load separately, with request guards to prevent stale responses from replacing the current view.
-
-## Explore the workflows
-
 ### Discover and listen · 1:54
 
-Search songs, albums, artists and people. Open an album, play tracks, manage the queue and move through the app on mobile.
+Search music and people, explore artists and albums, and control playback and the queue on desktop and mobile.
 
 https://github.com/user-attachments/assets/46847f3f-ade7-4c8e-ab09-19c5ffa80536
 
 ### Favorites and playlists · 0:57
 
-Save a song, create a playlist, add songs and albums, edit its cover and visibility, reorder tracks and check that changes survive a reload.
+Save favorites, create a playlist, edit its cover and visibility, reorder tracks and check persistence after reload.
 
 https://github.com/user-attachments/assets/a4ca6f5b-31b1-4037-a924-0c9cb51af75e
 
 ### Feed and listening profiles · 1:42
 
-Play a song from a friend's listening activity, add or remove a reaction, see who reacted and follow the post into a listening profile. Weekly tracks, top artists and shared tastes appear in the same feed.
+Play from the listening feed, react to activity, see who reacted and explore listening profiles and shared tastes.
 
 https://github.com/user-attachments/assets/71aa5a37-a19e-4dab-b31d-fbe0c263c614
 
 ### Friends, chat and notifications · 1:24
 
-Send and respond to friend requests, then exchange messages between independent desktop and mobile sessions. Delivery, read receipts, saved history and inbox actions are shown in context.
+Send and accept friend requests, exchange messages between desktop and mobile, and check receipts, saved history and notifications.
 
 https://github.com/user-attachments/assets/2e04e1f5-ab94-49f5-847f-b6135ca6d42f
 
 ### Accounts and administration · 1:46
 
-Register, sign in, update a profile and avatar, change privacy settings and explore the administration screens. Catalogue writes and role changes are previewed without saving; the recording also shows unavailable email recovery.
+Register, edit profiles, avatars and privacy, and preview administration screens. Catalogue writes and role changes are not saved.
 
 https://github.com/user-attachments/assets/ddf68cbf-700a-4269-8efe-8535aeca6b93
 
-## Source and local setup
+## The implementation, briefly
 
-| Repository                                        | Responsibility                                                                        |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [Frontend](https://github.com/Spotibuds/Frontend) | Next.js, React and TypeScript; shared player, navigation and session coordination     |
-| [Identity](https://github.com/Spotibuds/Identity) | ASP.NET Core accounts, roles and refresh sessions; PostgreSQL                         |
-| [Music](https://github.com/Spotibuds/Music)       | ASP.NET Core catalogue, playlists and media access; MongoDB and Azure Blob Storage    |
-| [User](https://github.com/Spotibuds/User)         | ASP.NET Core profiles, feed, friendships, notifications and chat; MongoDB and SignalR |
+Next.js, React and TypeScript on the frontend. Three ASP.NET Core services separate identity, music and social activity. PostgreSQL stores accounts; MongoDB stores catalogue and social data. SignalR delivers live chat and notifications. Docker services run behind Caddy, with media in Azure Blob Storage.
 
-The recorded deployment ran Docker services behind Caddy HTTPS on an Azure VM. The [local demo guide](https://github.com/Spotibuds/Frontend/tree/main/demo) starts the same service layout with generated credentials and audio fixtures; cloud credentials and production song downloads are not required. [Architecture and engineering details](https://github.com/Spotibuds/Frontend/tree/main/docs/portfolio).
+- One player keeps its state across views; byte-range media delivery supports progressive playback and seeking.
+- Messages persist on the server, with delivery acknowledgements and read receipts between independent sessions.
+- Access tokens stay in memory; refresh credentials use HttpOnly cookies.
 
-## Verification and scope
+## Verification and setup
 
-The recorded source passed **234 frontend tests**, TypeScript checks, ESLint and a production build. **31 live checks** were repeated after recording. [Verification record](https://github.com/Spotibuds/Frontend/blob/main/docs/portfolio/showcase-verification.json).
+The recorded source passed **234 frontend tests**, TypeScript checks, ESLint and a production build, followed by **31 live checks**. [Verification record](https://github.com/Spotibuds/Frontend/blob/main/docs/portfolio/showcase-verification.json).
 
-The videos show actual browser interactions with existing catalogue music and synthetic participants. Listening scenes contain captured playback audio, and captions are visible in the footage. Mobile footage shows the responsive web app. Administration writes are previews; production recovery email still needs a relay. Device and load testing remain scoped rather than exhaustive.
+Actual browser recordings with existing catalogue music and synthetic participants. Mobile footage shows the responsive web app. Captions are visible in the footage and listening scenes include captured music. Administration writes are previews; production recovery email needs a relay. Device and load testing remain scoped.
 
-[Recording files, captions and chapters](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05) · [Recorded feature index](https://github.com/Spotibuds/Frontend/blob/main/docs/demo-coverage.json).
+[Run locally](https://github.com/Spotibuds/Frontend/tree/main/demo) · [Architecture and source](https://github.com/Spotibuds/Frontend/tree/main/docs/portfolio) · [Recordings, captions and chapters](https://github.com/Spotibuds/Frontend/releases/tag/demo-suite-2026-10-05)
 
 ## Architecture
 
